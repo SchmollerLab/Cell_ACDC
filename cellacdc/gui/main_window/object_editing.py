@@ -18,9 +18,16 @@ import skimage.segmentation
 from qtpy.QtCore import QTimer, QThread
 from qtpy.QtWidgets import QAction, QCheckBox
 from cellacdc import exception_handler, disableWindow
-from cellacdc import load, apps, workers, html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc import load, html_utils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from ..dialogs import editing as gui_dialogs_editing
+from ..workers import segmentation_tracking as gui_workers_segmentation_tracking
+from .. import helpers as gui_helpers
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+)
+from ..widgets import edit_toolbars as gui_widgets_edit_toolbars
 from cellacdc import settings_csv_path
 
 
@@ -51,7 +58,7 @@ class ObjectEditingGuiElements:
         #     log_func=self.logger.info
         # )
         # if posData.SizeT > 1:
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Re-labelling sequential', parent=self,
             pbarDesc='Relabelling sequential...'
         )
@@ -107,7 +114,7 @@ class ObjectEditingGuiElements:
 
     def startRelabellingWorker(self, posFoldernames):
         self.thread = QThread()
-        self.worker = workers.relabelSequentialWorker(self, posFoldernames)
+        self.worker = gui_workers_segmentation_tracking.relabelSequentialWorker(self, posFoldernames)
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
@@ -324,7 +331,7 @@ class ObjectEditingGuiElements:
         self.storeUndoRedoStates(False)
 
         posData = self.data[self.pos_i]
-        edge_ids = myutils.clear_border(posData.lab, return_edge_ids=True) # modifies inplace
+        edge_ids = gui_helpers.clear_border(posData.lab, return_edge_ids=True) # modifies inplace
         self.update_rp(deletionIDs=edge_ids)
         self.update_cca_df_deletedIDs(
             posData, edge_ids, dropInPast=False, dropInFuture=False
@@ -379,7 +386,7 @@ class ObjectEditingGuiElements:
         posData = self.data[self.pos_i]
         valid_ids = [ID for ID in IDs if ID in posData.IDs]
         if len(valid_ids) < 2:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 'Select at least two existing IDs before merging.'
             )
@@ -510,7 +517,7 @@ class ObjectEditingGuiElements:
         existingSegmEndnames = load.get_endnames(
             posData.basename, segm_files
         )
-        selectSegmWin = widgets.QDialogListbox(
+        selectSegmWin = widgets_item_views.QDialogListbox(
             'Select segmentation file',
             'Select segmentation file to use as ROI:\n',
             existingSegmEndnames, multiSelection=False, parent=self,
@@ -530,7 +537,7 @@ class ObjectEditingGuiElements:
         posData = self.data[self.pos_i]
         segm_data = np.squeeze(self.getStoredSegmData())
         
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Deleting objects outside of ROIs', parent=self,
             pbarDesc='Deleting objects outside of ROIs...'
         )
@@ -538,7 +545,7 @@ class ObjectEditingGuiElements:
         self.progressWin.mainPbar.setMaximum(0)
         
         self.thread = QThread()
-        self.worker = workers.DelObjectsOutsideSegmROIWorker(
+        self.worker = gui_workers_segmentation_tracking.DelObjectsOutsideSegmROIWorker(
             selectedSegmEndname, segm_data, posData.images_path
         )
         self.worker.moveToThread(self.thread)
@@ -574,7 +581,7 @@ class ObjectEditingGuiElements:
         txt = html_utils.paragraph(f"""
             Do you want to propagate the change "{change_txt}" to the past frames?
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         yesButton, _ = msg.question(
             self, 'Propagate change to past frames', txt, 
             buttonsTexts=('Yes', 'No')
@@ -702,7 +709,7 @@ class ObjectEditingGuiElements:
                 modTxt == 'Delete ID' or modTxt == 'Edit ID' 
                 or modTxt == 'Assign new ID'
             )
-            ffa = apps.FutureFramesAction_QDialog(
+            ffa = gui_dialogs_editing.FutureFramesAction_QDialog(
                 posData.frame_i+1, last_tracked_i, modTxt, 
                 applyTrackingB=applyTrackingB, parent=self, 
                 addApplyAllButton=addApplyAllButton
@@ -905,7 +912,7 @@ class ObjectEditingGuiElements:
             return
         
         actionText = self.middleClickText()
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'You have deleted an object using the eraser tool.<br><br>'
             'Did you know that you can use the "Delete object" action<br>'
@@ -1202,7 +1209,7 @@ class KeepIDsGuiElements:
         
         self.keepIDsToolbar.setVisible(checked)
         self.highlightedIDopts = None
-        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+        self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
         # Reset a previous warning (`setText('')` of `KeptObjectIDsList`
@@ -1300,7 +1307,7 @@ class KeepIDsGuiElements:
         if not currentIDs or currentIDs.intersection(self.keptObjectsIDs):
             return True
 
-        keptIDsText = myutils.format_IDs(self.keptObjectsIDs)
+        keptIDsText = gui_helpers.format_IDs(self.keptObjectsIDs)
         txt = html_utils.paragraph(f"""
             None of the IDs to keep (<code>{keptIDsText}</code>) is present
             in the current frame.<br><br>
@@ -1308,7 +1315,7 @@ class KeepIDsGuiElements:
             frame</b>.<br><br>
             Do you want to continue?
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Delete all objects of the current frame?', txt,
             buttonsTexts=('Cancel', 'Yes, delete all objects')
@@ -1346,7 +1353,7 @@ class KeepIDsGuiElements:
         if self.isSnapshot:
             self.fixCcaDfAfterEdit('Deleted non-selected objects')
             self.updateAllImages()
-            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
             )
             return
@@ -1364,7 +1371,7 @@ class KeepIDsGuiElements:
             txt = html_utils.paragraph("""
                 Do you want to <b>remove un-kept objects in the past</b> frames too?
             """)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             _, _, applyToPastButton = msg.question(
                 self, 'Propagate to past frames?', txt,
                 buttonsTexts=('Cancel', 'No', 'Yes, apply to past frames')
@@ -1410,7 +1417,7 @@ class KeepIDsGuiElements:
 
         if UndoFutFrames is None:
             # Future frames dialog cancelled (see `propagateChange`)
-            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
             )
             return
@@ -1469,7 +1476,7 @@ class KeepIDsGuiElements:
             posData.frame_i = self.current_frame_i
             self.get_data()
 
-        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+        self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
 

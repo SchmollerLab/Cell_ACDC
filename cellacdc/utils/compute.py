@@ -17,9 +17,22 @@ from qtpy.QtWidgets import (
 from .base import NewThreadMultipleExpBaseUtil
 
 from .. import (
-    widgets, apps, workers, html_utils, myutils,
-    gui, cca_functions, load, printl
+    html_utils, 
+    cca_functions, load, printl
 )
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import (
+    combine_measurements as dialogs_combine_measurements,
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+    set_measurements as dialogs_set_measurements,
+)
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from cellacdc.shared.workers import saving as workers_saving
 
 from .. import cellacdc_path, settings_folderpath
 from qtpy.QtCore import Qt, QTimer
@@ -48,7 +61,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         title = 'Compute measurements utility'
         infoText = 'Computing measurements routine running...'
         progressDialogueTitle = 'Computing measurements'
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -67,10 +80,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.runWorker()
 
     def runWorker(self, showProgress=True, stopFrameNumber=None):
-        self.gui = gui.guiWin(self.app, parent=self.parent)
+        self.gui = gui_window.guiWin(self.app, parent=self.parent)
         self.gui.logger = self.logger
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Computing measurements', parent=self,
             pbarDesc='Computing measurements...'
         )
@@ -81,7 +94,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             self.progressWin.hide()
         
         self.thread = QThread()
-        self.worker = workers.ComputeMetricsWorker(self)
+        self.worker = ComputeMetricsWorker(self)
         self.worker.moveToThread(self.thread)
 
         self.worker.signals.finished.connect(self.thread.quit)
@@ -131,9 +144,9 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             computing cluster that does not support GUI elements 
             (i.e., headless).<br>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
-        saveButton = widgets.savePushButton('Save and run later')
-        runNowButton = widgets.playPushButton('Run now')
+        msg = widgets_message_box.myMessageBox(wrapText=False)
+        saveButton = widgets_push_buttons.savePushButton('Save and run later')
+        runNowButton = widgets_push_buttons.playPushButton('Run now')
         _, saveButton, runNowButton = msg.question(
             self, 'Run workflow now?', txt, 
             buttonsTexts=(
@@ -150,7 +163,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         timestamp = datetime.datetime.now().strftime(
             r'%Y-%m-%d_%H-%M'
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             parent=self, 
             ext='.ini', 
             title='Insert filename for configuration file',
@@ -165,8 +178,8 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             return
         
         config_filename = win.filename
-        mostRecentPath = myutils.getMostRecentPath()
-        folder_path = apps.get_existing_directory(
+        mostRecentPath = filesystem.getMostRecentPath()
+        folder_path = dialogs_file_selection.get_existing_directory(
             allow_images_path=False,
             parent=self.progressWin, 
             caption='Select folder where to save configuration file',
@@ -210,7 +223,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             'You can run the workflow with the following command:'
         )
         command = f'acdc -p "{config_filepath}"'
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self, 'Workflow save', txt, 
             commands=(command,),
@@ -234,19 +247,19 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             self, standardMetricsErrors, customMetricsErrors, regionPropsErrors
         ):
         if standardMetricsErrors:
-            win = apps.ComputeMetricsErrorsDialog(
+            win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
                 standardMetricsErrors, self.logs_path, 
                 log_type='standard_metrics', parent=self
             )
             win.exec_()
         if regionPropsErrors:
-            win = apps.ComputeMetricsErrorsDialog(
+            win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
                 regionPropsErrors, self.logs_path, 
                 log_type='region_props', parent=self
             )
             win.exec_()
         if customMetricsErrors:
-            win = apps.ComputeMetricsErrorsDialog(
+            win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
                 customMetricsErrors, self.logs_path, 
                 log_type='custom_metrics', parent=self
             )
@@ -254,7 +267,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
 
     def workerAskStopFrame(self, posDatas):
-        win = apps.stopFrameDialog(posDatas, parent=self)
+        win = stopFrameDialog(posDatas, parent=self)
         win.exec_()
         self.worker.abort = win.cancel
         self.worker.waitCond.wakeAll()
@@ -278,7 +291,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             f'{path}<br><br>'
             'Close file and then press "Ok".'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.setDetailedText(traceback_str)
         msg.warning(self, 'Permission error', err_msg)
         self.worker.waitCond.wakeAll()
@@ -289,10 +302,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for metrics
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = filesystem.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:
@@ -313,7 +326,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             self.worker.waitCond.wakeAll()
             return
 
-        win = apps.SelectSegmFileDialog(
+        win = dialogs_file_selection.SelectSegmFileDialog(
             existingSegmEndNames, exp_path, parent=self
         )
         win.exec_()
@@ -323,7 +336,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
     
     def addCombineMetric(self):
         isZstack = self.posData.SizeZ > 1
-        self.combineMetricWindow = apps.CombineMetricsEquationDialog(
+        self.combineMetricWindow = dialogs_combine_measurements.CombineMetricsEquationDialog(
             self.allChNames, isZstack, self.posData.isSegm3D,
             parent=self.measurementsWin, closeOnOk=False,
             acdc_df=self.posData.acdc_df
@@ -421,7 +434,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             return
 
         exp_path = getattr(posData, 'exp_path', None)
-        cancel, delete = apps.askDeleteUncheckedExistingMeasurements(
+        cancel, delete = dialogs_set_measurements.askDeleteUncheckedExistingMeasurements(
             self, new_unselected, acdc_df_path=posData.images_path,
             locations=locations, num_positions=len(allPosDataInputs),
             exp_foldername=os.path.basename(exp_path) if exp_path else None
@@ -489,7 +502,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
                 )
                 self.allPosData.append(_posData)
 
-        self.measurementsWin = apps.SetMeasurementsDialog(
+        self.measurementsWin = dialogs_set_measurements.SetMeasurementsDialog(
             allChNames, [], posData.SizeZ > 1, posData.isSegm3D,
             favourite_funcs=favourite_funcs, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
@@ -514,7 +527,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.cancel = True
 
     def askSaveObjectsCount(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             Do you also want to save an additional table with the 
             number of objects in each frame?<br><br>
@@ -552,7 +565,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.gui.waitCond = self.worker.waitCond
         self.gui.saveWin = self.progressWin
         
-        self.gui.saveDataWorker = workers.saveDataWorker(self.gui)
+        self.gui.saveDataWorker = workers_saving.saveDataWorker(self.gui)
 
         self.gui.saveDataWorker.criticalPermissionError.connect(self.skipEvent)
         self.gui.saveDataWorker.askZsliceAbsent.connect(self.gui.zSliceAbsent)
@@ -633,13 +646,13 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         elif worker.abort:
             txt = 'Computing measurements cancelled.'
             self.logger.info(txt)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         
         else:
             txt = 'Computing measurements completed.'
             self.logger.info(txt)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
 
         self.isWorkerFinished = True
@@ -837,7 +850,7 @@ class stopFrameDialog(dialogs_base.QBaseDialog):
 
             _layout.addWidget(_spinBox)
 
-            viewButton = widgets.viewPushButton('Visualize...')
+            viewButton = widgets_push_buttons.viewPushButton('Visualize...')
             viewButton.clicked.connect(
                 partial(self.viewChannelData, posData, _spinBox)
             )
@@ -849,8 +862,8 @@ class stopFrameDialog(dialogs_base.QBaseDialog):
 
         buttonsLayout = QHBoxLayout()
 
-        okButton = widgets.okPushButton(' Ok ')
-        cancelButton = widgets.cancelPushButton(' Cancel ')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton(' Cancel ')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -966,7 +979,7 @@ class ComputeMetricsWorker(QObject):
 
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(
+                basename, chNames = filesystem.getBasenameAndChNames(
                     images_path, useExt=('.tif', '.h5')
                 )
 
@@ -974,7 +987,7 @@ class ComputeMetricsWorker(QObject):
 
                 # Use first found channel, it doesn't matter for metrics
                 chName = chNames[0]
-                file_path = myutils.getChannelFilePath(images_path, chName)
+                file_path = filesystem.getChannelFilePath(images_path, chName)
 
                 # Load data
                 posData = load.loadData(file_path, chName)

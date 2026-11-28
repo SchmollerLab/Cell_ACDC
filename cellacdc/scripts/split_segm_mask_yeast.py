@@ -6,7 +6,10 @@ import numpy as np
 
 import qtpy.compat
 
-from cellacdc import printl, myutils, apps, load, core, widgets
+from cellacdc import printl, load, core
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import item_views as widgets_item_views
 from cellacdc._run import _setup_app
 from cellacdc.utils.base import NewThreadMultipleExpBaseUtil
 from cellacdc import io
@@ -16,12 +19,12 @@ DEBUG = False
 def ask_select_folder():
     selected_path = qtpy.compat.getexistingdirectory(
         caption='Select experiment folder to analyse', 
-        basedir=myutils.getMostRecentPath()
+        basedir=filesystem.getMostRecentPath()
     )
     return selected_path
 
 def get_exp_path_pos_foldernames(selected_path):
-    folder_type = myutils.determine_folder_type(selected_path)
+    folder_type = filesystem.determine_folder_type(selected_path)
     is_pos_folder, is_images_folder, exp_path = folder_type
     if is_pos_folder:
         exp_path = os.path.dirname(selected_path)
@@ -32,7 +35,7 @@ def get_exp_path_pos_foldernames(selected_path):
         pos_foldernames = [os.path.basename(pos_path)]
     else:
         exp_path = selected_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
     
     return exp_path, pos_foldernames
 
@@ -41,7 +44,7 @@ def select_segm_masks(exp_path, pos_foldernames):
     existingEndNames = load.get_segm_endnames_from_exp_path(
         exp_path, pos_foldernames=pos_foldernames
     )
-    win = apps.SelectSegmFileDialog(
+    win = dialogs_file_selection.SelectSegmFileDialog(
         existingEndNames, exp_path, 
         infoText=infoText, 
         fileType='segmentation'
@@ -54,7 +57,7 @@ def select_segm_masks(exp_path, pos_foldernames):
     
     infoText = 'Select segmentation files <b>to SPLIT</b>:'
     existingEndNames.discard(cells_segm_endname)
-    win = apps.SelectSegmFileDialog(
+    win = dialogs_file_selection.SelectSegmFileDialog(
         existingEndNames, exp_path, 
         infoText=infoText, 
         fileType='segmentation',
@@ -75,11 +78,11 @@ def run():
     if not selected_path:
         exit('Execution cancelled')
     
-    myutils.addToRecentPaths(selected_path)
+    filesystem.addToRecentPaths(selected_path)
     exp_path, pos_foldernames = get_exp_path_pos_foldernames(selected_path)
     
     if len(pos_foldernames) > 1:
-        selectPosWin = widgets.QDialogListbox(
+        selectPosWin = widgets_item_views.QDialogListbox(
             'Select Positions to analyse',
             'Select Positions to analyse:\n',
             pos_foldernames, 

@@ -9,10 +9,20 @@ import pytest
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QPushButton
 
-from cellacdc import apps_measurements_viewer, measurements_viewer, phase_translator, widgets
-from cellacdc import measurements_viewer_utils
+from cellacdc.measurements_viewer import phase_translator, viewer_utils
+from cellacdc.measurements_viewer.dialogs import (
+    phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs,
+    predictor_editors as viewer_dialogs_predictor_editors,
+)
+from cellacdc.measurements_viewer.main_window import (
+    configuration as viewer_configuration,
+    data_io as viewer_data_io,
+    image_panel as viewer_image_panel,
+)
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from qtpy.QtWidgets import QFileDialog
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
-from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
 pytestmark = pytest.mark.viewer
@@ -262,7 +272,7 @@ def test_markers_saved_by_main_gui_after_adding_cells(table, tmp_path, cell_cycl
     assert loaded['phase_G1'].dtype == object
     assert phase_translator.existing_output_columns(loaded) == first.columns
     # Viewer load: timepoint columns and phase outputs are normalized.
-    measurements_viewer.normalize_loaded_acdc_df(SimpleNamespace(acdc_df=loaded))
+    viewer_utils.normalize_loaded_acdc_df(SimpleNamespace(acdc_df=loaded))
     for column in first.columns.difference({'phase'}):
         assert loaded[column].dtype == bool
     assert loaded.loc[(2, 3), 'phase'] == ''
@@ -767,7 +777,7 @@ def test_formula_failure_does_not_change_source(table):
 
 
 def test_rule_editor_roundtrip_and_reordering(app, table):
-    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog(
         [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table}, rule=rule()
     )
@@ -778,7 +788,7 @@ def test_rule_editor_roundtrip_and_reordering(app, table):
     assert dialog.rule == rule()
     dialog.deleteLater()
 
-    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog(
         [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table}, rule=rule()
     )
@@ -800,7 +810,7 @@ def test_rule_editor_roundtrip_and_reordering(app, table):
 
 
 def test_rule_editor_reuses_annotation_formula_editor(app, table, monkeypatch):
-    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog(
         [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table, 'allChNames': ['GFP'], 'SizeT': 4}, rule=rule()
     )
@@ -811,7 +821,7 @@ def test_rule_editor_reuses_annotation_formula_editor(app, table, monkeypatch):
         }
     )
     factory = Mock(return_value=equation)
-    monkeypatch.setattr(apps_measurements_viewer, 'CustomAnnotationPredictorEquationDialog', factory)
+    monkeypatch.setattr(viewer_dialogs_predictor_editors, 'CustomAnnotationPredictorEquationDialog', factory)
     group = dialog.predictorGroupbox
     group.predictorCombobox.setCurrentIndex(
         group.predictorCombobox.findData('equation')
@@ -834,13 +844,13 @@ def test_rule_editor_reuses_annotation_formula_editor(app, table, monkeypatch):
 
 def test_rule_editor_rejects_missing_inputs_and_duplicate_names(app, monkeypatch):
     warning = Mock()
-    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
-    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog([], [], {}, rule=rule())
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'warning', warning)
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog([], [], {}, rule=rule())
     dialog.okButton.click()
     assert dialog.cancel
     assert 'missing inputs' in warning.call_args.args[-1]
     dialog.deleteLater()
-    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog(
         [], [], {}, rule=fallback(), existingNames=['Fallback']
     )
     dialog.okButton.click()
@@ -851,7 +861,7 @@ def test_rule_editor_rejects_missing_inputs_and_duplicate_names(app, monkeypatch
 
 def test_manager_priority_apply_and_cancel_are_isolated(app):
     rules = [rule(), fallback()]
-    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
         rules, [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'], {}
     )
     applied = Mock()
@@ -868,7 +878,7 @@ def test_manager_priority_apply_and_cancel_are_isolated(app):
     dialog.reject()
     assert dialog.cancel
     dialog.deleteLater()
-    empty = apps_measurements_viewer.PhaseTranslatorDialog([], [], [], {})
+    empty = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog([], [], [], {})
     assert not empty.applyCellButton.isEnabled()
     assert not empty.applyAllButton.isEnabled()
     empty.deleteLater()
@@ -935,7 +945,7 @@ def test_translator_apply_warnings_are_children_of_the_modal_dialog(
     # could not be clicked until the dialog was closed
     monkeypatch.delattr(viewer, 'measurementProcessingWarning')
     warning = Mock()
-    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'warning', warning)
     viewer.phaseTranslatorRules = [rule()]
     viewer.selectedID = None
     opened = []
@@ -945,7 +955,7 @@ def test_translator_apply_warnings_are_children_of_the_modal_dialog(
         dialog.applyCellButton.click()
 
     monkeypatch.setattr(
-        apps_measurements_viewer.PhaseTranslatorDialog, 'exec_', exec_
+        viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog, 'exec_', exec_
     )
     viewer.configurePhaseTranslator()
     assert warning.call_args.args[1] == 'No cell selected'
@@ -968,7 +978,7 @@ def test_export_prompts_and_evaluates(viewer, tmp_path, monkeypatch, choice, exp
     viewer.phaseTranslatorRules = [rule()]
     path = tmp_path / 'export.csv'
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         Mock(return_value=(str(path), 'CSV (*.csv)'))
     )
 
@@ -978,7 +988,7 @@ def test_export_prompts_and_evaluates(viewer, tmp_path, monkeypatch, choice, exp
         msg.clickedButton = choice
         return buttons
 
-    monkeypatch.setattr(widgets.myMessageBox, 'question', question)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'question', question)
     viewer.exportMeasurements()
     if expected is None:
         assert not path.exists()
@@ -996,7 +1006,7 @@ def test_export_aborts_if_phase_evaluation_fails(viewer, tmp_path, monkeypatch):
     })]
     path = tmp_path / 'export.csv'
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         Mock(return_value=(str(path), 'CSV (*.csv)'))
     )
 
@@ -1005,7 +1015,7 @@ def test_export_aborts_if_phase_evaluation_fails(viewer, tmp_path, monkeypatch):
         msg.clickedButton = 'Evaluate and export'
         return kwargs['buttonsTexts']
 
-    monkeypatch.setattr(widgets.myMessageBox, 'question', question)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'question', question)
     viewer.exportMeasurements()
     assert not path.exists()
     viewer.measurementProcessingWarning.assert_called_once()
@@ -1050,11 +1060,20 @@ def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
         MeasurementsViewerWin.validateConfiguration(
             dict(configuration, auto_apply_phases='yes')
         )
+    # moved: get_channels_and_segm_endnames is read in each of these modules
     monkeypatch.setattr(
-        measurements_viewer, 'get_channels_and_segm_endnames',
+        viewer_configuration, 'get_channels_and_segm_endnames',
         Mock(return_value=(['GFP'], ['segm']))
     )
-    monkeypatch.setattr(measurements_viewer_utils, 'load_position', Mock(return_value=pos))
+    monkeypatch.setattr(
+        viewer_data_io, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_image_panel, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(viewer_utils, 'load_position', Mock(return_value=pos))
     monkeypatch.setattr(
         viewer, 'selectConfigurationInput',
         lambda config: viewer.configurationInputOptions(config)[0]
@@ -1106,7 +1125,7 @@ def test_phase_names_and_colors():
 
 
 def test_manager_phase_color_buttons(app):
-    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
         [rule(), fallback()], [], [], {}, phaseColors={'S': '#ff0000', 'Gone': '#00ff00'}
     )
     assert list(dialog.phaseColorButtons) == ['G1', 'S', 'G2', 'Other']
@@ -1134,7 +1153,7 @@ def test_viewer_stores_only_chosen_phase_colors(viewer, monkeypatch):
         dialog.ok_cb()
 
     monkeypatch.setattr(
-        apps_measurements_viewer.PhaseTranslatorDialog, 'exec_', exec_
+        viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog, 'exec_', exec_
     )
     viewer.configurePhaseTranslator()
     assert viewer.phaseColors == {}
@@ -1163,7 +1182,7 @@ def _open_color_dialog(button, color):
 
 
 def test_manager_phase_color_dialog_accept_commits_color(app):
-    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
         [rule(), fallback()], [], [], {}, phaseColors={'S': '#ff0000'}
     )
     dialog.show()
@@ -1188,7 +1207,7 @@ def test_manager_phase_color_dialog_accept_commits_color(app):
 
 
 def test_manager_phase_color_dialog_reject_restores_color(app):
-    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
         [rule(), fallback()], [], [], {}, phaseColors={'S': '#ff0000'}
     )
     dialog.show()

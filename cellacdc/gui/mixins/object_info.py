@@ -11,8 +11,19 @@ import skimage.segmentation
 from qtpy.QtCore import Qt, QEventLoop, QThread
 from qtpy.QtWidgets import QDockWidget, QVBoxLayout
 from cellacdc import disableWindow
-from cellacdc import apps, workers, html_utils
-from cellacdc import myutils, widgets
+from cellacdc import html_utils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from cellacdc.shared.workers import base as workers_base
+from . import dialogs as gui_mixin_dialogs
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from . import (
+    overlay as gui_overlay,
+    widgets as gui_mixin_widgets,
+)
 from cellacdc import settings_csv_path
 from cellacdc import qutils
 from cellacdc import core
@@ -28,7 +39,7 @@ class CcaTableGuiElements:
         current_cca_df = posData.cca_df
         if current_cca_df is None:
             # E.g., measurements viewer on a frame without annotations
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'There are <b>no cell cycle annotations</b> on frame '
                 f'number {posData.frame_i+1}.'
@@ -37,7 +48,7 @@ class CcaTableGuiElements:
             return
 
         if current_cca_df.empty:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'Cell cycle annotations\' table is <b>empty</b>.<br>'
             )
@@ -91,7 +102,7 @@ class CcaTableGuiElements:
             current_cca_df, frame_i=posData.frame_i
         )
         if self.ccaTableWin is None:
-            self.ccaTableWin = apps.ViewCcaTableWindow(df, parent=self)
+            self.ccaTableWin = gui_mixin_dialogs.ViewCcaTableWindow(df, parent=self)
             self.ccaTableWin.show()
             self.ccaTableWin.setGeometryWindow()
             self.ccaTableWin.sigUpdateCcaTable.connect(
@@ -276,7 +287,7 @@ class CountObjectsGuiElements:
     def countObjectsCb(self, checked):
         if self.countObjsWindow is None:
             categoryCountMapper = self.countObjects()
-            self.countObjsWindow = apps.ObjectCountDialog(
+            self.countObjsWindow = gui_mixin_dialogs.ObjectCountDialog(
                 categoryCountMapper=categoryCountMapper, 
                 parent=self,
                 data=self.data
@@ -298,7 +309,7 @@ class SearchIDGuiElements:
     def findID(self, checked=False, ID=None):
         posData = self.data[self.pos_i]
         if ID is None:
-            searchIDdialog = apps.FindIDDialog(
+            searchIDdialog = gui_mixin_dialogs.FindIDDialog(
                 title='Search object by ID',
                 msg='Enter object ID to find and highlight',
                 parent=self,
@@ -367,14 +378,14 @@ class SearchIDGuiElements:
         parent = getattr(self, 'mainWin', None)
         if parent is None:
             parent = self
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title=desc, parent=parent, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(posData.SizeT)
         self.progressWin.show(self.app)
         
         self.searchIDthread = QThread()
-        self.searchIDworker = workers.SimpleWorker(
+        self.searchIDworker = workers_base.SimpleWorker(
             posData, self.searchIDworkerCallback, 
             func_args=(searchedID, )
         )
@@ -448,14 +459,14 @@ class SearchIDGuiElements:
         self.searchIDworker.frame_i_found = frame_i_found
 
     def warnIDnotFound(self, searchedID):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             Object ID {searchedID} was not found.<br><br>
         """)
         msg.warning(self, f'ID {searchedID} not found', txt)
 
     def askGoToFrameFoundID(self, searchedID, frame_i_found):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             Object ID {searchedID} was found at frame n. {frame_i_found+1}.<br><br>
             Do you want to go to frame n. {frame_i_found+1}.
@@ -526,7 +537,7 @@ class HoverInfoGuiElements:
     def _channelHoverValues(self, descr, channel, value, ff=None):
         if ff is None:
             n_digits = len(str(int(value)))
-            ff = myutils.get_number_fstring_formatter(
+            ff = gui_overlay.get_number_fstring_formatter(
                 type(value), precision=abs(n_digits-5)
             )
         txt = (
@@ -540,7 +551,7 @@ class HoverInfoGuiElements:
             return txt
         
         for filename in posData.ol_data:
-            chName = myutils.get_chname_from_basename(
+            chName = filesystem.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
@@ -669,7 +680,7 @@ class HoverInfoGuiElements:
 class RegionPropsGuiElements:
     def gui_createRegionPropsDockWidget(self, side=Qt.LeftDockWidgetArea):
         self.propsDockWidget = QDockWidget('Cell-ACDC objects', self)
-        self.guiTabControl = widgets.guiTabControl(self.propsDockWidget)
+        self.guiTabControl = gui_mixin_widgets.guiTabControl(self.propsDockWidget)
 
         # self.guiTabControl.setFont(_font)
 
@@ -692,7 +703,7 @@ class RegionPropsGuiElements:
         self.rightSideDocksLayout = QVBoxLayout()            
         self.rightSideDocksLayout.setSpacing(0)
         self.rightSideDocksLayout.setContentsMargins(0,0,0,0)
-        self.showPropsDockButton = widgets.expandCollapseButton()
+        self.showPropsDockButton = widgets_push_buttons.expandCollapseButton()
         self.showPropsDockButton.setDisabled(True)
         self.showPropsDockButton.setFocusPolicy(Qt.NoFocus)
         self.showPropsDockButton.setToolTip('Show object properties')

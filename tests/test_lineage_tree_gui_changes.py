@@ -8,7 +8,9 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from cellacdc import gui, lineage_tree_cols, widgets
+from cellacdc import lineage_tree_cols
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 pytestmark = pytest.mark.gui
 
@@ -55,7 +57,7 @@ def _host(frames_dfs, frame_i, backup_frame_i=None):
         host.original_df_lin_tree = frames_dfs[backup_frame_i].copy()
         host.original_df_lin_tree_i = backup_frame_i
     for name in REAL_METHODS:
-        setattr(host, name, partial(getattr(gui.guiWin, name), host))
+        setattr(host, name, partial(getattr(gui_window.guiWin, name), host))
     return host
 
 
@@ -63,7 +65,7 @@ def _host(frames_dfs, frame_i, backup_frame_i=None):
 def no_message_box(monkeypatch):
     def fail(*args, **kwargs):
         raise AssertionError('No question expected')
-    monkeypatch.setattr(widgets, 'myMessageBox', fail)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', fail)
 
 
 def test_save_after_lineage_annotations_were_removed(no_message_box):
@@ -77,7 +79,7 @@ def test_save_after_lineage_annotations_were_removed(no_message_box):
         columns=lineage_tree_cols, errors='ignore'
     )
 
-    gui.guiWin.askLineageTreeChanges(host)
+    gui_window.guiWin.askLineageTreeChanges(host)
 
     assert host.original_df_lin_tree is None
     assert host.original_df_lin_tree_i is None
@@ -94,7 +96,7 @@ def test_resetting_future_lineage_drops_backup_of_reset_frames(
     ]
     host = _host(frames, frame_i=reset_frame_i, backup_frame_i=1)
 
-    gui.guiWin.resetLin_tree_future(host)
+    gui_window.guiWin.resetLin_tree_future(host)
 
     allData_li = host.data[0].allData_li
     assert 'parent_ID_tree' in allData_li[reset_frame_i-1]['acdc_df']
@@ -110,7 +112,7 @@ def test_difference_lists_changed_parents():
     # Parent of ID 3 changed after the backup
     host.data[0].allData_li[1]['acdc_df'] = _frame_df({1: -1, 2: -1, 3: 2})
 
-    _, _, differences = gui.guiWin.get_difference_table(
+    _, _, differences = gui_window.guiWin.get_difference_table(
         host, return_css_separated=True, return_differece=True
     )
 
@@ -127,7 +129,7 @@ def test_backup_dropped_when_IDs_added_or_removed_after_backup():
     # ID 2 deleted, ID 4 added and parent of ID 3 changed after the backup
     host.data[0].allData_li[1]['acdc_df'] = _frame_df({1: -1, 3: 2, 4: -1})
 
-    result = gui.guiWin.get_difference_table(
+    result = gui_window.guiWin.get_difference_table(
         host, return_css_separated=True, return_differece=True
     )
 
@@ -144,4 +146,4 @@ def test_no_difference_without_parent_changes():
 
     host.data[0].allData_li[1]['acdc_df'] = changed
 
-    assert gui.guiWin.get_difference_table(host) is None
+    assert gui_window.guiWin.get_difference_table(host) is None

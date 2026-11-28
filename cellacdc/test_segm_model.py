@@ -8,7 +8,15 @@ import matplotlib.pyplot as plt
 from importlib import import_module
 
 from cellacdc._run import _setup_app
-from cellacdc import apps, myutils, widgets, data, core, load
+from cellacdc import data, core, load
+from cellacdc.myutils import filesystem, segm_models
+from cellacdc.shared.dialogs import model_selection as dialogs_model_selection
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    line_edits as widgets_line_edits,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import prompts
 
 import skimage.color
@@ -24,13 +32,13 @@ class TestSegmModelInitalDialog(dialogs_base.QBaseDialog):
         self.cancel = True
         
         mainLayout = QVBoxLayout()
-        entriesLayout = widgets.FormLayout()
+        entriesLayout = widgets_line_edits.FormLayout()
         
         row = 0
-        self.startFrameNumberSpinbox = widgets.SpinBox()
+        self.startFrameNumberSpinbox = widgets_numeric_inputs.SpinBox()
         self.startFrameNumberSpinbox.setMinimum(1)
         
-        self.startFrameNumberFormWidget = widgets.formWidget(
+        self.startFrameNumberFormWidget = widgets_line_edits.formWidget(
             self.startFrameNumberSpinbox, 
             labelTextLeft='Start frame number',
             addActivateCheckbox=True
@@ -38,10 +46,10 @@ class TestSegmModelInitalDialog(dialogs_base.QBaseDialog):
         entriesLayout.addFormWidget(self.startFrameNumberFormWidget, row=row)
         
         row += 1
-        self.stopFrameNumberSpinbox = widgets.SpinBox()
+        self.stopFrameNumberSpinbox = widgets_numeric_inputs.SpinBox()
         self.stopFrameNumberSpinbox.setMinimum(1)
         
-        self.stopFrameNumberFormWidget = widgets.formWidget(
+        self.stopFrameNumberFormWidget = widgets_line_edits.formWidget(
             self.stopFrameNumberSpinbox, 
             labelTextLeft='Stop frame number',
             addActivateCheckbox=True
@@ -49,10 +57,10 @@ class TestSegmModelInitalDialog(dialogs_base.QBaseDialog):
         entriesLayout.addFormWidget(self.stopFrameNumberFormWidget, row=row)
         
         row += 1
-        self.startZsliceNumberSpinbox = widgets.SpinBox()
+        self.startZsliceNumberSpinbox = widgets_numeric_inputs.SpinBox()
         self.startZsliceNumberSpinbox.setMinimum(1)
         
-        self.startZsliceNumberFormWidget = widgets.formWidget(
+        self.startZsliceNumberFormWidget = widgets_line_edits.formWidget(
             self.startZsliceNumberSpinbox, 
             labelTextLeft='Start z-slice number',
             addActivateCheckbox=True
@@ -60,10 +68,10 @@ class TestSegmModelInitalDialog(dialogs_base.QBaseDialog):
         entriesLayout.addFormWidget(self.startZsliceNumberFormWidget, row=row)
         
         row += 1
-        self.stopZsliceNumberSpinbox = widgets.SpinBox()
+        self.stopZsliceNumberSpinbox = widgets_numeric_inputs.SpinBox()
         self.stopZsliceNumberSpinbox.setMinimum(1)
         
-        self.stopZsliceNumberFormWidget = widgets.formWidget(
+        self.stopZsliceNumberFormWidget = widgets_line_edits.formWidget(
             self.stopZsliceNumberSpinbox, 
             labelTextLeft='Stop z-slice number',
             addActivateCheckbox=True
@@ -72,8 +80,8 @@ class TestSegmModelInitalDialog(dialogs_base.QBaseDialog):
         
         row += 1
         
-        self.isTimelapseToggleFormWidget = widgets.formWidget(
-            widgets.Toggle(), 
+        self.isTimelapseToggleFormWidget = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), 
             labelTextLeft='Is timelapse?',
             stretchWidget=False,
             valueGetterName='isChecked'
@@ -86,7 +94,7 @@ class TestSegmModelInitalDialog(dialogs_base.QBaseDialog):
         # self.stopZsliceNumberSpinbox
         # self.isTimelapseToggle
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -127,7 +135,7 @@ test_data = None
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
 
-initialWindow = apps.TestSegmModelInitalDialog()
+initialWindow = TestSegmModelInitalDialog()
 initialWindow.exec_()
 if initialWindow.cancel:
     print('Execution cancelled.')
@@ -148,14 +156,14 @@ is_timelapse = initialWindow.is_timelapse
 
 if test_data is None:
     tif_filepath, _ = qtpy.compat.getopenfilename(
-        basedir=myutils.getMostRecentPath(),
+        basedir=filesystem.getMostRecentPath(),
         filters=('Images (*.tif)')
     )
     if not tif_filepath:
         exit('Execution cancelled.')
     
     images_path = os.path.dirname(tif_filepath)
-    basename = os.path.commonprefix(myutils.listdir(images_path))
+    basename = os.path.commonprefix(filesystem.listdir(images_path))
     filename, ext = os.path.splitext(os.path.basename(tif_filepath))
     channel = filename[len(basename):]
     posData = load.loadData(tif_filepath, channel)
@@ -182,8 +190,8 @@ from cellacdc.plot import imshow
 imshow(img)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-models = myutils.get_list_of_models()
-win = widgets.QDialogListbox(
+models = segm_models.get_list_of_models()
+win = widgets_item_views.QDialogListbox(
     'Select model',
     'Select model to use for segmentation: ',
     models,
@@ -199,14 +207,14 @@ model_name = win.selectedItemsText[0]
 if model_name == 'Automatic thresholding':
     model_name = 'thresholding'
 # Check if model needs to be downloaded
-downloadWin = apps.downloadModel(model_name, parent=None)
+downloadWin = dialogs_model_selection.downloadModel(model_name, parent=None)
 downloadWin.download()
 
 # Load model as a module
-acdcSegment = myutils.import_segment_module(model_name)
+acdcSegment = segm_models.import_segment_module(model_name)
 
 # Read all models parameters
-init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+init_params, segment_params = segm_models.getModelArgSpec(acdcSegment)
 
 # Prompt user to enter the model parameters
 try:
@@ -231,7 +239,7 @@ if segm_endname is not None:
     segm_data = np.load(segm_filepath)['arr_0']
 
 
-model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+model = segm_models.init_segm_model(acdcSegment, posData, win.init_kwargs)
 if model is None:
     sys.exit('Segmentation model was not initialized correctly!')
 is_segment3DT_available = any(

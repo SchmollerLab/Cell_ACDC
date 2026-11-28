@@ -29,7 +29,8 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QAction, QApplication
 
 import cellacdc
-from cellacdc import gui, widgets
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.shared.widgets import plot_items as widgets_plot_items
 
 
 @pytest.fixture(scope='module')
@@ -73,7 +74,7 @@ def _guiWithPlotItems():
         labelsGrad=labelsGrad,
         rescaleIntensitiesLut=Mock(),
     )
-    MethodType(gui.guiWin.gui_createPlotItems, fake)()
+    MethodType(gui_window.guiWin.gui_createPlotItems, fake)()
     return fake
 
 
@@ -87,10 +88,10 @@ def _keepIDsGui(keptIDs):
         np.isin(lab, list(IDs)), lab, 0
     ).astype(lab.dtype)
     fake.initKeepObjLabelsLayers = MethodType(
-        gui.guiWin.initKeepObjLabelsLayers, fake
+        gui_window.guiWin.initKeepObjLabelsLayers, fake
     )
     fake.updateTempLayerKeepIDs = MethodType(
-        gui.guiWin.updateTempLayerKeepIDs, fake
+        gui_window.guiWin.updateTempLayerKeepIDs, fake
     )
     return fake
 
@@ -135,7 +136,7 @@ def _parentImageItemCalls():
 def test_parent_image_item_keywords_are_not_swallowed():
     # Unknown keywords end up in `**kargs` and are silently ignored by
     # `pg.ImageItem` (e.g., the `activatingAction` typo)
-    params = inspect.signature(widgets.ParentImageItem.__init__).parameters
+    params = inspect.signature(widgets_plot_items.ParentImageItem.__init__).parameters
     named = {
         name for name, param in params.items()
         if param.kind is not inspect.Parameter.VAR_KEYWORD
@@ -282,7 +283,7 @@ def _brushGui(rightImage='duplicated', contours=False, shape=(20, 30)):
             'initTempLayerBrush', 'setTempImg1Brush', 'getTempLayerBrushLevels',
             'setTempBrushMaskFromWand', 'clearTempBrushImage'
         ):
-        setattr(fake, name, MethodType(getattr(gui.guiWin, name), fake))
+        setattr(fake, name, MethodType(getattr(gui_window.guiWin, name), fake))
     return fake
 
 

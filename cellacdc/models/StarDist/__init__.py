@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 
-from cellacdc import myutils
+from cellacdc.myutils import installs
 
 note = ''
 if sys.platform == 'darwin':
@@ -16,11 +16,11 @@ if sys.platform == 'darwin':
         </a>
     </p>
     """)
-myutils.check_install_package('tensorflow', note=note, max_version='2.19.2')
-myutils.check_install_package('numpy', max_version='2.0.0')
-myutils.check_install_package('tifffile', max_version='2025')
-myutils.check_install_package('scipy', max_version='1.14')
-myutils.check_install_package('stardist')
+installs.check_install_package('tensorflow', note=note, max_version='2.19.2')
+installs.check_install_package('numpy', max_version='2.0.0')
+installs.check_install_package('tifffile', max_version='2025')
+installs.check_install_package('scipy', max_version='1.14')
+installs.check_install_package('stardist')
 
 import sys
 import tensorflow

@@ -3,7 +3,8 @@ import sys
 
 import pytest
 
-from cellacdc import _torch_utils, config, myutils
+from cellacdc import config
+from cellacdc.myutils import installs, segm_models, torch_utils
 from cellacdc.service import environment
 from cellacdc.service.client import LocalBackend
 from cellacdc import _model_startup
@@ -37,8 +38,8 @@ def test_environment_only_discovers_torch_options_when_installing(
     monkeypatch.setattr(environment.subprocess, "run", run)
     driver = Mock(side_effect=AssertionError("No CUDA detection needed"))
     options = Mock(side_effect=AssertionError("No network discovery needed"))
-    monkeypatch.setattr(_torch_utils, "get_driver_cuda_version", driver)
-    monkeypatch.setattr(_torch_utils, "get_torch_options_safe", options)
+    monkeypatch.setattr(torch_utils, "get_driver_cuda_version", driver)
+    monkeypatch.setattr(torch_utils, "get_torch_options_safe", options)
 
     result = environment.get_or_create_model_env(
         "test", install_method="venv", env_root=str(tmp_path)
@@ -58,8 +59,8 @@ def test_missing_torch_still_discovers_and_installs_preferred_build(monkeypatch)
     links = ([("CPU", "cpu-index"), ("CUDA", "cuda-index")], 1)
     options = Mock(return_value=links)
     install = Mock(return_value=0)
-    monkeypatch.setattr(_torch_utils, "get_driver_cuda_version", driver)
-    monkeypatch.setattr(_torch_utils, "get_torch_options_safe", options)
+    monkeypatch.setattr(torch_utils, "get_driver_cuda_version", driver)
+    monkeypatch.setattr(torch_utils, "get_torch_options_safe", options)
     monkeypatch.setattr(environment, "run_streaming", install)
     logger = Mock()
     prompt = Mock(side_effect=lambda request: request.default)
@@ -84,16 +85,16 @@ def test_external_check_install_torch_defers_discovery(monkeypatch):
     ensure = Mock(return_value=True)
     monkeypatch.setattr(environment, "ensure_torch", ensure)
     monkeypatch.setattr(
-        _torch_utils, "get_driver_cuda_version",
+        torch_utils, "get_driver_cuda_version",
         Mock(side_effect=AssertionError("Must be lazy")),
     )
     monkeypatch.setattr(
-        _torch_utils, "get_torch_options_safe",
+        torch_utils, "get_torch_options_safe",
         Mock(side_effect=AssertionError("Must be lazy")),
     )
-    monkeypatch.setattr(myutils, "is_server_mode", lambda: False)
+    monkeypatch.setattr(installs, "is_server_mode", lambda: False)
 
-    myutils.check_install_torch(is_cli=True, python_exec="model-python")
+    torch_utils.check_install_torch(is_cli=True, python_exec="model-python")
 
     assert ensure.call_args.args == ("model-python",)
     assert ensure.call_args.kwargs["found_cuda_version"] is None
@@ -313,10 +314,10 @@ def test_shared_version_constraints(installed, spec, satisfied):
     )
     full_spec.update(spec)
     if satisfied:
-        myutils._check_package_version_constraints(full_spec, installed)
+        installs._check_package_version_constraints(full_spec, installed)
     else:
         with pytest.raises(ModuleNotFoundError):
-            myutils._check_package_version_constraints(full_spec, installed)
+            installs._check_package_version_constraints(full_spec, installed)
 
 
 @pytest.mark.slow
@@ -358,7 +359,7 @@ def test_prepared_worker_is_used_for_specs_and_inference(monkeypatch):
         model_execution, "get_or_create_model_env", lambda name: sys.executable
     )
     monkeypatch.setattr(
-        myutils, "getModelArgSpecFromEnv",
+        segm_models, "getModelArgSpecFromEnv",
         Mock(side_effect=AssertionError("Must not spawn a spec interpreter")),
     )
     execution = model_execution.ModelExecution("thresholding")

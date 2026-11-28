@@ -18,7 +18,19 @@ from qtpy.QtWidgets import (
 )
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import widgets, myutils, colors
+from cellacdc import colors
+from cellacdc.myutils import app_info, filesystem
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    lut_items as widgets_lut_items,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    plot_items as widgets_plot_items,
+    push_buttons as widgets_push_buttons,
+    search_widgets as widgets_search_widgets,
+    toolbars as widgets_toolbars,
+)
 from cellacdc import urls
 from cellacdc import graphLayoutBkgrColor, darkBkgrColor
 from cellacdc import cca_df_colnames, base_cca_dict
@@ -134,7 +146,7 @@ class ViewerSetupGuiElements:
         `gui_viewer_tools` and `gui_overlay`"""
         self._appName = 'Cell-ACDC'
         try:
-            self._version = myutils.read_version()
+            self._version = app_info.read_version()
         except Exception as err:
             self._version = None
         self.app = QApplication.instance()
@@ -437,7 +449,7 @@ class ViewerSetupGuiElements:
         )
         
         # Annotations actions (same as in the main GUI)
-        self.scalingLabelsAction = widgets.CheckableAction(
+        self.scalingLabelsAction = widgets_toolbars.CheckableAction(
             'Fix text annotations to screen size'
         )
         self.scalingLabelsAction.setToolTip(
@@ -447,7 +459,7 @@ class ViewerSetupGuiElements:
         self.scalingLabelsAction.setChecked(
             self._get_setting_value('scalingLabels', False, cast=bool)
         )
-        self.highLowResAction = widgets.CheckableAction(
+        self.highLowResAction = widgets_toolbars.CheckableAction(
             'High resolution text annotations'
         )
         self.highLowResAction.setToolTip(
@@ -682,7 +694,7 @@ class ViewerSetupGuiElements:
         helpMenu.addSeparator()
         helpMenu.addAction(self.focusOnSearchAction)
         
-        self.searchWidget = widgets.ButtonSearchWidget(
+        self.searchWidget = widgets_search_widgets.ButtonSearchWidget(
             self, loadingType=None
         )
         self.menuBar().setCornerWidget(self.searchWidget)
@@ -706,12 +718,12 @@ class ViewerSetupGuiElements:
         self.fileToolBar = fileToolBar
         
         # Navigation toolbar with the 'Viewer' mode tools as in guiWin
-        navigateToolBar = widgets.ToolBar("Navigation", self)
+        navigateToolBar = widgets_toolbars.ToolBar("Navigation", self)
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(navigateToolBar)
         self.navigateToolBar = navigateToolBar
         
-        self.timepointsToolBar = widgets.ToolBar("Time points", self)
+        self.timepointsToolBar = widgets_toolbars.ToolBar("Time points", self)
         self.timepointsToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.timepointsToolBar.addAction(self.addTimepointIdentifierAction)
         self.timepointsToolBar.addAction(self.reevaluateAllTimepointsAction)
@@ -761,7 +773,7 @@ class ViewerSetupGuiElements:
         
         navigateToolBar.addAction(self.launch3dViewerAction)
         
-        self.overlayButton = widgets.rightClickToolButton(parent=self)
+        self.overlayButton = widgets_toolbars.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
         self.overlayButton.setToolTip(
@@ -783,7 +795,7 @@ class ViewerSetupGuiElements:
         )
         navigateToolBar.addWidget(self.countObjsButton)
         
-        self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
+        self.overlayLabelsButton = widgets_toolbars.rightClickToolButton(parent=self)
         self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
         self.overlayLabelsButton.setCheckable(True)
         self.overlayLabelsButton.setToolTip(
@@ -810,13 +822,13 @@ class ViewerSetupGuiElements:
         self.overlayColorButton.setDisabled(True)
         self.overlayColorButton.hide()
         
-        self.overlayToolbar = widgets.OverlayToolbar(parent=self)
+        self.overlayToolbar = widgets_toolbars.OverlayToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
         self.overlayToolbar.setVisible(False)
         # Overlay modes as the user left them (applied by `overlay_cb`)
         self.restoreOverlayModes()
 
-        self.phaseTranslatorToolbar = widgets.ToolBar("Phases", self)
+        self.phaseTranslatorToolbar = widgets_toolbars.ToolBar("Phases", self)
         self.phaseTranslatorToolbar.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonIconOnly
         )
@@ -1088,7 +1100,7 @@ class ViewerSetupGuiElements:
 
     def showInExplorer_cb(self):
         posData = self.posData()
-        myutils.showInExplorer(posData.images_path)
+        filesystem.showInExplorer(posData.images_path)
 
     def openUserGuide(self, checked=False):
         """Open the measurements viewer documentation in the web browser."""
@@ -1096,19 +1108,19 @@ class ViewerSetupGuiElements:
             f'Opening the measurements viewer user guide '
             f'({urls.measurements_viewer_docs_url})...'
         )
-        myutils.browse_url(urls.measurements_viewer_docs_url)
+        filesystem.browse_url(urls.measurements_viewer_docs_url)
 
     def openAcdcDocs(self, checked=False):
         self.logger.info(
             f'Opening the Cell-ACDC documentation ({urls.docs_homepage})...'
         )
-        myutils.browse_url(urls.docs_homepage)
+        filesystem.browse_url(urls.docs_homepage)
 
     def showQuickStart(self, checked=False):
         """Short how-to (Help menu and info button of the measurements
         panel) with a button that opens the user guide."""
         self.logger.info('Showing the measurements viewer quick start')
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(
             self, 'Measurements viewer: quick start',
             html_utils.paragraph(MEASUREMENTS_VIEWER_QUICK_START),
@@ -1121,7 +1133,7 @@ class ViewerSetupGuiElements:
         # pyqtgraph ignores high-frequency mouse moves --> make sure the
         # last one is delivered (otherwise the hover position, e.g., of
         # the mirrored cursors, is stale when the mouse stops)
-        self.mouseMoveTrailingEdgeFilter = widgets.MouseMoveTrailingEdgeFilter(
+        self.mouseMoveTrailingEdgeFilter = widgets_plot_items.MouseMoveTrailingEdgeFilter(
             self.graphLayout
         )
         if self.invertBwAction.isChecked():
@@ -1134,14 +1146,14 @@ class ViewerSetupGuiElements:
         # Layout with the LUT items of the image and overlaid channels
         self.lutItemsLayout = self.graphLayout.addLayout(row=0, col=0)
         
-        self.ax1 = widgets.MainPlotItem(ax_number=0)
+        self.ax1 = widgets_plot_items.MainPlotItem(ax_number=0)
         self.ax1.invertY(True)
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
         self.ax1.hideAxis('left')
         self.graphLayout.addItem(self.ax1, row=0, col=1)
         
-        self.imgGrad = widgets.myHistogramLUTitem(parent=self, name='image')
+        self.imgGrad = widgets_lut_items.myHistogramLUTitem(parent=self, name='image')
         self.imgGrad.restoreState(self.df_settings)
         # Main GUI-only features
         imgGradMenu = self.imgGrad.gradient.menu
@@ -1153,7 +1165,7 @@ class ViewerSetupGuiElements:
             self.rescaleIntensMenu.addAction(action)
         
         # Labels colormap used for the segm. masks overlay (as in guiWin)
-        self.labelsGrad = widgets.labelsGradientWidget(parent=self)
+        self.labelsGrad = widgets_lut_items.labelsGradientWidget(parent=self)
         try:
             self.labelsGrad.restoreState(self.df_settings)
         except Exception as err:
@@ -1165,7 +1177,7 @@ class ViewerSetupGuiElements:
         self.labelsGrad.showRightImgAction.setChecked(False)
         self.hideRightImageLabelsGradActions()
         
-        self.img1 = widgets.ParentImageItem()
+        self.img1 = widgets_plot_items.ParentImageItem()
         self.imgGrad.setImageItem(self.img1)
         self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
@@ -1185,7 +1197,7 @@ class ViewerSetupGuiElements:
         
         # Ruler plotItem and scatterItem
         rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
-        self.ax1_rulerPlotItem = widgets.RulerPlotItem(pen=rulerPen)
+        self.ax1_rulerPlotItem = widgets_plot_items.RulerPlotItem(pen=rulerPen)
         self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
             symbol='o', size=9,
             brush=pg.mkBrush((255,0,0,50)),
@@ -1197,7 +1209,7 @@ class ViewerSetupGuiElements:
         
         # Mirrored cursor from the slideshow window. Moved at every mouse
         # move --> lightweight item (much faster than a pg.ScatterPlotItem)
-        self.ax1_cursor = widgets.MirroredCursorItem(
+        self.ax1_cursor = widgets_plot_items.MirroredCursorItem(
             symbol='d',
             size=16,
             pen=pg.mkPen('w', width=1),
@@ -1278,7 +1290,7 @@ class ViewerSetupGuiElements:
         self.gui_createMothBudLinePens()
         
         # Overlay segm. masks item
-        self.labelsLayerImg1 = widgets.BaseLabelsImageItem()
+        self.labelsLayerImg1 = widgets_plot_items.BaseLabelsImageItem()
         self.ax1.addItem(self.labelsLayerImg1)
         self.setLut()
         self.initLabelsImageItems()
@@ -1366,11 +1378,11 @@ class ViewerSetupGuiElements:
         # z-projection lock is a main GUI-only feature
         self.zProjLockViewButton.hide()
         
-        self.zSliceOverlay_SB = widgets.ScrollBar(Qt.Horizontal)
+        self.zSliceOverlay_SB = widgets_numeric_inputs.ScrollBar(Qt.Horizontal)
         self.overlay_z_label = QLabel('Overlay z-slice  ')
         self.overlay_z_label.setFont(_font)
         self.overlay_z_label.setDisabled(True)
-        self.zProjOverlay_CB = widgets.ComboBox()
+        self.zProjOverlay_CB = widgets_combo_boxes.ComboBox()
         self.zProjOverlay_CB.setFont(_font)
         self.zProjOverlay_CB.addItems([
             'single z-slice', 'max z-projection', 'mean z-projection',
@@ -1382,11 +1394,11 @@ class ViewerSetupGuiElements:
         for widget in self.overlayZsliceWidgets():
             widget.hide()
 
-        self.idScrollBar = widgets.ScrollBar(Qt.Horizontal)
+        self.idScrollBar = widgets_numeric_inputs.ScrollBar(Qt.Horizontal)
         self.idScrollBar.setMinimum(0)
         self.idLabel = QLabel('Cell ID')
         self.idLabel.setFont(_font)
-        self.idSpinBox = widgets.SpinBox(disableKeyPress=True)
+        self.idSpinBox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.idSpinBox.setMinimum(0)
         
         idSpinBoxHight = int(self.idSpinBox.sizeHint().height() * 0.8)
@@ -1534,7 +1546,7 @@ class ViewerSetupGuiElements:
         of `gui.guiWin` relevant for the display of the annotations."""
         self.gui_setupAnnotationOptionsLayout(0)
         
-        self.annotLostObjsToggle = widgets.Toggle()
+        self.annotLostObjsToggle = widgets_push_buttons.Toggle()
         annotLostObjsToggleTooltip = (
             'Toggle annotation of lost objects mode ON/OFF'
         )
@@ -1544,7 +1556,7 @@ class ViewerSetupGuiElements:
         annotLostObjsLabel.setToolTip(annotLostObjsToggleTooltip)
         self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
         
-        self.showAllContoursToggle = widgets.Toggle()
+        self.showAllContoursToggle = widgets_push_buttons.Toggle()
         showAllContoursTooltip = (
             'If active, all contours will be displayed, including\n'
             'inner contours (e.g. holes and sub-objects)'
@@ -1556,7 +1568,7 @@ class ViewerSetupGuiElements:
             self.showAllContoursToggled
         )
         
-        self.fontSizeSpinBox = widgets.SpinBox()
+        self.fontSizeSpinBox = widgets_numeric_inputs.SpinBox()
         self.fontSizeSpinBox.setMinimum(1)
         self.fontSizeSpinBox.setMaximum(99)
         self.fontSizeSpinBox.setValue(self.fontSize)
@@ -1665,8 +1677,8 @@ class ViewerSetupGuiElements:
         self.columnsSearchLineEdit.setPlaceholderText('Search column...')
         self.columnsSearchLineEdit.setClearButtonEnabled(True)
         
-        self.columnsModel = widgets.MeasurementTreeModel(self)
-        self.columnsSearchProxy = widgets.MeasurementTreeSearchProxy(self)
+        self.columnsModel = viewer_widgets.MeasurementTreeModel(self)
+        self.columnsSearchProxy = widgets_search_widgets.MeasurementTreeSearchProxy(self)
         self.columnsSearchProxy.setSourceModel(self.columnsModel)
         self.columnsSearchProxy.setDynamicSortFilter(True)
         self.columnsSearchProxy.sort(0, Qt.AscendingOrder)
@@ -1713,7 +1725,7 @@ class ViewerSetupGuiElements:
             'click a point to zoom to its cell.'
         )
         # Short how-to with a link to the user guide (also Help menu)
-        self.measurementsHelpButton = widgets.infoPushButton()
+        self.measurementsHelpButton = widgets_push_buttons.infoPushButton()
         self.measurementsHelpButton.setToolTip(
             'How to use the measurements viewer (quick start and link to '
             'the user guide)'
@@ -1723,12 +1735,12 @@ class ViewerSetupGuiElements:
         self._measurementsMode = 0
         self._timeCourseColumns = set()
         
-        self.refreshButton = widgets.reloadPushButton(' Reload table ')
+        self.refreshButton = widgets_push_buttons.reloadPushButton(' Reload table ')
         self.refreshButton.setToolTip(
             'Reload the acdc_output table from the file '
             '(e.g., after saving in the main GUI)'
         )
-        self.processMeasurementsButton = widgets.setPushButton('Process measurements...')
+        self.processMeasurementsButton = widgets_push_buttons.setPushButton('Process measurements...')
         self.processMeasurementsButton.setToolTip(
             'Apply a processing recipe (e.g., smoothing, min-max normalization or\n'
             'ramp detection) to selected measurements of the current position.\n\n'
@@ -1743,7 +1755,7 @@ class ViewerSetupGuiElements:
             'Use "Export measurements..." to save the new columns.'
         )
         self.processMeasurementsButton.clicked.connect(self.processMeasurements)
-        self.combineMeasurementsButton = widgets.calcPushButton(
+        self.combineMeasurementsButton = widgets_push_buttons.calcPushButton(
             'Combine measurements...'
         )
         self.combineMeasurementsButton.setToolTip(
@@ -1751,7 +1763,7 @@ class ViewerSetupGuiElements:
             'Use Export measurements to save the results.'
         )
         self.combineMeasurementsButton.clicked.connect(self.combineMeasurements)
-        self.exportMeasurementsButton = widgets.savePushButton(
+        self.exportMeasurementsButton = widgets_push_buttons.savePushButton(
             'Export measurements...'
         )
         self.exportMeasurementsButton.clicked.connect(self.exportMeasurements)
@@ -1804,7 +1816,7 @@ class ViewerSetupGuiElements:
         self.mainLayout.addWidget(self.labelsGrad, 0, 3)
         
         # Resizable bottom layout (as in guiWin)
-        self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
+        self.resizeBottomLayoutLine = widgets_basic_widgets.VerticalResizeHline()
         self.mainLayout.addWidget(self.resizeBottomLayoutLine, 1, 2)
         self.resizeBottomLayoutLine.dragged.connect(
             self.resizeBottomLayoutLineDragged
@@ -1824,7 +1836,7 @@ class ViewerSetupGuiElements:
         bottomLayout.addStretch(1)
         self.img1BottomGroupbox.setLayout(bottomLayout)
         
-        self.bottomScrollArea = widgets.ScrollArea(resizeVerticalOnShow=True)
+        self.bottomScrollArea = widgets_basic_widgets.ScrollArea(resizeVerticalOnShow=True)
         self.bottomScrollArea.setWidgetResizable(True)
         self.bottomScrollArea.setWidget(self.img1BottomGroupbox)
         self.mainLayout.addWidget(self.bottomScrollArea, 2, 2)
@@ -1859,7 +1871,7 @@ class ViewerSetupGuiElements:
         # Permanent widget with mouse hover info (as in guiWin). Its text is
         # updated at every mouse move --> fixed size (growing only) to avoid
         # re-layouting the main window
-        self.wcLabel = widgets.AutoGrowFixedSizeLabel('')
+        self.wcLabel = widgets_basic_widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
 
     def gui_connectViewerToolsSignals(self):

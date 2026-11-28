@@ -19,7 +19,7 @@ import skimage.segmentation
 from qtpy.QtCore import Qt, QPoint
 from qtpy.QtGui import QCursor
 from cellacdc import exception_handler, disableWindow
-from cellacdc import myutils
+from cellacdc.myutils import image_utils, misc
 from cellacdc import preprocess
 
 
@@ -56,7 +56,7 @@ class ImageDisplayGuiElements:
         if how == 'Do not normalize. Display raw image':
             img = img 
         elif how == 'Convert to floating point format with values [0, 1]':
-            img = myutils.img_to_float(img)
+            img = image_utils.img_to_float(img)
         # elif how == 'Rescale to 8-bit unsigned integer format with values [0, 255]':
         #     img = skimage.img_as_float(img)
         #     img = (img*255).astype(np.uint8)
@@ -1089,7 +1089,7 @@ class TitleStatusGuiElements:
 
         IDs = self._normalizeTitleIDs(IDs)
         category_key = len(htmlTxtFull_li)
-        trim_IDs = myutils.get_trimmed_list(IDs, max_num_digits=20)
+        trim_IDs = misc.get_trimmed_list(IDs, max_num_digits=20)
         txt = (
             f'{pretxt}: '
             f'{self._titleClickableIDs(trim_IDs, color, category_key)}'

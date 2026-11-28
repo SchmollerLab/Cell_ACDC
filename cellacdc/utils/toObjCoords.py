@@ -1,4 +1,6 @@
-from .. import myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -15,7 +17,7 @@ class toObjCoordsUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -23,7 +25,7 @@ class toObjCoordsUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.ToObjCoordsWorker(self)
+        self.worker = ToObjCoordsWorker(self)
         super().runWorker(self.worker)
     
     def showEvent(self, event):
@@ -33,7 +35,7 @@ class toObjCoordsUtil(NewThreadMultipleExpBaseUtil):
         super().workerFinished(worker)
         txt = 'Converting to object coordinates completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, 'Process completed', html_utils.paragraph(txt))
         self.close()
 
@@ -69,7 +71,7 @@ class ToObjCoordsWorker(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f) for f in ls 
                     if f.endswith(f'{endFilenameSegm}.npz')
@@ -95,7 +97,7 @@ class ToObjCoordsWorker(utils_base.BaseWorkerUtil):
                 n_frames = len(posData.segm_data)
                 self.signals.initProgressBar.emit(n_frames)
                 for frame_i, lab in enumerate(posData.segm_data):
-                    df_coords_i = myutils.from_lab_to_obj_coords(lab)
+                    df_coords_i = from_lab_to_obj_coords(lab)
                     dfs.append(df_coords_i)
                     self.signals.progressBar.emit(1)
                 df_filepath = posData.segm_npz_path.replace('.npz', '.csv')

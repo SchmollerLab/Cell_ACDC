@@ -5,7 +5,14 @@ import pandas as pd
 from qtpy.QtCore import QThread
 
 from .. import (
-    apps, myutils, workers, widgets, html_utils, background_values, load
+    html_utils, background_values, load
+)
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
 )
 
 from .base import NewThreadMultipleExpBaseUtil
@@ -33,7 +40,7 @@ def select_positions(parent, experimentPositions):
     """
     selection = {}
     for exp_path, preselected in experimentPositions.items():
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         if len(pos_foldernames) <= 1:
             if pos_foldernames:
                 selection[exp_path] = pos_foldernames
@@ -124,7 +131,7 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
             progressDialogueTitle: str, parent=None, presetParams=None,
             presetNote=''
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle,
             parent=parent
@@ -137,7 +144,7 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
         self._workerDone = False
 
     def runWorker(self):
-        self.worker = workers.ComputeBackgroundValuesWorker(self)
+        self.worker = ComputeBackgroundValuesWorker(self)
         self.worker.sigAskParams.connect(self.askParams)
         self.worker.sigSummary.connect(self.storeSummary)
         self.worker.sigAborted.connect(self.workerAborted)
@@ -151,7 +158,7 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
         for exp_path, pos_foldernames in expPaths.items():
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                basename, chNames = filesystem.getBasenameAndChNames(images_path)
                 channelNames.update(dict.fromkeys(chNames))
         return list(channelNames)
 
@@ -166,9 +173,9 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
         for exp_path, pos_foldernames in self.expPaths.items():
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, 'Images')
-                basename, _ = myutils.getBasenameAndChNames(images_path)
+                basename, _ = filesystem.getBasenameAndChNames(images_path)
                 stem = f'{basename}{outputName}'.casefold()
-                for file in myutils.listdir(images_path):
+                for file in filesystem.listdir(images_path):
                     if os.path.splitext(file)[0].casefold() != stem:
                         continue
                     filepath = os.path.join(images_path, file)
@@ -182,13 +189,13 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
         if not channelNames:
             txt = 'No channel images found in the selected Positions.'
             self.logger.error(txt)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.critical(self, 'Error', html_utils.paragraph(txt))
             self.worker.abort = True
             self.worker.waitCond.wakeAll()
             return
 
-        win = apps.BackgroundValuesParamsDialog(
+        win = BackgroundValuesParamsDialog(
             channelNames, findExistingFile=self.findExistingFile, parent=self,
             presetParams=self.presetParams, presetNote=self.presetNote
         )
@@ -226,7 +233,7 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
 
     def closeEvent(self, event):
         if self._isWorkerRunning():
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(self, 'Process still running', html_utils.paragraph(
                 'The process is still running.<br><br>'
                 'Wait for it to finish or cancel it by closing the progress '
@@ -272,7 +279,7 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
         else:
             txt = f'"{self._title}" process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         else:
@@ -349,7 +356,7 @@ class BackgroundValuesParamsDialog(dialogs_base.QBaseDialog):
         self.statisticCombobox = QComboBox()
         self.statisticCombobox.addItems(['mean', 'median'])
         gridLayout.addWidget(self.statisticCombobox, row, 1)
-        gridLayout.addWidget(widgets.infoPushButton(
+        gridLayout.addWidget(widgets_push_buttons.infoPushButton(
             info_title='Background statistic',
             info_text=html_utils.paragraph(
                 'Both the mean and the median of the background pixels are '
@@ -368,10 +375,10 @@ class BackgroundValuesParamsDialog(dialogs_base.QBaseDialog):
 
         row += 1
         gridLayout.addWidget(QLabel('Name of the background table:'), row, 0)
-        self.outputNameLineEdit = widgets.alphaNumericLineEdit()
+        self.outputNameLineEdit = widgets_line_edits.alphaNumericLineEdit()
         self.outputNameLineEdit.setText('background_values')
         gridLayout.addWidget(self.outputNameLineEdit, row, 1)
-        gridLayout.addWidget(widgets.infoPushButton(
+        gridLayout.addWidget(widgets_push_buttons.infoPushButton(
             info_title='Background table',
             info_text=html_utils.paragraph(
                 'The per-frame background values of each Position are saved '
@@ -400,13 +407,13 @@ class BackgroundValuesParamsDialog(dialogs_base.QBaseDialog):
             'normalization" measurement processing.'
         )), 0, 0, 1, 2)
         groupLayout.addWidget(QLabel('Percentile mapped to 0:'), 1, 0)
-        self.lowPercentileSpinbox = widgets.DoubleSpinBox()
+        self.lowPercentileSpinbox = widgets_numeric_inputs.DoubleSpinBox()
         self.lowPercentileSpinbox.setMinimum(0)
         self.lowPercentileSpinbox.setMaximum(100)
         self.lowPercentileSpinbox.setValue(5)
         groupLayout.addWidget(self.lowPercentileSpinbox, 1, 1)
         groupLayout.addWidget(QLabel('Percentile mapped to 1:'), 2, 0)
-        self.highPercentileSpinbox = widgets.DoubleSpinBox()
+        self.highPercentileSpinbox = widgets_numeric_inputs.DoubleSpinBox()
         self.highPercentileSpinbox.setMinimum(0)
         self.highPercentileSpinbox.setMaximum(100)
         self.highPercentileSpinbox.setValue(95)
@@ -414,7 +421,7 @@ class BackgroundValuesParamsDialog(dialogs_base.QBaseDialog):
         self.normalizationGroupbox.setLayout(groupLayout)
         mainLayout.addWidget(self.normalizationGroupbox)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         mainLayout.addSpacing(10)
@@ -459,7 +466,7 @@ class BackgroundValuesParamsDialog(dialogs_base.QBaseDialog):
         return channels
 
     def _warn(self, text):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Invalid parameters', html_utils.paragraph(text))
 
     def ok_cb(self):
@@ -604,7 +611,7 @@ class ComputeBackgroundValuesWorker(utils_base.BaseWorkerUtil):
         Raises FileNotFoundError with a message for the log when the Position
         cannot be processed.
         """
-        basename, _ = myutils.getBasenameAndChNames(images_path)
+        basename, _ = filesystem.getBasenameAndChNames(images_path)
         segm_filenames = {
             f'{basename}{segm_endname}.npz', f'{basename}{segm_endname}.npy'
         }

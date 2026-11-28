@@ -14,10 +14,12 @@ from qtpy.QtGui import QFont, QIcon, QPainterPath
 from qtpy.QtWidgets import QHBoxLayout, QWidget, QAction, QMenu
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import myutils, html_utils
+from cellacdc import html_utils
+from cellacdc.myutils import filesystem
 from cellacdc import printl
 from cellacdc import load
-from cellacdc import apps
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from ..dialogs import segmentation as gui_dialogs_segmentation
 from cellacdc import annotate
 from cellacdc import core
 from cellacdc.shared.widgets import toolbars as widgets_toolbars
@@ -54,7 +56,7 @@ class SavePointsLayerButton(widgets_toolbars.rightClickToolButton):
         contextMenu.exec(event.globalPos())
     
     def renameTable(self):
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             parent=self,
             title='Rename points layer table file',
             allowEmpty=False,
@@ -245,7 +247,7 @@ class SamInputPointsWidget(QWidget):
         self.editButton = widgets_push_buttons.editPushButton()
         self.browseButton = widgets_push_buttons.browseFileButton(
             ext={'CSV': '.csv'}, 
-            start_dir=myutils.getMostRecentPath()
+            start_dir=filesystem.getMostRecentPath()
         )
         
         _layout.addWidget(self.lineEntry)
@@ -314,7 +316,7 @@ class SamInputPointsWidget(QWidget):
         # Check if basename is present in metadata
         folderpath = os.path.dirname(filepath)
         basename = None
-        for file in myutils.listdir(folderpath):
+        for file in filesystem.listdir(folderpath):
             if file.endswith('metadata.csv'):
                 metadata_csv_path = os.path.join(folderpath, file)
                 df = pd.read_csv(metadata_csv_path, index_col='Description')
@@ -329,7 +331,7 @@ class SamInputPointsWidget(QWidget):
         if is_images_folder:
             images_path = folderpath
             img_filepath = None
-            for file in myutils.listdir(images_path):
+            for file in filesystem.listdir(images_path):
                 if file.endswith('.tif'):
                     img_filepath = os.path.join(images_path, file)
                     break
@@ -1108,7 +1110,7 @@ class MagicPromptsToolbar(widgets_toolbars.ToolBar):
             self._isSelectingModel = False
 
     def _selectModel(self):
-        win = apps.SelectPromptableModelDialog(parent=self._parent)
+        win = gui_dialogs_segmentation.SelectPromptableModelDialog(parent=self._parent)
         win.exec_()
         if win.cancel:
             print('Promptable model selection cancelled')

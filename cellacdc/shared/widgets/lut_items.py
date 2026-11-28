@@ -25,7 +25,7 @@ from cellacdc import _window_stacking
 from cellacdc import is_mac
 from cellacdc import printl
 from cellacdc import colors, config
-from cellacdc import apps
+from ..dialogs import generic as dialogs_generic
 from cellacdc import QtScoped
 from . import push_buttons as widgets_push_buttons
 from . import style as widgets_style
@@ -414,7 +414,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
             pass
     
     def _askNameColormap(self):
-        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
+        inputWin = dialogs_generic.QInput(parent=self._parent, title='Colormap name')
         inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
         if inputWin.cancel:
             return
@@ -954,7 +954,7 @@ class BaseLabelsGradientWidget(pg.GradientWidget):
             pass
     
     def _askNameColormap(self):
-        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
+        inputWin = dialogs_generic.QInput(parent=self._parent, title='Colormap name')
         inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
         if inputWin.cancel:
             return

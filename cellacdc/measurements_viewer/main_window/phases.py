@@ -5,7 +5,7 @@ measurements_viewer/__init__.py.
 """
 import copy
 from qtpy.QtCore import QTimer
-from cellacdc import apps_measurements_viewer
+from ..dialogs import phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs
 
 
 class ViewerPhasesGuiElements:
@@ -118,7 +118,7 @@ class ViewerPhasesGuiElements:
             'isSegm3D': bool(self.isSegm3D),
         }
         self.logger.info('Opening time point to phase translator...')
-        dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+        dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
             self.phaseTranslatorRules,
             [self.timepointColumn(item) for item in self.timepointIdentifiers],
             self.customAnnotNames(), options, parent=self,

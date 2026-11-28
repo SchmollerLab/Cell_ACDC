@@ -17,11 +17,15 @@ from typing import Iterable
 from . import GUI_INSTALLED
 if GUI_INSTALLED:
     from qtpy.QtWidgets import QFileDialog
-    from . import widgets
+    from cellacdc.shared.widgets import (
+        item_views as widgets_item_views,
+        message_box as widgets_message_box,
+    )
     from . import _run
 
 from . import load, cca_df_colnames
-from . import myutils, prompts, html_utils, printl
+from . import prompts, html_utils, printl
+from cellacdc.myutils import filesystem
 
 default_summable_columns = (
     'cell_area_um2', 
@@ -41,7 +45,7 @@ def configuration_dialog():
     data_dirs = []
     positions = []
     while continue_selection:
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = filesystem.getMostRecentPath()
         data_dir = QFileDialog.getExistingDirectory(
             None, 'Select experiment folder containing Position_n folders ',
             MostRecentPath
@@ -50,7 +54,7 @@ def configuration_dialog():
             continue_selection = False
             break
 
-        myutils.addToRecentPaths(data_dir)
+        filesystem.addToRecentPaths(data_dir)
         foldername = os.path.basename(data_dir)
         if foldername == 'Images':
             pos_path = os.path.dirname(data_dir)
@@ -61,7 +65,7 @@ def configuration_dialog():
             data_dir = os.path.dirname(data_dir)
             pos = [os.path.basename(pos_path)]
         else:
-            available_pos = myutils.get_pos_foldernames(data_dir)
+            available_pos = filesystem.get_pos_foldernames(data_dir)
             if not available_pos:
                 print('******************************')
                 print('Selected folder does not contain any Position folders.')
@@ -69,7 +73,7 @@ def configuration_dialog():
                 print('******************************')
                 raise FileNotFoundError
 
-            win = widgets.QDialogListbox(
+            win = widgets_item_views.QDialogListbox(
                 'Position Selection',
                 'Select which position(s) you want to analyse',
                 available_pos
@@ -85,7 +89,7 @@ def configuration_dialog():
 
         data_dirs.append(data_dir)
         positions.append(pos)
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'Do you wish to select Positions from other experiments?'
         )
@@ -113,7 +117,7 @@ def get_segm_endname(images_path, basename):
         basename, segm_files
     )
     if not segm_endnames:
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             The following position does not contain valid segmentation files.<br><br>
             <code>{images_path}</code><br>
@@ -124,7 +128,7 @@ def get_segm_endname(images_path, basename):
     if len(segm_endnames) == 1:
         return segm_endnames[0]
     
-    selectSegmWin = widgets.QDialogListbox(
+    selectSegmWin = widgets_item_views.QDialogListbox(
         'Select segmentation file',
         'Select segmentation file to use as ROI:\n',
         segm_endnames, multiSelection=False, parent=None,
@@ -217,7 +221,7 @@ def calculate_downstream_data(
                 temp_df['position'] = positions[file_idx][pos_idx]
                 temp_df['directory'] = pos_dir
                 print('Saving calculated data for next time...')
-                files_in_curr_dir = myutils.listdir(pos_dir)
+                files_in_curr_dir = filesystem.listdir(pos_dir)
                 common_prefix = _determine_common_prefix(files_in_curr_dir)
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
                 temp_df.to_csv(save_path, index=False)

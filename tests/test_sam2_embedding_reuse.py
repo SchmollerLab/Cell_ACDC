@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cellacdc import _types, myutils, myutils_models, sam_embeddings
+from cellacdc import _types, sam_embeddings
+from cellacdc.myutils import image_utils, model_modules
 
 pytestmark = pytest.mark.models
 
@@ -80,7 +81,8 @@ def sam2_wrapper(monkeypatch):
     )
     namespace = {
         'np': np, 'pd': pd, 'cv2': cv2, 'skimage': skimage,
-        'defaultdict': defaultdict, 'myutils': myutils, '_types': _types,
+        'defaultdict': defaultdict, 'image_utils': image_utils,
+        '_types': _types,
         'sam_embeddings': sam_embeddings, 'model_types': {},
         'SAM2ImagePredictor': Predictor, 'SAM2AutomaticMaskGenerator': Generator,
     }
@@ -257,7 +259,7 @@ def test_sam2_worker_client_roundtrip(sam2_wrapper, monkeypatch, tmp_path, singl
             models.append(self)
 
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module',
+        model_modules, 'import_segment_module',
         lambda name: SimpleNamespace(Model=Model),
     )
     app = worker.create_app('sam2')

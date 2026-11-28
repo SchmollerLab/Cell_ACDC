@@ -16,12 +16,24 @@ import pytest
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QAbstractSlider, QApplication
 
-from cellacdc import colors, gui, gui_navigation, gui_overlay, widgets
-from cellacdc import measurements_viewer
-from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc.gui_navigation import (
-    LutGuiElements, default_image_lut, image_lut_setting_name,
-    overlay_lut_setting_name, overlay_alpha_setting_name
+from cellacdc import colors
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.gui.mixins import (
+    navigation as gui_navigation,
+    overlay as gui_overlay,
+)
+from cellacdc.shared.widgets import (
+    lut_items as widgets_lut_items,
+    toolbars as widgets_toolbars,
+)
+from cellacdc.measurements_viewer import viewer_utils
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
+from cellacdc.gui.mixins.navigation import (
+    LutGuiElements,
+    default_image_lut,
+    image_lut_setting_name,
+    overlay_alpha_setting_name,
+    overlay_lut_setting_name,
 )
 from tests.test_measurement_viewer import (
     make_overlay_position, make_timelapse_position,
@@ -41,7 +53,7 @@ def app():
 
 
 def load(window, images, channel='phase'):
-    window.setData(measurements_viewer.load_positions([images], channel))
+    window.setData(viewer_utils.load_positions([images], channel))
 
 
 def new_viewer():
@@ -752,7 +764,7 @@ def test_cancelled_overlay_channel_selection_hides_the_overlay_toolbar(
     paths = [
         make_overlay_position(exp, pos=1), make_timelapse_position(exp, pos=2)
     ]
-    real_viewer.setData(measurements_viewer.load_positions(paths, 'phase'))
+    real_viewer.setData(viewer_utils.load_positions(paths, 'phase'))
     monkeypatch.setattr(real_viewer, 'askSelectOverlayChannel', lambda: ['GFP'])
     critical = []
 
@@ -929,7 +941,7 @@ def test_configuration_with_overlays_in_transparent_mode(
 
 
 def test_set_modes_checked_emits_nothing(app):
-    toolbar = widgets.OverlayToolbar()
+    toolbar = widgets_toolbars.OverlayToolbar()
     emitted = []
     toolbar.sigSetTranspacency.connect(emitted.append)
     toolbar.sigModesClicked.connect(lambda: emitted.append('clicked'))
@@ -951,7 +963,7 @@ def make_lut_host(tmp_path):
         dtype=object
     )
     host.settings_csv_path = str(tmp_path / 'settings.csv')
-    host.imgGrad = widgets.myHistogramLUTitem()
+    host.imgGrad = widgets_lut_items.myHistogramLUTitem()
     host.logger = MagicMock()
     host.user_ch_name = 'phase'
     return host
@@ -966,14 +978,14 @@ def test_main_gui_callback_saves_the_channel_lut_only_after_restoring(
     # the channel, the older 'img_cmap_*' rows are
     host.resetImageChannelLut()
     host.imgGrad.gradient.loadPreset('viridis')
-    gui.guiWin.imgGradLUTfinished_cb(host)
+    gui_window.guiWin.imgGradLUTfinished_cb(host)
     assert setting not in read_store(host)
     assert 'img_cmap_tick0_pos' in host.df_settings.index
 
     host.restoreImageChannelLut()
     assert ticks(host.imgGrad) == GREY_TICKS
     host.imgGrad.gradient.loadPreset('magma')
-    gui.guiWin.imgGradLUTfinished_cb(host)
+    gui_window.guiWin.imgGradLUTfinished_cb(host)
     state, _ = saved_lut(read_store(host), setting)
     assert state['ticks'] == preset_ticks('magma')
     saved = pd.read_csv(host.settings_csv_path, index_col='setting')
@@ -984,7 +996,7 @@ def test_main_gui_callback_saves_the_channel_lut_only_after_restoring(
     host.saveChannelDisplaySettings({setting: 'corrupted'})
     with host.settingChannelLutsFromCode():
         host.imgGrad.gradient.loadPreset('grey')
-        gui.guiWin.imgGradLUTfinished_cb(host)
+        gui_window.guiWin.imgGradLUTfinished_cb(host)
     assert read_store(host)[setting] == 'corrupted'
     # An invalid saved LUT is ignored (logged): grey
     host.imgGrad.gradient.loadPreset('magma')
@@ -1011,7 +1023,7 @@ def _gui_win_calls(*names):
     through `partial`) to a `connect`."""
     methods = {}
     for name in names:
-        method = _method_node(getattr(gui.guiWin, name))
+        method = _method_node(getattr(gui_window.guiWin, name))
         calls, connected = [], set()
         for node in ast.walk(method):
             if not isinstance(node, ast.Call):

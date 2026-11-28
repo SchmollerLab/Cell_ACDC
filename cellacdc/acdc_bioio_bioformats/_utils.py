@@ -16,7 +16,8 @@ from tqdm import tqdm
 import numpy as np
 import h5py
 
-from cellacdc import myutils, bioio_sample_data_folderpath
+from cellacdc import bioio_sample_data_folderpath
+from cellacdc.myutils import image_utils
 from cellacdc.config import ConfigParser
 
 def setup_argparser():
@@ -203,7 +204,7 @@ def saveImgDataChannel(
     else:
         imgData_first = imgData_ch[0][0]
         imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData_first.dtype))
-        myutils.to_tiff(
+        image_utils.to_tiff(
             filePath, imgData_ch, 
             SizeT=savedSizeT,
             SizeZ=SizeZ,

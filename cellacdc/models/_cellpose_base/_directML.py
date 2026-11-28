@@ -1,5 +1,5 @@
 from cellacdc import printl
-from cellacdc.myutils import check_install_package
+from cellacdc.myutils.installs import check_install_package
 import sys
 
 def init_directML():    

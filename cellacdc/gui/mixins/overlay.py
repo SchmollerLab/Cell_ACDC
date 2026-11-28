@@ -65,7 +65,16 @@ from qtpy.QtWidgets import QAction, QActionGroup, QLabel, QMenu
 
 import pyqtgraph as pg
 
-from cellacdc import load, html_utils, myutils, widgets, colors, issues_url
+from cellacdc import load, html_utils, colors, issues_url
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    lut_items as widgets_lut_items,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    toolbars as widgets_toolbars,
+)
+from . import widgets as gui_mixin_widgets
 from cellacdc import _palettes, qutils
 from . import navigation as gui_navigation
 
@@ -153,7 +162,7 @@ class OverlayChannelsGuiElements:
 
     def gui_createOverlayItems(self):
         self.imgGrad.setAxisLabel(self.user_ch_name)
-        self.baseLayerToolbutton = widgets.OverlayChannelToolButton(
+        self.baseLayerToolbutton = widgets_toolbars.OverlayChannelToolButton(
             self.user_ch_name, self.imgGrad
         )
         self.baseLayerToolbutton.setChecked(True)
@@ -227,7 +236,7 @@ class OverlayChannelsGuiElements:
         """Tell that there are no other `what` (e.g. 'channels') to
         overlay instead of showing an empty list (it could only be
         cancelled: an empty selection is refused)."""
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self, f'No {what} to overlay', html_utils.paragraph(
                 f'There are no other {what} to overlay in the loaded data.'
@@ -240,7 +249,7 @@ class OverlayChannelsGuiElements:
         if not ch_names:
             self.warnNoItemsToOverlay('channels')
             return
-        selectFluo = widgets.QDialogListbox(
+        selectFluo = widgets_item_views.QDialogListbox(
             'Select channel',
             'Select channel names to overlay:\n',
             ch_names, multiSelection=True, parent=self,
@@ -257,7 +266,7 @@ class OverlayChannelsGuiElements:
         if posData.filename.find('aligned') != -1:
             filename, _ = os.path.splitext(os.path.basename(fluo_path))
             path = f'.../{posData.pos_foldername}/Images/{filename}_aligned.npz'
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.critical(
                 self, 'Aligned fluo channel not found!',
                 'Aligned data for fluorescence channel not found!\n\n'
@@ -497,8 +506,8 @@ class OverlayChannelsGuiElements:
             self.zProjOverlay_CB.activated.disconnect()
 
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        ls = "\n".join(myutils.listdir(posData.images_path))
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
+        ls = "\n".join(filesystem.listdir(posData.images_path))
         detailsText = (
             f'Files present in the {posData.relPath} folder:\n'
             f'{ls}'
@@ -583,7 +592,7 @@ class OverlayChannelsGuiElements:
         
         rgba_imgs_info = {}
         for filename in posData.ol_data:
-            chName = myutils.get_chname_from_basename(
+            chName = filesystem.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
@@ -814,7 +823,7 @@ class OverlayChannelsGuiElements:
         if 'ask_load_fluo_at_init' in self.df_settings.index:
             if self.df_settings.at['ask_load_fluo_at_init', 'value'] == 'No':
                 return   
-        msg = widgets.myMessageBox(allowClose=False)
+        msg = widgets_message_box.myMessageBox(allowClose=False)
         txt = (
             'Do you also want to <b>load fluorescence images?</b><br>'
             'You can load <b>as many channels as you want</b>.<br><br>'
@@ -852,7 +861,7 @@ class OverlayChannelsGuiElements:
                 and ch not in posData.loadedFluoChannels
             ]
             if not ch_names:
-                msg = widgets.myMessageBox()
+                msg = widgets_message_box.myMessageBox()
                 txt = html_utils.paragraph(
                     'You already <b>loaded ALL channels</b>.<br><br>'
                     'To <b>change the overlaid channel</b> '
@@ -860,7 +869,7 @@ class OverlayChannelsGuiElements:
                 )
                 msg.information(self, 'All channels are loaded', txt)
                 return False
-            selectFluo = widgets.QDialogListbox(
+            selectFluo = widgets_item_views.QDialogListbox(
                 'Select channel to load',
                 'Select channel names to load:\n',
                 ch_names, multiSelection=True, parent=self,
@@ -927,11 +936,11 @@ class OverlayChannelsGuiElements:
         return True
 
     def getOverlayItems(self, channelName, index):
-        imageItem = widgets.OverlayImageItem()
+        imageItem = gui_mixin_widgets.OverlayImageItem()
         imageItem.setOpacity(0.5)
         imageItem.channelName = channelName
 
-        lutItem = widgets.myHistogramLUTitem(
+        lutItem = widgets_lut_items.myHistogramLUTitem(
             parent=self, name='image', axisLabel=channelName
         )
         imageItem.lutItem = lutItem
@@ -1019,7 +1028,7 @@ class OverlayChannelsGuiElements:
             partial(self.saveOverlayAlpha, alphaScrollBar)
         )
 
-        toolbutton = widgets.OverlayChannelToolButton(
+        toolbutton = widgets_toolbars.OverlayChannelToolButton(
             channelName, lutItem, shortcut=str(index)
         )
         toolbutton.action = self.overlayToolbar.addWidget(toolbutton)
@@ -1032,7 +1041,7 @@ class OverlayChannelsGuiElements:
         return imageItem, lutItem, alphaScrollBar, toolbutton
 
     def addAlphaScrollbar(self, channelName, imageItem):
-        alphaScrollBar = widgets.ScrollBar(Qt.Horizontal)
+        alphaScrollBar = widgets_numeric_inputs.ScrollBar(Qt.Horizontal)
         imageItem.alphaScrollBar = alphaScrollBar
         alphaScrollBar.channelName = channelName
         
@@ -1337,14 +1346,14 @@ class OverlayChannelsGuiElements:
             return
         for channel, items in self.overlayLayersItems.items():
             _, lutItem, alphaSB = items[:3]
-            myutils.setRetainSizePolicy(lutItem, retain=True)
+            qutils.setRetainSizePolicy(lutItem, retain=True)
         QTimer.singleShot(300, self.autoRange)
 
     def mousePressColorButton(self, event):
         posData = self.data[self.pos_i]
         items = list(self.checkedOverlayChannels)
         if len(items)>1:
-            selectFluo = widgets.QDialogListbox(
+            selectFluo = widgets_item_views.QDialogListbox(
                 'Select image',
                 'Select which fluorescence image you want to update the color of\n',
                 items, multiSelection=False, parent=self,
@@ -1412,7 +1421,7 @@ class OverlayLabelsGuiElements:
         if not self.existingSegmEndNames:
             self.warnNoItemsToOverlay('segmentation files')
             return
-        selectOverlayLabels = widgets.QDialogListbox(
+        selectOverlayLabels = widgets_item_views.QDialogListbox(
             'Select segmentation to overlay',
             'Select segmentation file to overlay:\n',
             natsorted(self.existingSegmEndNames), 
@@ -1608,7 +1617,7 @@ class OverlayLabelsGuiElements:
         for segmEndname in segmEndnames_extended:
             imageItem = pg.ImageItem()
 
-            gradItem = widgets.overlayLabelsGradientWidget(
+            gradItem = gui_mixin_widgets.overlayLabelsGradientWidget(
                 imageItem, selectActionGroup, segmEndname
             )
             gradItem.hide()
@@ -1673,14 +1682,14 @@ class ChannelImageHelpersGuiElements:
         if self.img1.image is not None:
             dtype = self.img1.image.dtype
             n_digits = len(str(int(self.img1.image.max())))
-            self.imgValueFormatter = myutils.get_number_fstring_formatter(
+            self.imgValueFormatter = get_number_fstring_formatter(
                 dtype, precision=abs(n_digits-5)
             )
 
         rawImgData = self.data[self.pos_i].img_data
         dtype = rawImgData.dtype
         n_digits = len(str(int(rawImgData.max())))
-        self.rawValueFormatter = myutils.get_number_fstring_formatter(
+        self.rawValueFormatter = get_number_fstring_formatter(
             dtype, precision=abs(n_digits-5)
         )
 

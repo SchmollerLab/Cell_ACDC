@@ -1,5 +1,15 @@
 from typing import List, Dict, Any, Tuple
-from cellacdc import core, workers, widgets, html_utils, apps, preprocess, myutils, printl
+from cellacdc import core, html_utils, preprocess, printl
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+    preprocessing as dialogs_preprocessing,
+)
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from cellacdc.shared.workers import base as workers_base
+from ..dialogs import segmentation as gui_dialogs_segmentation
+from ..workers import image_processing as gui_workers_image_processing
 from qtpy.QtCore import QThread, QTimer, QMutex, QWaitCondition
 from natsort import natsorted
 import numpy as np
@@ -20,7 +30,7 @@ class CombineGuiElements:
             posData.combinedChannelsDataArray()
         except TypeError as e:
             if 'Not all frames have been processed.' in str(e):
-                msg = widgets.myMessageBox()
+                msg = widgets_message_box.myMessageBox()
                 txt = html_utils.paragraph(
                     'Not all frames have been processed.<br>'
                     'Please process all frames before saving.'
@@ -46,7 +56,7 @@ class CombineGuiElements:
         else:
             ext = '.tif'
             
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             ext=ext,
             hintText=hintText,
@@ -65,7 +75,7 @@ class CombineGuiElements:
         else:
             filename = f'{basename}{ext}'
             
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Saving combined channels(s)', 
             parent=self,
             pbarDesc='Saving combined channels(s)'
@@ -75,7 +85,7 @@ class CombineGuiElements:
         
         self.statusBarLabel.setText('Saving combined channels...')
         
-        self.saveCombinedChannelsWorker = workers.SaveCombinedChannelsWorker(
+        self.saveCombinedChannelsWorker = gui_workers_image_processing.SaveCombinedChannelsWorker(
             self.data, filename,
         )
         
@@ -183,7 +193,7 @@ class CombineGuiElements:
         # also add segm
         ordered_channels.extend(segmentations)
         
-        self.combineDialog = apps.CombineChannelsSetupDialogGUI(
+        self.combineDialog = gui_dialogs_segmentation.CombineChannelsSetupDialogGUI(
             ordered_channels,
             isTimelapse=posData.SizeT>1, 
             isZstack=posData.SizeZ>1,
@@ -229,7 +239,7 @@ class CombineGuiElements:
         self.combineMutex = QMutex()
         self.combineWaitCond = QWaitCondition()
         
-        self.combineWorker = workers.CombineChannelsWorkerGUI(
+        self.combineWorker = gui_workers_image_processing.CombineChannelsWorkerGUI(
             self.combineMutex, self.combineWaitCond,
             logger_func=self.logger.info,
             # signals=self.signals # what are the singals for gui???
@@ -551,7 +561,7 @@ class CombineGUIWorker:
         
     def combineWorkerAskLoadChannels(self, requ_channels, pos_i):
         # spit channels and segm to load
-        segms_to_load, channels_to_load, current_segm = myutils.separate_fluo_segment_channels(requ_channels)
+        segms_to_load, channels_to_load, current_segm = filesystem.separate_fluo_segment_channels(requ_channels)
         if pos_i is None:
             pos_i = list(range(len(self.data)))
         elif not isinstance(pos_i, list):
@@ -765,7 +775,7 @@ class PreprocessingGuiElements:
             Do you want to test the denoising on the visualized 2D image or 
             on the entire 3D z-stack?                           
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, use3Dbutton, use2Dbutton = msg.question(
             self, '3D denoising?', txt, 
             buttonsTexts=('Cancel', 'Denoise 3D z-stack', 'Denoise 2D image')
@@ -801,7 +811,7 @@ class PreprocessingGuiElements:
             posData.preprocessedDataArray()
         except TypeError as e:
             if 'Not all frames have been processed.' in str(e):
-                msg = widgets.myMessageBox()
+                msg = widgets_message_box.myMessageBox()
                 txt = html_utils.paragraph(
                     'Not all frames have been processed.<br>'
                     'Please process all frames before saving.'
@@ -820,7 +830,7 @@ class PreprocessingGuiElements:
         )
         
         
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=f'{posData.basename}{self.user_ch_name}',
             ext=".tif",
             hintText='Insert a name for the <b>preprocessed image</b> file:',
@@ -835,7 +845,7 @@ class PreprocessingGuiElements:
 
         appendedText = win.entryText
         
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Saving pre-processed image(s)', 
             parent=self,
             pbarDesc='Saving pre-processed image(s)'
@@ -845,7 +855,7 @@ class PreprocessingGuiElements:
         
         self.statusBarLabel.setText('Saving pre-processed data...')
         
-        self.savePreprocWorker = workers.SaveProcessedDataWorker(
+        self.savePreprocWorker = gui_workers_image_processing.SaveProcessedDataWorker(
             self.data, appendedText, ext=".tif"
         )
         
@@ -1028,7 +1038,7 @@ class PreprocessingGuiElements:
         if self.preprocessDialog is not None:
             self.preprocessDialog.close()
         
-        self.preprocessDialog = apps.PreProcessRecipeDialog(
+        self.preprocessDialog = dialogs_preprocessing.PreProcessRecipeDialog(
             isTimelapse=posData.SizeT>1, 
             isZstack=posData.SizeZ>1,
             isMultiPos=len(self.data)>1,
@@ -1067,7 +1077,7 @@ class PreprocessingGuiElements:
         self.preprocMutex = QMutex()
         self.preprocWaitCond = QWaitCondition()
         
-        self.preprocWorker = workers.CustomPreprocessWorkerGUI(
+        self.preprocWorker = workers_base.CustomPreprocessWorkerGUI(
             self.preprocMutex, self.preprocWaitCond
         )
         

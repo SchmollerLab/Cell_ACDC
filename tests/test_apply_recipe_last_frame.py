@@ -11,7 +11,8 @@ import pytest
 from qtpy.QtCore import QMutex, QWaitCondition
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import measurement_processing, workers
+from cellacdc import measurement_processing
+from cellacdc.measurements_viewer import workers as viewer_workers
 from cellacdc.measurement_processing import apply_recipe
 
 pytestmark = pytest.mark.viewer
@@ -215,7 +216,7 @@ def test_cell_only_after_last_analyzed_frame_gets_nan():
 
 
 def _run_worker(df, recipe, **setup_kwargs):
-    worker = workers.MeasurementProcessingWorkerGUI(QMutex(), QWaitCondition())
+    worker = viewer_workers.MeasurementProcessingWorkerGUI(QMutex(), QWaitCondition())
     done, failed = [], []
     worker.sigDone.connect(done.append)
     worker.signals.critical.connect(failed.append)

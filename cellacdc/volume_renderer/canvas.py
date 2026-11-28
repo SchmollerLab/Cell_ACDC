@@ -24,7 +24,15 @@ import pyqtgraph as pg
 from .. import _window_stacking
 from .. import printl
 from .._run import _setup_app
-from .. import apps, widgets
+from cellacdc.shared.dialogs import image_tools as dialogs_image_tools
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    line_edits as widgets_line_edits,
+    lut_items as widgets_lut_items,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+    toolbars as widgets_toolbars,
+)
 from .. import colors
 from .. import plot
 from .. import qutils
@@ -249,10 +257,10 @@ class _ChannelData:
 
     auto_button: QPushButton
     reset_button: QPushButton
-    lut_item: widgets.baseHistogramLUTitem
+    lut_item: widgets_lut_items.baseHistogramLUTitem
 
-    opacity_slider: widgets.sliderWithSpinBox
-    toolbutton: widgets.OverlayChannelToolButton
+    opacity_slider: widgets_numeric_inputs.sliderWithSpinBox
+    toolbutton: widgets_toolbars.OverlayChannelToolButton
 
     # (T, Z, Y, X) blurred and dimmed `volume` used for the unselected
     # objects in "Focus on selected" display mode, frames computed on
@@ -272,9 +280,9 @@ class _PointsLayer:
 
     markers: vispy.scene.visuals.Markers
 
-    toolbutton: widgets.PointsLayerToolButton
-    properties_dialog: apps.EditPointsLayerAppearanceDialog
-    context_menu: widgets.PointsLayerContextMenu
+    toolbutton: widgets_toolbars.PointsLayerToolButton
+    properties_dialog: dialogs_image_tools.EditPointsLayerAppearanceDialog
+    context_menu: _widgets.PointsLayerContextMenu
 
     df: pd.DataFrame | None=None
     text: vispy.scene.visuals.Text | None=None
@@ -660,7 +668,7 @@ class VolumeRendererWindow(QMainWindow):
         )
         self._lab_node.clim = (vmin, vmax)
 
-        self._lab_opacity_slider = widgets.sliderWithSpinBox(
+        self._lab_opacity_slider = widgets_numeric_inputs.sliderWithSpinBox(
             title_loc='in_line', 
             isFloat=True, 
             parent=self,
@@ -673,7 +681,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_opacity_slider.setDecimals(2)
         
         self._lab_opacity_slider.setToolTip(f'Opacity of segmentation masks')
-        opacity_slider_form_widget = widgets.formWidget(
+        opacity_slider_form_widget = widgets_line_edits.formWidget(
             self._lab_opacity_slider,
             labelTextLeft='Segmentation masks opacity:',
         )
@@ -684,7 +692,7 @@ class VolumeRendererWindow(QMainWindow):
         lab_reset_btn = QPushButton('Reset')
         self._lab_gradient_item_layout.addWidget(lab_reset_btn)
         
-        lab_gradient_item = widgets.BaseLabelsGradientWidget(parent=self)
+        lab_gradient_item = widgets_lut_items.BaseLabelsGradientWidget(parent=self)
         self._lab_gradient_item_layout.addWidget(lab_gradient_item)
         self._lab_gradient_item = lab_gradient_item
         
@@ -737,7 +745,7 @@ class VolumeRendererWindow(QMainWindow):
         
         self._object_labels_list_layout.addStretch(1)
         
-        select_all_button = widgets.selectAllPushButton()
+        select_all_button = widgets_push_buttons.selectAllPushButton()
         select_all_button.sigClicked.connect(
             self._set_all_object_labels_list_checked
         )
@@ -787,13 +795,13 @@ class VolumeRendererWindow(QMainWindow):
         self._labels_text_overlay.setTextColor(pg.mkColor(text_color))
 
         text_settings_groupbox = QGroupBox('Text settings')
-        text_settings_layout = widgets.FormLayout()
+        text_settings_layout = widgets_line_edits.FormLayout()
         text_settings_groupbox.setLayout(text_settings_layout)
 
         row = 0
-        show_labels_text_toggle = widgets.Toggle()
+        show_labels_text_toggle = widgets_push_buttons.Toggle()
         show_labels_text_toggle.setChecked(True)
-        show_labels_text_form_widget = widgets.formWidget(
+        show_labels_text_form_widget = widgets_line_edits.formWidget(
             show_labels_text_toggle, 
             labelTextLeft='Show IDs',
             stretchWidget=False
@@ -806,10 +814,10 @@ class VolumeRendererWindow(QMainWindow):
         )
 
         row += 1
-        text_font_size_spinbox = widgets.SpinBox()
+        text_font_size_spinbox = widgets_numeric_inputs.SpinBox()
         text_font_size_spinbox.setMinimum(1)
         text_font_size_spinbox.setValue(font_size)
-        text_font_size_form_widget = widgets.formWidget(
+        text_font_size_form_widget = widgets_line_edits.formWidget(
             text_font_size_spinbox, 
             labelTextLeft='Font size',
         )
@@ -820,10 +828,10 @@ class VolumeRendererWindow(QMainWindow):
         text_settings_layout.addFormWidget(text_font_size_form_widget, row=row)
 
         row += 1
-        text_color_colorbutton = widgets.myColorButton(
+        text_color_colorbutton = widgets_push_buttons.myColorButton(
             parent=self, color=text_color
         )
-        text_color_form_widget = widgets.formWidget(
+        text_color_form_widget = widgets_line_edits.formWidget(
             text_color_colorbutton, 
             labelTextLeft='Color',
             stretchWidget=False
@@ -1009,13 +1017,13 @@ class VolumeRendererWindow(QMainWindow):
         rgb_color = vispy.color.Color(color).rgb
         rgb_color = [round(val*255) for val in rgb_color]
         
-        toolbutton = widgets.PointsLayerToolButton(
+        toolbutton = widgets_toolbars.PointsLayerToolButton(
             symbol, rgb_color, parent=self
         )
         toolbutton.setCheckable(True)
         toolbutton.setChecked(True)
         
-        properties_dialog = apps.EditPointsLayerAppearanceDialog(
+        properties_dialog = dialogs_image_tools.EditPointsLayerAppearanceDialog(
             backend='vispy', 
             is_3d=True, 
             add_opacity_slider=True,
@@ -1031,7 +1039,7 @@ class VolumeRendererWindow(QMainWindow):
         })
         properties_dialog.hide()
         
-        context_menu = widgets.PointsLayerContextMenu(toolbutton)
+        context_menu = _widgets.PointsLayerContextMenu(toolbutton)
         toolbutton._contextMenu = context_menu
         context_menu.hide()
         
@@ -1162,7 +1170,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_gradient_item_layout.setContentsMargins(5, 5, 5, 5)
         
         self._object_labels_list_groupbox = QGroupBox('Object labels')
-        self._object_labels_list_scrollarea = widgets.ScrollArea()
+        self._object_labels_list_scrollarea = widgets_basic_widgets.ScrollArea()
         self._object_labels_list_scrollarea.setWidget(
             self._object_labels_list_groupbox
         )
@@ -1178,7 +1186,7 @@ class VolumeRendererWindow(QMainWindow):
         )
         self._right_vertical_layout.addSpacing(10)
 
-        self._frames_scrollbar = widgets.ScrollBarWithNumericControl(
+        self._frames_scrollbar = widgets_numeric_inputs.ScrollBarWithNumericControl(
             labelText='Frame n.', parent=self
         )
         self._frames_scrollbar.setMinimum(1)
@@ -1227,7 +1235,7 @@ class VolumeRendererWindow(QMainWindow):
         self._scene_layout.setColumnStretch(3, 1)
         
         self._controls_groupbox = QGroupBox('Controls')
-        self._controls_layout = widgets.FormLayout()
+        self._controls_layout = widgets_line_edits.FormLayout()
         self._controls_groupbox.setLayout(self._controls_layout)
         
         central = QWidget()
@@ -1496,7 +1504,7 @@ class VolumeRendererWindow(QMainWindow):
         return cmap
     
     def _add_opacity_slider(self, channel_name: str, row: int):
-        opacity_slider = widgets.sliderWithSpinBox(
+        opacity_slider = widgets_numeric_inputs.sliderWithSpinBox(
             title_loc='in_line', 
             isFloat=True, 
             parent=self,
@@ -1507,7 +1515,7 @@ class VolumeRendererWindow(QMainWindow):
         opacity_slider.setValue(1.0)
         opacity_slider.setDecimals(2)
         opacity_slider.setToolTip(f'Opacity of channel {channel_name}')
-        opacity_slider_form_widget = widgets.formWidget(
+        opacity_slider_form_widget = widgets_line_edits.formWidget(
             opacity_slider,
             labelTextLeft=f'{channel_name} opacity:',
         )
@@ -1543,11 +1551,11 @@ class VolumeRendererWindow(QMainWindow):
                 parent=self._view.scene,
             )
             
-            lut_item = widgets.baseHistogramLUTitem()
+            lut_item = widgets_lut_items.baseHistogramLUTitem()
 
             opacity_slider = self._add_opacity_slider(channel, row=c_idx+1)
             
-            toolbutton = widgets.OverlayChannelToolButton(
+            toolbutton = widgets_toolbars.OverlayChannelToolButton(
                 channel, lut_item, shortcut=str(c_idx)
             )
             toolbutton.action = self._toolbar.addWidget(toolbutton)

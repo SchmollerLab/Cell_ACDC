@@ -8,7 +8,6 @@ import numpy as np
 from qtpy.QtCore import QEventLoop, QTimer
 from qtpy.QtWidgets import QAbstractSlider
 from cellacdc import exception_handler
-from cellacdc import myutils
 from cellacdc import printl
 from cellacdc import qutils
 from . import constants as gui_main_constants
@@ -53,11 +52,11 @@ class MainNavigationGuiElements:
 
     def enableZstackWidgets(self, enabled):
         if enabled:
-            myutils.setRetainSizePolicy(self.zSliceScrollBar)
-            myutils.setRetainSizePolicy(self.zProjComboBox)
-            myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
-            myutils.setRetainSizePolicy(self.zProjOverlay_CB)
-            myutils.setRetainSizePolicy(self.overlay_z_label)
+            qutils.setRetainSizePolicy(self.zSliceScrollBar)
+            qutils.setRetainSizePolicy(self.zProjComboBox)
+            qutils.setRetainSizePolicy(self.zSliceOverlay_SB)
+            qutils.setRetainSizePolicy(self.zProjOverlay_CB)
+            qutils.setRetainSizePolicy(self.overlay_z_label)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.show()
             if self.data[self.pos_i].SizeT > 1:
@@ -72,11 +71,11 @@ class MainNavigationGuiElements:
             self.launch3dViewerButton.setDisabled(False)
             self.launch3dViewerAction.setDisabled(False)
         else:
-            myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
-            myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
-            myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=False)
-            myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
-            myutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
+            qutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
+            qutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
+            qutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=False)
+            qutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
+            qutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
             self.zSliceScrollBar.setDisabled(True)
             self.zProjComboBox.hide()
             self.zProjComboBox.hide()

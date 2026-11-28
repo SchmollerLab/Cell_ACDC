@@ -13,9 +13,13 @@ from qtpy.QtGui import QPixmap
 from qtpy.QtCore import Qt
 from qtpy import QtCore
 
-from ..myutils import read_version, get_date_from_version
-from ..myutils import get_info_version_text
-from .. import widgets, myutils
+from cellacdc.myutils.app_info import get_date_from_version, read_version
+from cellacdc.myutils.app_info import get_info_version_text
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from .. import html_utils, printl
 from .. import cellacdc_path
 from cellacdc import github_home_url
@@ -77,7 +81,7 @@ class QDialogAbout(QDialog):
             'environment where you already have Cell-ACDC<br>'
             'installed with pip run the following <b>command</b>:'
         ))
-        commandWidget = widgets.CopiableCommandWidget(
+        commandWidget = widgets_message_box.CopiableCommandWidget(
             command=command, font_size='11px'
         )
         
@@ -87,7 +91,7 @@ class QDialogAbout(QDialog):
                 f'specific version was <b>not released on PyPi</b> yet.<br><br>'
                 'In that case, you need to run the following command instead:'
             ))
-            commandGhWidget = widgets.CopiableCommandWidget(
+            commandGhWidget = widgets_message_box.CopiableCommandWidget(
                 command=command_github, font_size='11px'
             )
         
@@ -102,7 +106,7 @@ class QDialogAbout(QDialog):
             ))  
         for command in git_commands:
             commandWidgetsGit.append(
-                widgets.CopiableCommandWidget(command=command, font_size='11px')
+                widgets_message_box.CopiableCommandWidget(command=command, font_size='11px')
             )
             
         iconPixmap = QPixmap(":icon.ico")
@@ -128,22 +132,22 @@ class QDialogAbout(QDialog):
         installedLabel.setText(txt)
         installedLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
         
-        self.copyCellACDCpathButton = widgets.copyPushButton('Copy path')
+        self.copyCellACDCpathButton = widgets_push_buttons.copyPushButton('Copy path')
         self.copyCellACDCpathButton.clicked.connect(
             self.copyCellACDCpath
         )
         
-        self.showHowToInstallButton = widgets.helpPushButton(
+        self.showHowToInstallButton = widgets_push_buttons.helpPushButton(
             'How to install this version'
         )
         self.showHowToInstallButton.clicked.connect(
             self.showHotToInstallInstructions
         )
 
-        button = widgets.showInFileManagerButton(
-            myutils.get_open_filemaneger_os_string()
+        button = widgets_push_buttons.showInFileManagerButton(
+            filesystem.get_open_filemaneger_os_string()
         )
-        func = partial(myutils.showInExplorer, cellacdc_path)
+        func = partial(filesystem.showInExplorer, cellacdc_path)
         button.clicked.connect(func)
         installedLayout.addWidget(installedLabel)
         installedLayout.addWidget(self.copyCellACDCpathButton)
@@ -176,7 +180,7 @@ class QDialogAbout(QDialog):
         howToInstallLayout = QVBoxLayout()
         self.howToInstallDialog.setLayout(howToInstallLayout)
         
-        howToInstallOkButton = widgets.okPushButton(' Ok ')
+        howToInstallOkButton = widgets_push_buttons.okPushButton(' Ok ')
         buttonsLayout = QHBoxLayout()
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(howToInstallOkButton)

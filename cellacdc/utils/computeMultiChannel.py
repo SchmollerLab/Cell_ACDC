@@ -1,6 +1,16 @@
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils, load
+from .. import html_utils, load
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    set_measurements as dialogs_set_measurements,
+)
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -25,7 +35,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -33,7 +43,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.ComputeMetricsMultiChannelWorker(self)
+        self.worker = ComputeMetricsMultiChannelWorker(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigCriticalNotEnoughSegmFiles.connect(
             self.criticalNotEnoughSegmFiles
@@ -57,7 +67,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
             acdc_df = pd.read_csv(filePath)
             acdcDfsDict[endname] = acdc_df
 
-        self.combineWindow = apps.CombineMetricsMultiDfsSummaryDialog(
+        self.combineWindow = CombineMetricsMultiDfsSummaryDialog(
             acdcDfsDict, allChNames, parent=self
         )
         self.combineWindow.setLogger(
@@ -77,7 +87,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
     
     def loadAdditionalAcdcDf(self):
-        selectWindow = widgets.QDialogListbox(
+        selectWindow = widgets_item_views.QDialogListbox(
             'Select acdc_output files',
             f'Select acdc_output files to load\n',
             self.existingAcdcOutputEndnames, multiSelection=True, 
@@ -103,7 +113,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
             <b>does NOT contain AT LEAST TWO <code>acdc_output</code> 
             table files.</b>.
         """)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.addShowInFileManagerButton(exp_path)
         msg.critical(
             self, 'Not enough segmentation files!', text
@@ -124,7 +134,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
         channels = [end.replace('acdc_output', '') for end in channels]
         channels = [end if end else 'refCh' for end in channels]
         defaultEntry = f"{'_'.join(channels)}_combined_metrics"
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             hintText='Insert a name for the <b>new, table</b> file:',
             existingNames=existingEndnames, 
@@ -151,7 +161,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
         self.worker.errors[error] = self.traceback_str
     
     def warnErrors(self, errors):
-        win = apps.ComputeMetricsErrorsDialog(
+        win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
             errors, self.logs_path, log_type='generic', parent=self
         )
         win.exec_()
@@ -171,7 +181,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
             )
             isWarning = False
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if isWarning:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -216,14 +226,14 @@ class MultiListSelector(dialogs_base.QBaseDialog):
             else:
                 groupLayout.addSpacing(10)
             groupLayout.addWidget(QLabel(html_utils.paragraph(listName)))
-            listWidget = widgets.listWidget()
+            listWidget = widgets_item_views.listWidget()
             listWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             listWidget.addItems(listItems)
             groupLayout.addWidget(listWidget)
             mainLayout.addSpacing(20)
             self.listWidgets[listName] = listWidget
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -309,15 +319,15 @@ class CombineMetricsMultiDfsSummaryDialog(dialogs_base.QBaseDialog):
             f'• <b>Table {i+1}</b>: <code>{e}</code>' 
             for i, e in enumerate(acdcDfs.keys())
         ]
-        selectedAcdcDfsList = widgets.readOnlyQList()
+        selectedAcdcDfsList = widgets_item_views.readOnlyQList()
         selectedAcdcDfsList.addItems(items)
         self.selectedAcdcDfsList = selectedAcdcDfsList
 
         tablesButtonsLayout = QVBoxLayout()
-        loadAcdcDfButton = widgets.showInFileManagerButton('Load additional tables')
+        loadAcdcDfButton = widgets_push_buttons.showInFileManagerButton('Load additional tables')
         tablesButtonsLayout.addWidget(loadAcdcDfButton)
         
-        loadEquationsButton = widgets.reloadPushButton(
+        loadEquationsButton = widgets_push_buttons.reloadPushButton(
             'Load previously used equations'
         )
         tablesButtonsLayout.addWidget(loadEquationsButton)
@@ -334,16 +344,16 @@ class CombineMetricsMultiDfsSummaryDialog(dialogs_base.QBaseDialog):
         viewLayout.addWidget(QLabel(txt), row, 0)
 
         row += 1
-        self.equationsList = widgets.TreeWidget()
+        self.equationsList = widgets_item_views.TreeWidget()
         self.equationsList.setFont(fonts.font)
         self.equationsList.setHeaderLabels(['Metric', 'Expression'])
         self.equationsList.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection)
 
         equationsButtonsLayout = QVBoxLayout()
-        addEquationButton = widgets.addPushButton('Add metric')
-        removeEquationButton = widgets.subtractPushButton('Remove metric(s)')
-        editEquationButton = widgets.editPushButton('Edit metric')
+        addEquationButton = widgets_push_buttons.addPushButton('Add metric')
+        removeEquationButton = widgets_push_buttons.subtractPushButton('Remove metric(s)')
+        editEquationButton = widgets_push_buttons.editPushButton('Edit metric')
         removeEquationButton.setDisabled(True)
         editEquationButton.setDisabled(True)
         self.removeEquationButton = removeEquationButton
@@ -358,8 +368,8 @@ class CombineMetricsMultiDfsSummaryDialog(dialogs_base.QBaseDialog):
         viewLayout.addLayout(equationsButtonsLayout, row, 1)
         viewLayout.setRowStretch(row, 2)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton('Ok')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -390,7 +400,7 @@ class CombineMetricsMultiDfsSummaryDialog(dialogs_base.QBaseDialog):
         self.log_path = log_path
     
     def loadEquationsButtonClicked(self):
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = filesystem.getMostRecentPath()
         file_path = QFileDialog.getOpenFileName(
             self, 'Select equations file', MostRecentPath, "Config Files (*.ini)"
             ";;All Files (*)")[0]
@@ -434,7 +444,7 @@ class CombineMetricsMultiDfsSummaryDialog(dialogs_base.QBaseDialog):
                 # trees[treeName] = children
 
         if not lists:
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             txt = html_utils.paragraph("""
                 <b>None of the equations</b> in the selected file used the <b>same 
                 table names</b> that you loaded.<br><br>
@@ -509,7 +519,7 @@ class CombineMetricsMultiDfsSummaryDialog(dialogs_base.QBaseDialog):
         if self.editedIndex is not None:
             self.equationsList.invisibleRootItem().removeChild(self.editedItem)
         bkgrColor = QColor(*BACKGROUND_RGBA[:3], 200)
-        item = widgets.TreeWidgetItem(
+        item = widgets_item_views.TreeWidgetItem(
             self.equationsList, columnColors=[None, bkgrColor]
         )
         item.setText(0, newColname)
@@ -615,7 +625,7 @@ class ComputeMetricsMultiChannelWorker(utils_base.BaseWorkerUtil):
             )
 
             imagesPath = os.path.join(exp_path, pos, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(
+            basename, chNames = filesystem.getBasenameAndChNames(
                 imagesPath, useExt=('.tif', '.h5')
             )
 

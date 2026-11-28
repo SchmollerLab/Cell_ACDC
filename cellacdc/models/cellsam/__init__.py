@@ -1,6 +1,6 @@
-from cellacdc import myutils
+from cellacdc.myutils import model_installs
 
-myutils.check_install_cellsam()
+model_installs.check_install_cellsam()
 
 import cellSAM
 

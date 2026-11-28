@@ -4,7 +4,8 @@ import sys
 from importlib import import_module
 import traceback
 from tqdm import tqdm
-from . import config, myutils
+from . import config
+from cellacdc.myutils import installs
 
 def _install_tables(parent_software='Cell-ACDC'):
     from . import try_input_install_package, is_conda_env
@@ -33,8 +34,8 @@ def _install_tables(parent_software='Cell-ACDC'):
             )
             print('-'*60)
             print(txt)
-            conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-            conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+            conda_prefix, pip_prefix = installs.get_pip_conda_prefix()
+            conda_list, pip_list = installs.get_pip_conda_prefix(list_return=True)
 
             conda_txt = f'{conda_prefix} pytables'
             pip_text = f'{pip_prefix} --upgrade tables'
@@ -168,8 +169,8 @@ def _setup_gui_libraries(caller_name='Cell-ACDC', exit_at_end=True):
     try:
         import qtpy
     except ModuleNotFoundError as e:
-        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-        conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+        conda_prefix, pip_prefix = installs.get_pip_conda_prefix()
+        conda_list, pip_list = installs.get_pip_conda_prefix(list_return=True)
         
         command_txt = f'{pip_prefix} --upgrade qtpy'
         
@@ -391,7 +392,7 @@ def download_model_params():
             pass
     if parser_args['YeaZModelsDownload'] or parser_args['AllModelsDownload']:
         print('[INFO]: Downloading YeaZ models...')
-        from cellacdc.myutils import _download_yeaz_models
+        from cellacdc.myutils.downloads import _download_yeaz_models
         try:
             _download_yeaz_models()
         except Exception as e:
@@ -402,7 +403,7 @@ def download_model_params():
             pass
     if parser_args['DeepSeaModelsDownload'] or parser_args['AllModelsDownload']:
         print('[INFO]: Downloading DeepSea models...')
-        from cellacdc.myutils import _download_deepsea_models
+        from cellacdc.myutils.downloads import _download_deepsea_models
         try:
             _download_deepsea_models()
         except Exception as e:
@@ -602,8 +603,8 @@ def run_measurements_workflow(workflow_params, logger, log_path):
     pbar.close()
 
 def run_cli(ini_filepath):
-    from cellacdc import myutils
-    logger, logs_path, log_path, log_filename = myutils.setupLogger(
+    from cellacdc.myutils import app_info, misc
+    logger, logs_path, log_path, log_filename = app_info.setupLogger(
         module='cli', logs_path=None
     )
     
@@ -625,7 +626,7 @@ def run_cli(ini_filepath):
         run_measurements_workflow(meas_workflow_params, logger, log_path)
     
     logger.info('**********************************************')
-    logger.info(f'Cell-ACDC command-line closed. {myutils.get_salute_string()}')
+    logger.info(f'Cell-ACDC command-line closed. {misc.get_salute_string()}')
     logger.info('**********************************************')
     
     
@@ -671,7 +672,7 @@ def _setup_numpy(caller_name='Cell-ACDC'):
     
     import numpy
     installed_numpy_version = numpy.__version__
-    is_numpy_version_within_range = myutils.is_pkg_version_within_range(
+    is_numpy_version_within_range = installs.is_pkg_version_within_range(
         installed_numpy_version,
         min_version=min_version,
         max_version=max_version
@@ -680,8 +681,8 @@ def _setup_numpy(caller_name='Cell-ACDC'):
     if is_numpy_version_within_range:
         return
     
-    conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-    conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+    conda_prefix, pip_prefix = installs.get_pip_conda_prefix()
+    conda_list, pip_list = installs.get_pip_conda_prefix(list_return=True)
 
     command_txt = f'{pip_prefix} --upgrade "{numpy_versions_txt}"'
     

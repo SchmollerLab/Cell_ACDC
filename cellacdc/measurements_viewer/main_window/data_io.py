@@ -7,15 +7,29 @@ import html
 import time
 from qtpy.QtCore import Qt, QTimer, QSaveFile, QIODevice, QThread, QEventLoop
 from qtpy.QtWidgets import QFileDialog, QApplication
-from cellacdc import widgets, load, qutils
+from cellacdc import load, qutils
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+)
 from cellacdc import html_utils
 from cellacdc import disableWindow
-from cellacdc.measurements_viewer_utils import (
-    VISITED_COLUMN, get_images_paths, get_channels_and_segm_endnames,
-    get_channel_from_filepath, normalize_loaded_acdc_df, LAST_ANALYZED_CCA,
-    analysis_last_frame, flag_column_conflicts, flag_column_conflicts_text,
-    update_last_analyzed_frame, acdc_df_file_stamp, acdc_df_snapshot,
-    position_name, load_display_positions
+from ..annotation_data import (
+    VISITED_COLUMN,
+    flag_column_conflicts,
+    flag_column_conflicts_text,
+)
+from ..position_data import acdc_df_file_stamp, analysis_last_frame
+from ..viewer_utils import (
+    LAST_ANALYZED_CCA,
+    acdc_df_snapshot,
+    get_channel_from_filepath,
+    get_channels_and_segm_endnames,
+    get_images_paths,
+    load_display_positions,
+    normalize_loaded_acdc_df,
+    position_name,
+    update_last_analyzed_frame,
 )
 from .. import workers as viewer_workers
 
@@ -45,7 +59,7 @@ class ViewerDataIOGuiElements:
             '<i>The previous file is backed up in the "recovery" folder in '
             'both cases.</i>'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, overwrite, reload = msg.warning(
             self, 'Table changed on disk', txt, detailsText=filepath or None,
             buttonsTexts=('Cancel', 'Overwrite', 'Reload and save')
@@ -236,7 +250,7 @@ class ViewerDataIOGuiElements:
             if hasFile:
                 options.append(('Save configuration as...', (False, 'save_as')))
             options.append((saveConfigText, (False, 'save')))
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         buttons = msg.warning(
             self, 'Save changes?', txt, detailsText=details or None,
             buttonsTexts=[text for text, _ in options]
@@ -281,7 +295,7 @@ class ViewerDataIOGuiElements:
         details = '\n'.join(
             self.lastAnalyzedFrameText(posData) for posData in partial
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         cancel, useAll, ignore = msg.question(
             self, 'Video not analyzed until the end', txt,
             detailsText=details,
@@ -648,7 +662,7 @@ class ViewerDataIOGuiElements:
         if len(items) == 1:
             return items[0]
         
-        win = widgets.QDialogListbox(
+        win = widgets_item_views.QDialogListbox(
             title, text, items, multiSelection=False, parent=self,
             allowEmptySelection=False
         )
@@ -658,7 +672,7 @@ class ViewerDataIOGuiElements:
         return win.selectedItemsText[0]
 
     def warnLoading(self, text):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Loading data failed', text)
 
     def setData(self, data, pos_i=0, frame_i=None, ID=None):
@@ -961,7 +975,7 @@ class ViewerDataIOGuiElements:
         if not filepath:
             return
         if self.hasPhaseTranslation():
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             cancel, skip, apply = msg.question(
                 self, 'Evaluate phases before export?',
                 'A phase translator (phase rules or custom annotations '

@@ -12,9 +12,17 @@ import numpy as np
 from qtpy.QtCore import Qt, QEventLoop, QTimer, QThread
 from qtpy.QtWidgets import QCheckBox
 from cellacdc import exception_handler, disableWindow
-from cellacdc import apps, workers, html_utils
-from cellacdc import core, myutils
-from cellacdc import widgets
+from cellacdc import html_utils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from ..workers import segmentation_tracking as gui_workers_segmentation_tracking
+from cellacdc import core
+from cellacdc.myutils import segm_models
+from .. import helpers as gui_helpers
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from ..dialogs import segmentation as gui_dialogs_segmentation
 from cellacdc import qutils
 from cellacdc import core_split_IDs
 
@@ -28,7 +36,7 @@ class TrackingGuiElements:
         if not checked:
             return
 
-        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        aliases = segm_models.aliases_real_time_trackers(reverse=True)
         if self.sender().text() in aliases:
             trackingAlgo = aliases[self.sender().text()]
         else:
@@ -37,7 +45,7 @@ class TrackingGuiElements:
         self.df_settings.to_csv(self.settings_csv_path)
 
         if self.sender().text() == 'YeaZ':
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             info_txt = html_utils.paragraph(f"""
                 Note that YeaZ tracking algorithm tends to be sliglhtly more accurate
                 overall, but it is <b>less capable of detecting segmentation
@@ -62,7 +70,7 @@ class TrackingGuiElements:
             and self.realTimeTrackingToggle.isChecked()
         )
         if askDisableRealTimeTracking:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             title = 'Disable real-time tracking?'
             txt = (
                 'You perfomed tracking on frames that you have '
@@ -92,7 +100,7 @@ class TrackingGuiElements:
 
     def startTrackingWorker(self, posData, video_to_track):
         self.thread = QThread()
-        self.trackingWorker = workers.trackingWorker(
+        self.trackingWorker = gui_workers_segmentation_tracking.trackingWorker(
             posData, self, video_to_track
         )
         self.trackingWorker.moveToThread(self.thread)
@@ -165,7 +173,7 @@ class TrackingGuiElements:
             <code>Edit --> Smart handling of enabling/disabling tracking</code>.
 
             """)
-            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+            msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
             yesButton, noButton = msg.question(
                 self, 'Keep tracking always active?', txt, 
                 buttonsTexts=('Yes', 'No')
@@ -180,7 +188,7 @@ class TrackingGuiElements:
     @exception_handler
     def repeatTrackingVideo(self, checked=False):
         posData = self.data[self.pos_i]
-        win = widgets.selectTrackerGUI(
+        win = gui_dialogs_segmentation.selectTrackerGUI(
             posData.SizeT, currentFrameNo=posData.frame_i+1
         )
         win.exec_()
@@ -202,14 +210,14 @@ class TrackingGuiElements:
         video_to_track = video_to_track[start_n-1:stop_n]        
         
         self.logger.info(f'Importing {trackerName} tracker...')
-        self.tracker, self.track_params, init_params = myutils.init_tracker(
+        self.tracker, self.track_params, init_params = segm_models.init_tracker(
             posData, trackerName, qparent=self, return_init_params=True
         )
         if self.track_params is None:
             self.logger.info('Tracking aborted.')
             return
         
-        warningText = myutils.validate_tracker_input(
+        warningText = gui_helpers.validate_tracker_input(
             self.tracker, video_to_track
         )
         if warningText is not None:
@@ -242,7 +250,7 @@ class TrackingGuiElements:
         info_txt = f'Tracking from frame n. {start_n} to {stop_n}...'
         self.logger.info(info_txt)
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Tracking', parent=self, pbarDesc=info_txt
         )
         self.progressWin.show(self.app)
@@ -303,7 +311,7 @@ class TrackingGuiElements:
         return True
 
     def warnTrackerInputNotValid(self, trackerName, warningText):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = warningText.replace('\n', '<br>')
         txt = html_utils.paragraph(
             f'{txt}<br><br>'
@@ -333,17 +341,17 @@ class TrackingGuiElements:
                 for oldID, newID in editedIDsInfo.items()
             ]
             editIDul = html_utils.to_list(editedIDsInfoItems)
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(f"""
                 You requested to repeat tracking but <b>there are manually 
                 edited IDs</b> (see edited IDs in the details section below)
                 <br><br>
                 Do you want to keep these edits or ignore them?
             """)
-            keepManualEditButton = widgets.okPushButton(
+            keepManualEditButton = widgets_push_buttons.okPushButton(
                 'Keep manually edited IDs'
             )
-            ignoreButton = widgets.noPushButton(
+            ignoreButton = widgets_push_buttons.noPushButton(
                 'Ignore manually edited IDs'
             )
             msg.question(
@@ -460,7 +468,7 @@ class TrackingGuiElements:
         return last_tracked_i
 
     def warnRepeatTrackingVideoOnVisitedFrames(self, last_tracked_i, start_n):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'You are repeating tracking on frames that <b>have already '
             'been visited/tracked before</b>.<br><br>'
@@ -490,7 +498,7 @@ class TrackingGuiElements:
             self, last_tracked_i, start_n,
             annotations='cell cycle annotations'
         ):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'You are repeating tracking on frames that <b>have '
             f'{annotations}</b>.<br><br>'
@@ -1138,7 +1146,7 @@ class TrackingGuiElements:
             if rtTrackerAction.isChecked():
                 break
         
-        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        aliases = segm_models.aliases_real_time_trackers(reverse=True)
         
         rtTracker = rtTrackerAction.text()
         rtTracker_txt = rtTracker
@@ -1161,7 +1169,7 @@ class TrackingGuiElements:
         self.logger.info(f'Initializing {rtTracker_txt} tracker...')
         self._rtTrackerName = rtTracker
         posData = self.data[self.pos_i]
-        realTimeTracker, track_frame_params = myutils.init_tracker(
+        realTimeTracker, track_frame_params = segm_models.init_tracker(
             posData, rtTracker, qparent=self, realTime=True
         )
         if realTimeTracker is None:
@@ -1249,7 +1257,7 @@ class LostObjectsGuiElements:
             self.ax1.setCenter(pos)
 
     def skipForwardToNewID(self):
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Searching the next frame with a new object', parent=self,
             pbarDesc=f'Searching the next frame with a new object...'
         )
@@ -1261,7 +1269,7 @@ class LostObjectsGuiElements:
     def startFindNextNewIdWorker(self):
         posData = self.data[self.pos_i]
         self._thread = QThread()
-        self.findNextNewIdWorker = workers.FindNextNewIdWorker(posData, self)
+        self.findNextNewIdWorker = gui_workers_segmentation_tracking.FindNextNewIdWorker(posData, self)
         self.findNextNewIdWorker.moveToThread(self._thread)
         
         self.findNextNewIdWorker.signals.finished.connect(self._thread.quit)
@@ -1364,7 +1372,7 @@ class LostObjectsGuiElements:
 
         desc = 'Copying all lost objects...'
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title=desc, parent=self.mainWin, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(for_future_frame_n+1)
@@ -1372,7 +1380,7 @@ class LostObjectsGuiElements:
 
         self.copyAllLostObjectsThread = QThread()
 
-        self.copyAllLostObjectsWorker = workers.CopyAllLostObjectsWorker(
+        self.copyAllLostObjectsWorker = gui_workers_segmentation_tracking.CopyAllLostObjectsWorker(
             self, posData, for_future_frame_n, max_overlap_perc
         )
         self.copyAllLostObjectsWorker.moveToThread(self.copyAllLostObjectsThread)
@@ -1480,7 +1488,7 @@ class LostObjectsGuiElements:
         self.prevAction.setDisabled(True)
         self.navigateScrollBar.setDisabled(True)
         
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         warn_msg = html_utils.paragraph(
             'Current frame (compared to previous frame) '
             'has <b>lost the following cells</b>:<br><br>'
@@ -1937,7 +1945,7 @@ class ManualTrackingGuiElements:
         bbox = ((Dy, Dy+h), (Dx, Dx+w))
 
         Y, X = self.currentLab2D.shape
-        slices = myutils.get_slices_local_into_global_arr(bbox, (Y, X))
+        slices = gui_helpers.get_slices_local_into_global_arr(bbox, (Y, X))
         slice_global_to_local, slice_crop_local = slices
 
         obj_image = self.ghostObject.image[slice_crop_local]

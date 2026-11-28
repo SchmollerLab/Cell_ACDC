@@ -25,7 +25,18 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import QLabel, QCheckBox, QHBoxLayout, QAction
 
-from cellacdc import widgets, apps, myutils, colors
+from cellacdc import colors
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
+from . import (
+    dialogs as gui_mixin_dialogs,
+    widgets as gui_mixin_widgets,
+)
 from cellacdc import path as acdc_path
 
 _font = QFont()
@@ -211,7 +222,7 @@ Z_PROJECTION_METHODS = (
 
 class FramesNavigationGuiElements:
     def gui_createFramesNavigationWidgets(self):
-        self.navigateScrollBar = widgets.navigateQScrollBar(Qt.Horizontal)
+        self.navigateScrollBar = gui_mixin_widgets.navigateQScrollBar(Qt.Horizontal)
         self.navigateScrollBar.setDisabled(True)
         self.navigateScrollBar.setMinimum(1)
         self.navigateScrollBar.setMaximum(1)
@@ -219,7 +230,7 @@ class FramesNavigationGuiElements:
         self.t_label = QLabel('frame n.  ')
         self.t_label.setFont(_font)
         
-        self.navSpinBox = widgets.SpinBox(disableKeyPress=True)
+        self.navSpinBox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.navSpinBox.setMinimum(1)
         self.navSpinBox.setMaximum(100)
         self.navSizeLabel = QLabel('/ND')
@@ -243,25 +254,25 @@ class FramesNavigationGuiElements:
 
 class ZsliceNavigationGuiElements:
     def gui_createZsliceNavigationWidgets(self):
-        self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
+        self.zSliceScrollBar = gui_mixin_widgets.linkedQScrollbar(Qt.Horizontal)
 
-        self.zProjComboBox = widgets.ComboBox()
+        self.zProjComboBox = widgets_combo_boxes.ComboBox()
         self.zProjComboBox.setFont(_font)
         self.zProjComboBox.addItems(Z_PROJECTION_METHODS)
         
-        self.zProjLockViewButton = widgets.LockPushButton()
+        self.zProjLockViewButton = widgets_push_buttons.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
         self.zProjLockViewButton.setToolTip(
             'If active, the selected z-slice view is applied to all frames'
         )
         self.zProjLockViewButton.hide()
         
-        self.switchPlaneCombobox = widgets.SwitchPlaneCombobox()
+        self.switchPlaneCombobox = gui_mixin_widgets.SwitchPlaneCombobox()
         self.switchPlaneCombobox.setToolTip(
             'Switch viewed plane'
         )
         
-        self.launch3dViewerButton = widgets.threeDPushButton()
+        self.launch3dViewerButton = widgets_push_buttons.threeDPushButton()
         self.launch3dViewerButton.setToolTip(
             'Launch 3D viewer for the currently visualised volume'
         )
@@ -272,7 +283,7 @@ class ZsliceNavigationGuiElements:
             'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
             'SHORTCUT to toggle ON/OFF: "Z" key'
         )
-        self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.zSliceSpinbox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
@@ -391,7 +402,7 @@ class RecentPathsGuiElements:
     def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()        
-        recentPaths, dates = myutils.get_recent_paths()
+        recentPaths, dates = filesystem.get_recent_paths()
         
         # Step 2. Dynamically create 20 actions
         actions = []
@@ -405,7 +416,7 @@ class RecentPathsGuiElements:
         self.openRecentMenu.addActions(actions)
 
         # Setp 4. Add the More action
-        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+        self.openRecentMoreDialog = dialogs_generic.SearchableListboxDialog(
             recentPaths, 
             title='Recent paths', 
             searchLineEditText='Search recent paths (double-click to load)...',
@@ -438,10 +449,10 @@ class RecentPathsGuiElements:
             pass
     
     def addToRecentPaths(self, path, logger=None):
-        myutils.addToRecentPaths(path, logger=getattr(self, 'logger', None))
+        filesystem.addToRecentPaths(path, logger=getattr(self, 'logger', None))
     
     def getMostRecentPath(self):
-        return myutils.getMostRecentPath()
+        return filesystem.getMostRecentPath()
     
     def showOpenRecentMoreWidget(self):
         self.openRecentMoreDialog.show()
@@ -623,7 +634,7 @@ class LutGuiElements:
                 dtype_max = np.iinfo(image_data.dtype).max
                 # max_value = image_data.max()
                 # min_value = image_data.min()
-                win = apps.SetCustomLevelsLut(
+                win = gui_mixin_dialogs.SetCustomLevelsLut(
                     init_min_value=round(current_min),
                     init_max_value=round(current_max),
                     maximum_max_value=dtype_max,

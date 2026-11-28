@@ -11,10 +11,25 @@ from qtpy.QtGui import QCloseEvent, QKeySequence
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QDialog
 
-from cellacdc import apps, apps_measurements_viewer, measurements_viewer, timepoint_predictors
-from cellacdc import measurements_viewer_utils
-from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
-from cellacdc.measurements_viewer import MeasurementsViewerWin, _TimepointLine, VISITED_COLUMN
+from cellacdc import timepoint_predictors
+from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
+from cellacdc.measurements_viewer.dialogs import (
+    conditional_formatting as viewer_dialogs_conditional_formatting,
+    predictor_editors as viewer_dialogs_predictor_editors,
+)
+from cellacdc.measurements_viewer.main_window import (
+    configuration as viewer_configuration,
+    data_io as viewer_data_io,
+    image_panel as viewer_image_panel,
+)
+from cellacdc.shared.dialogs import combine_measurements as dialogs_combine_measurements
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from qtpy.QtGui import QCursor
+from cellacdc.measurements_viewer import viewer_utils
+from cellacdc.measurements_viewer.custom_annotation_predictors import CustomAnnotationPredictor
+from cellacdc.measurements_viewer.annotation_data import VISITED_COLUMN
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
+from cellacdc.measurements_viewer.widgets import _TimepointLine
 from cellacdc.timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
 from tests.conftest import flushDeferredDeletes
 
@@ -391,7 +406,7 @@ def test_removing_identifier_drops_its_color_and_formatting(
     # "Remove" is never clicked --> cancelled
     question = Mock(return_value=(None, object()))
     monkeypatch.setattr(
-        measurements_viewer.widgets.myMessageBox, 'question', question
+        widgets_message_box.myMessageBox, 'question', question
     )
     viewer.removeTimepointIdentifier(point.uid)
     assert 'conditional formatting' not in question.call_args.args[2]
@@ -427,7 +442,7 @@ def test_timepoint_rename_is_refused_while_referenced(viewer, monkeypatch):
     # Removal warns about the dependents
     # The "Remove" button is never clicked --> cancelled
     question = Mock(return_value=(None, object()))
-    monkeypatch.setattr(measurements_viewer.widgets.myMessageBox, 'question', question)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'question', question)
     viewer.removeTimepointIdentifier(point.uid)
     assert 'custom annotation "Flag"' in question.call_args.args[2]
     assert viewer.timepointIdentifier(point.uid) is point
@@ -463,7 +478,7 @@ def test_timepoint_rename_is_refused_while_read_by_recorded_steps(
     # Removal warns about them; "Remove" is never clicked --> cancelled
     question = Mock(return_value=(None, object()))
     monkeypatch.setattr(
-        measurements_viewer.widgets.myMessageBox, 'question', question
+        widgets_message_box.myMessageBox, 'question', question
     )
     viewer.removeTimepointIdentifier(point.uid)
     assert 'combined measurement "x"' in question.call_args.args[2]
@@ -552,7 +567,7 @@ def test_timepoint_customization_warns_about_mixed_cycle(viewer, monkeypatch):
     viewer.addTimepointIdentifierItem(point)
     annotation_predictors(viewer, [('Flag', 'any(timepoint_Point)')])
     warn = Mock()
-    monkeypatch.setattr(apps_measurements_viewer.TimepointIdentifierDialog, 'warn', warn)
+    monkeypatch.setattr(viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'warn', warn)
 
     def accept(dialog):
         assert dialog.acdc_df is viewer.acdc_df
@@ -560,7 +575,7 @@ def test_timepoint_customization_warns_about_mixed_cycle(viewer, monkeypatch):
         dialog.ok_cb()
         assert dialog.cancel
 
-    monkeypatch.setattr(apps_measurements_viewer.TimepointIdentifierDialog, 'exec_', accept)
+    monkeypatch.setattr(viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'exec_', accept)
     assert viewer.execTimepointIdentifierDialog(point, 'Edit') is None
     assert 'Circular predictor dependency' in warn.call_args.args[1]
 
@@ -573,11 +588,11 @@ def test_annotation_customization_warns_about_mixed_cycle(viewer, monkeypatch):
     )
     viewer.addTimepointIdentifierItem(point)
     state = viewer.customAnnotDict[viewer.customAnnotButtonByName('Flag')]['state']
-    dialog = apps.customAnnotationDialog(
+    dialog = gui_mixin_dialogs.customAnnotationDialog(
         {}, state=state, **viewer.customAnnotationDialogKwargs(state)
     )
     warning = Mock()
-    monkeypatch.setattr(apps.widgets, 'myMessageBox', Mock(return_value=warning))
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', Mock(return_value=warning))
     try:
         dialog.predictorGroupbox.equation = 'any(timepoint_Point)'
         dialog.clickedButton = dialog.okButton
@@ -593,8 +608,8 @@ def test_annotation_customization_warns_about_mixed_cycle(viewer, monkeypatch):
 
 @pytest.mark.slow
 @pytest.mark.parametrize('Dialog', [
-    apps_measurements_viewer.TimepointPredictorEquationDialog,
-    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog,
 ])
 def test_equation_customization_warns_before_accepting_cycle(
         viewer, monkeypatch, Dialog
@@ -604,7 +619,7 @@ def test_equation_customization_warns_before_accepting_cycle(
     dialog = Dialog([], False, False, acdc_df=viewer.acdc_df,
                     equation=f'{TIMEPOINT_PREFIX}Point')
     warning = Mock()
-    monkeypatch.setattr(apps.widgets, 'myMessageBox', Mock(return_value=warning))
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', Mock(return_value=warning))
     dialog.validatePredictorDependencies = (
         lambda predictor: viewer.validatePredictorDependencies(
             f'{TIMEPOINT_PREFIX}Point', f'{TIMEPOINT_PREFIX}Point', predictor
@@ -698,7 +713,7 @@ def test_other_cell_equation_uses_filtered_frame_window(acdc_df):
 
 
 def test_main_cell_filter_editor_supports_other_inputs(app, acdc_df):
-    dialog = apps_measurements_viewer._TimepointCellFilterEquationDialog(
+    dialog = viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog(
         [], False, False, acdc_df=acdc_df, SizeT=4,
         condition='COUNT(area_other) > 0',
         otherCells=timepoint_predictors.CellFilter.default_other()
@@ -717,7 +732,7 @@ def test_main_cell_filter_editor_supports_other_inputs(app, acdc_df):
 
 
 def test_direct_other_dialog_validation(app, acdc_df):
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=acdc_df, equation='area_other > 0'
     )
     try:
@@ -732,8 +747,8 @@ def test_direct_other_dialog_validation(app, acdc_df):
 
 
 @pytest.mark.parametrize('Dialog', [
-    apps_measurements_viewer.TimepointPredictorEquationDialog,
-    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog,
 ])
 @pytest.mark.parametrize('equation', [
     'frame_i == FIRST(frame_i) + 1', 'LAST(frame_i) == SizeT - 1',
@@ -758,8 +773,8 @@ def test_equation_dialog_accepts_index_only_inputs(
 
 
 @pytest.mark.parametrize('Dialog', [
-    apps_measurements_viewer.TimepointPredictorEquationDialog,
-    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog,
 ])
 @pytest.mark.parametrize('source, equation', [
     ('mother', 'COUNT(Cell_ID_other) > 0'),
@@ -790,8 +805,8 @@ def test_equation_dialog_accepts_other_cell_index_inputs(
 
 
 @pytest.mark.parametrize('Dialog', [
-    apps_measurements_viewer.TimepointPredictorEquationDialog,
-    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog,
 ])
 @pytest.mark.parametrize('equation', [
     '(area > 5) & ~flag_other',
@@ -827,7 +842,7 @@ def test_equation_dialog_keeps_dtype_of_direct_other_inputs(
 ])
 def test_equation_dialog_accepts_index_inputs_without_table(app, equation):
     # Before data are loaded the index inputs get placeholder values too
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, SizeT=4
     )
     try:
@@ -924,7 +939,7 @@ def test_documented_nan_comparisons():
         'area': [5., 5., 7., 3., 4., 4.],
         'timepoint_Division': [False, True, False, False, False, False],
     }).set_index(['frame_i', 'Cell_ID'])
-    evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
+    evaluate = dialogs_combine_measurements.CombineMetricsEquationDialog.evaluateCellEquation
     # DIFF is missing at each cell's first frame
     assert evaluate(df, 'DIFF(area) != 0').tolist() == [
         True, False, True, True, True, False
@@ -1000,7 +1015,7 @@ def test_text_comparisons_of_cells_without_text():
     assert predict(df, 'frame_i >= 0', 'first_true', main_cell_filter={
         'condition': 'SHIFT(stage) == "G1"', 'condition_mode': 'any',
     }) == {1: [0], 2: [0]}
-    evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
+    evaluate = dialogs_combine_measurements.CombineMetricsEquationDialog.evaluateCellEquation
     shifted = evaluate(df, 'SHIFT(stage) == "G1"').astype(bool)
     assert sorted(shifted[shifted].index) == [(1, 1), (1, 2), (2, 1), (2, 2)]
     # A position without any stage value (float NaN column)
@@ -1146,7 +1161,7 @@ def test_add_identifier_creates_action_with_shortcut(viewer, monkeypatch):
         dialog.nameLineEdit.setText('Bud')
         dialog.ok_cb()
 
-    monkeypatch.setattr(apps_measurements_viewer.TimepointIdentifierDialog, 'exec_', accept)
+    monkeypatch.setattr(viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'exec_', accept)
     identifier = viewer.addTimepointIdentifier()
     action = viewer.timepointActions[identifier.uid]
     assert action in viewer.timepointsToolBar.actions()
@@ -1162,7 +1177,7 @@ def test_identifier_dialog_checks_names_and_shortcuts_on_ok(
     # default name and shortcut, so OK checks the current identifiers
     warnings = []
     monkeypatch.setattr(
-        apps_measurements_viewer.TimepointIdentifierDialog, 'warn',
+        viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'warn',
         lambda self, title, text: warnings.append(title)
     )
     opened = []
@@ -1176,7 +1191,7 @@ def test_identifier_dialog_checks_names_and_shortcuts_on_ok(
         dialog.ok_cb()
 
     monkeypatch.setattr(
-        apps_measurements_viewer.TimepointIdentifierDialog, 'exec_', exec_
+        viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'exec_', exec_
     )
     assert viewer.addTimepointIdentifier() is None
     assert warnings == ['Name already used', 'Shortcut already used']
@@ -1235,7 +1250,7 @@ def test_clicking_timepoint_button_adds_at_current_frame(
     action = viewer.timepointActions[identifier.uid]
     monkeypatch.setattr(viewer, 'hoveredMeasurementsPlotFrame', lambda: 0)
     monkeypatch.setattr(
-        measurements_viewer.QCursor, 'pos', lambda: QPoint(-10000, -10000)
+        QCursor, 'pos', lambda: QPoint(-10000, -10000)
     )
     viewer.show()
     app.processEvents()
@@ -1359,7 +1374,7 @@ def test_timepoint_shortcut_used_by_a_tool_key_is_not_set(
     hardShortcuts = viewer.getHardcodedShortcuts()
     assert hardShortcuts['Q'] == ('Time point "Bud"', action)
     assert hardShortcuts['Shift+Q'] == ('Time point "Bud" (re-evaluate)', autoAction)
-    dialog = apps.ShortcutEditorDialog(
+    dialog = gui_mixin_dialogs.ShortcutEditorDialog(
         viewer.widgetsWithShortcut, zoomOutKeyValue=viewer.zoomOutKeyValue,
         mouseBindings=viewer.mouseBindings, hard_shortcuts=hardShortcuts,
         show_delete_object_shortcut=False, parent=viewer
@@ -1383,12 +1398,12 @@ def test_identifier_dialog_rejects_key_with_used_auto_shortcut(
     ):
     warnings = []
     monkeypatch.setattr(
-        apps_measurements_viewer.TimepointIdentifierDialog, 'warn',
+        viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'warn',
         lambda self, title, text: warnings.append((title, text))
     )
     reserved = viewer.reservedShortcuts()
     assert 'S' in reserved
-    dialog = apps_measurements_viewer.TimepointIdentifierDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointIdentifierDialog(
         'Bud', (255, 0, 0), 'S', reservedShortcuts=reserved,
         acdc_df=viewer.acdc_df, SizeT=4
     )
@@ -1464,7 +1479,7 @@ def test_combine_measurements_uses_timepoint_columns_and_cell_aggregations(
     viewer.addTimepointIdentifierItem(identifier)
     viewer.addTimepoint(identifier.uid, 1, ID=1)
 
-    originalDialog = apps.CombineMetricsEquationDialog
+    originalDialog = dialogs_combine_measurements.CombineMetricsEquationDialog
 
     class TestDialog(originalDialog):
         def exec_(self):
@@ -1475,7 +1490,7 @@ def test_combine_measurements_uses_timepoint_columns_and_cell_aggregations(
             self.test_cb()
             self.ok_cb()
 
-    monkeypatch.setattr(apps, 'CombineMetricsEquationDialog', TestDialog)
+    monkeypatch.setattr(dialogs_combine_measurements, 'CombineMetricsEquationDialog', TestDialog)
     viewer.combineMeasurements()
 
     assert viewer.acdc_df['ever_bud'].tolist() == (
@@ -1623,11 +1638,20 @@ def test_viewed_cells_configuration_roundtrip(viewer, tmp_path, monkeypatch):
     filepath = tmp_path / 'state.json'
     filepath.write_text(json.dumps(configuration))
     viewer.timepointAutoPredictions.clear()
+    # moved: get_channels_and_segm_endnames is read in each of these modules
     monkeypatch.setattr(
-        measurements_viewer, 'get_channels_and_segm_endnames',
+        viewer_configuration, 'get_channels_and_segm_endnames',
         Mock(return_value=(['GFP'], ['segm']))
     )
-    monkeypatch.setattr(measurements_viewer_utils, 'load_position', Mock(return_value=posData))
+    monkeypatch.setattr(
+        viewer_data_io, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_image_panel, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(viewer_utils, 'load_position', Mock(return_value=posData))
     monkeypatch.setattr(
         viewer, 'selectConfigurationInput',
         lambda config: viewer.configurationInputOptions(config)[0]
@@ -1781,7 +1805,7 @@ def test_edit_identifier_preserves_and_updates_auto_apply(viewer, monkeypatch, a
         dialog.autoApplyCheckBox.setChecked(not auto_apply)
         dialog.ok_cb()
 
-    monkeypatch.setattr(apps_measurements_viewer.TimepointIdentifierDialog, 'exec_', accept)
+    monkeypatch.setattr(viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'exec_', accept)
     viewer.editTimepointIdentifier(identifier.uid)
     assert identifier.autoApply == (not auto_apply)
 
@@ -1931,10 +1955,10 @@ def test_configuration_contains_identifiers():
 def test_identifier_dialog_validation(app, monkeypatch, acdc_df):
     warnings = []
     monkeypatch.setattr(
-        apps_measurements_viewer.TimepointIdentifierDialog, 'warn', 
+        viewer_dialogs_predictor_editors.TimepointIdentifierDialog, 'warn', 
         lambda self, title, text: warnings.append(title)
     )
-    dialog = apps_measurements_viewer.TimepointIdentifierDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointIdentifierDialog(
         'Bud', (255, 0, 0), 'Q', existingNames={'Other'},
         reservedShortcuts={'Q': 'Something'}, acdc_df=acdc_df, SizeT=4
     )
@@ -1965,7 +1989,7 @@ def test_identifier_dialog_validation(app, monkeypatch, acdc_df):
 
 
 def test_predictor_equation_dialog(app, acdc_df):
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, name='Bud'
     )
     assert {'ANY', 'ALL'} <= {
@@ -2031,7 +2055,7 @@ def test_other_cell_predictor_equation_dialog_saves_filter_settings(app, acdc_df
         'range_start': 't - 1',
         'range_end': 't + 2',
     }
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, name='Bud',
         equation='MEAN(area_other) > 10', otherCells=settings
     )
@@ -2045,7 +2069,7 @@ def test_other_cell_predictor_equation_dialog_saves_filter_settings(app, acdc_df
 
 
 def test_unified_cell_filter_selectors(app, acdc_df):
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=acdc_df, SizeT=4
     )
     for group, selector, edit, button, controls in (
@@ -2096,7 +2120,7 @@ def test_unified_cell_filter_selectors(app, acdc_df):
 ])
 def test_main_cell_filter_presets(app, acdc_df, preset, expected):
     df = acdc_df.drop(index=(0, 2))
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=df, SizeT=4
     )
     dialog.mainCellGroup.setChecked(True)
@@ -2113,7 +2137,7 @@ def test_main_cell_filter_presets(app, acdc_df, preset, expected):
         'mode': 'first_true',
         'main_cell_filter': settings,
     }, SizeT=4) == expected
-    reopened = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    reopened = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=df, SizeT=4, mainCellFilter=settings
     )
     assert reopened.mainCellFilterCombobox.currentData() == preset
@@ -2128,7 +2152,7 @@ def test_main_cell_annotation_presets(app, acdc_df):
         df.index.get_level_values('Cell_ID') == 1, 'mother', 'bud'
     )
     df['cell_cycle_stage'] = df['stage']
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=df
     )
     dialog.mainCellGroup.setChecked(True)
@@ -2156,7 +2180,7 @@ def test_cells_with_parent_preset_needs_a_positive_parent(app, acdc_df):
     df = acdc_df.copy()
     # Cell 1 (frames 0-3): root; cell 2: daughter of cell 1
     df['parent_ID_tree'] = [-1, -1, 0, np.nan, 1, 1, 1, 1]
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=df
     )
     dialog.mainCellGroup.setChecked(True)
@@ -2175,7 +2199,7 @@ def test_main_cell_presets_ignore_the_custom_mode(app, acdc_df):
     # chosen earlier under "Custom equation"
     df = acdc_df.copy()
     df['cell_cycle_stage'] = df['stage']
-    Dialog = apps_measurements_viewer.TimepointPredictorEquationDialog
+    Dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog
     dialog = Dialog([], False, False, acdc_df=df)
     presets, match = dialog.mainCellFilterCombobox, dialog.mainCellMatchCombobox
     dialog.mainCellGroup.setChecked(True)
@@ -2205,7 +2229,7 @@ def test_unified_other_cell_filter_materializes_legacy_source(app, lineage_df):
         timepoint_predictors.CellFilter.default_other(),
         source='mother', condition='area > 5', condition_mode='all'
     )
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=lineage_df, otherCells=settings
     )
     expected = dict(
@@ -2230,8 +2254,8 @@ def test_unified_other_cell_filter_materializes_legacy_source(app, lineage_df):
 
 
 @pytest.mark.parametrize('dialogClass', [
-    apps_measurements_viewer.TimepointPredictorEquationDialog,
-    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog,
 ])
 @pytest.mark.parametrize('withData', [True, False])
 def test_equation_dialog_keeps_unavailable_relation_source(
@@ -2282,10 +2306,10 @@ def test_identifier_edit_equation_opens_with_unavailable_relation_source(
         win.cancel = True
 
     monkeypatch.setattr(
-        apps_measurements_viewer.TimepointPredictorEquationDialog, 'exec_',
+        viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog, 'exec_',
         exec_
     )
-    dialog = apps_measurements_viewer.TimepointIdentifierDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointIdentifierDialog(
         'M', (255, 0, 0), 'Q', predictor=predictor,
         acdc_df=acdc_df, SizeT=4, allChNames=['GFP']
     )
@@ -2304,10 +2328,10 @@ def test_edit_filter_with_invalid_frame_window(app, acdc_df, monkeypatch, start,
         win.cancel = True
 
     monkeypatch.setattr(
-        apps_measurements_viewer._TimepointCellFilterEquationDialog, 'exec_',
+        viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog, 'exec_',
         exec_
     )
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, SizeT=4,
         otherCells=timepoint_predictors.CellFilter.default_other(),
         mainCellFilter=timepoint_predictors.CellFilter.default_main()
@@ -2338,15 +2362,15 @@ def test_nested_editors_disable_the_calling_dialog(app, acdc_df, monkeypatch):
         states.append(caller.isEnabled())
         editor.cancel = True
 
-    identifierDialog = apps_measurements_viewer.TimepointIdentifierDialog(
+    identifierDialog = viewer_dialogs_predictor_editors.TimepointIdentifierDialog(
         'M', (255, 0, 0), 'Q', acdc_df=acdc_df, SizeT=4, allChNames=['GFP']
     )
     monkeypatch.setattr(
-        apps_measurements_viewer.TimepointPredictorEquationDialog, 'exec_',
+        viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog, 'exec_',
         lambda editor: exec_(identifierDialog, editor)
     )
     identifierDialog.editEquation()
-    predictorDialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    predictorDialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, SizeT=4,
         otherCells=timepoint_predictors.CellFilter.default_other(),
         mainCellFilter=timepoint_predictors.CellFilter.default_main()
@@ -2357,7 +2381,7 @@ def test_nested_editors_disable_the_calling_dialog(app, acdc_df, monkeypatch):
         ):
         combobox.setCurrentIndex(combobox.findData('custom'))
     monkeypatch.setattr(
-        apps_measurements_viewer._TimepointCellFilterEquationDialog, 'exec_',
+        viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog, 'exec_',
         lambda editor: exec_(predictorDialog, editor)
     )
     predictorDialog.editOtherCellsCondition()
@@ -2371,7 +2395,6 @@ def test_nested_editors_disable_the_calling_dialog(app, acdc_df, monkeypatch):
 def test_nested_editors_are_deleted_after_use(app, acdc_df, monkeypatch):
     # The callers stay alive (children of the viewer): every kept editor
     # held the table, the other-cell filter editor a flattened copy of it
-    mv = apps_measurements_viewer
 
     def cancel(editor):
         # Counted by name: after deleteLater() PyQt may collect the Python
@@ -2383,15 +2406,15 @@ def test_nested_editors_are_deleted_after_use(app, acdc_df, monkeypatch):
         return len(caller.findChildren(QDialog, 'nested_editor'))
 
     for cls in (
-            mv.TimepointPredictorEquationDialog,
-            mv._TimepointCellFilterEquationDialog
+            viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog,
+            viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog
         ):
         monkeypatch.setattr(cls, 'exec_', cancel)
-    identifierDialog = mv.TimepointIdentifierDialog(
+    identifierDialog = viewer_dialogs_predictor_editors.TimepointIdentifierDialog(
         'M', (255, 0, 0), 'Q', acdc_df=acdc_df, SizeT=4, allChNames=['GFP']
     )
     identifierDialog.editEquation()
-    predictorDialog = mv.TimepointPredictorEquationDialog(
+    predictorDialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, SizeT=4,
         otherCells=timepoint_predictors.CellFilter.default_other(),
         mainCellFilter=timepoint_predictors.CellFilter.default_main()
@@ -2404,7 +2427,7 @@ def test_nested_editors_are_deleted_after_use(app, acdc_df, monkeypatch):
     predictorDialog.editOtherCellsCondition()
     predictorDialog.editOtherCellsCondition()
     predictorDialog.editMainCellCondition()
-    groupbox = mv._CustomAnnotationPredictorGroupbox(
+    groupbox = viewer_dialogs_predictor_editors._CustomAnnotationPredictorGroupbox(
         {'acdc_df': acdc_df, 'SizeT': 4}
     )
     groupbox.editEquation()
@@ -2418,13 +2441,15 @@ def test_nested_editors_are_deleted_after_use(app, acdc_df, monkeypatch):
 
 @pytest.mark.slow
 def test_viewer_deletes_identifier_and_condition_dialogs(viewer, monkeypatch):
-    mv = apps_measurements_viewer
 
     def cancel(dialog):
         dialog.setObjectName('viewer_dialog')
         dialog.cancel = True
 
-    for cls in (mv.TimepointIdentifierDialog, mv._FormattingConditionDialog):
+    for cls in (
+        viewer_dialogs_predictor_editors.TimepointIdentifierDialog,
+        viewer_dialogs_conditional_formatting._FormattingConditionDialog,
+    ):
         monkeypatch.setattr(cls, 'exec_', cancel)
     viewer.execTimepointIdentifierDialog(
         viewer.defaultTimepointIdentifier(), 'Add time point identifier'
@@ -2436,7 +2461,7 @@ def test_viewer_deletes_identifier_and_condition_dialogs(viewer, monkeypatch):
 
 
 def test_predictor_equation_dialog_functions(app, acdc_df):
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, name='Bud'
     )
     names = [button.text() for button in dialog.cellFunctionButtons]
@@ -2461,7 +2486,7 @@ def test_predictor_equation_dialog_functions(app, acdc_df):
 
 
 def test_timepoint_filter_equation_dialogs(app, acdc_df):
-    mainFilter = apps_measurements_viewer._TimepointCellFilterEquationDialog(
+    mainFilter = viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, SizeT=4,
         condition='area > 5'
     )
@@ -2472,7 +2497,7 @@ def test_timepoint_filter_equation_dialogs(app, acdc_df):
     assert mainFilter.equation == 'area > 5'
     mainFilter.deleteLater()
 
-    otherFilter = apps_measurements_viewer._TimepointCellFilterEquationDialog(
+    otherFilter = viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog(
         ['GFP'], False, False, acdc_df=acdc_df, SizeT=4,
         condition='area < this_area', includeEnquiringCell=True
     )
@@ -2487,7 +2512,7 @@ def test_filter_editor_checks_all_rows_and_matches_runtime(app):
         'Cell_ID': [1] * 12,
         'value': [1.] * 11 + [2.],
     }).set_index(['frame_i', 'Cell_ID'])
-    dialog = apps_measurements_viewer._TimepointCellFilterEquationDialog(
+    dialog = viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog(
         [], False, False, acdc_df=df, condition='value'
     )
     assert dialog.validateEquation('value')[0]
@@ -2508,7 +2533,7 @@ def test_filter_editor_ok_skips_retest_after_passing_test(app, monkeypatch):
         'Cell_ID': [1] * 12,
         'value': [1.] * 11 + [2.],
     }).set_index(['frame_i', 'Cell_ID'])
-    Dialog = apps_measurements_viewer._TimepointCellFilterEquationDialog
+    Dialog = viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog
     # OK without a prior Test still validates the whole table
     dialog = Dialog([], False, False, acdc_df=df, condition='value')
     dialog.ok_cb()
@@ -2535,7 +2560,7 @@ def test_filter_editor_ok_skips_retest_after_passing_test(app, monkeypatch):
 
 
 def test_other_cell_filter_editor_adds_enquiring_inputs(app, acdc_df):
-    dialog = apps_measurements_viewer._TimepointCellFilterEquationDialog(
+    dialog = viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog(
         [], False, False, acdc_df=acdc_df, condition='area > this_area',
         includeEnquiringCell=True
     )
@@ -2550,7 +2575,7 @@ def test_other_cell_filter_editor_adds_enquiring_inputs(app, acdc_df):
 
 
 def test_filter_editor_preserves_frame_index_inputs(app, acdc_df):
-    dialog = apps_measurements_viewer._TimepointCellFilterEquationDialog(
+    dialog = viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog(
         [], False, False, acdc_df=acdc_df,
         condition='FIRST(frame_i) == 0'
     )
@@ -2583,7 +2608,7 @@ def test_predictor_identifier_retains_other_cell_options(app, acdc_df):
             'condition_mode': 'any',
         },
     }
-    dialog = apps_measurements_viewer.TimepointIdentifierDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointIdentifierDialog(
         'Bud', (255, 0, 0), 'Q', predictor=predictor,
         acdc_df=acdc_df, SizeT=4, allChNames=['GFP']
     )
@@ -3047,7 +3072,7 @@ def lineage_df():
 def test_symmetric_presets_show_and_save_equations(
         app, lineage_df, source, start, end, expected
     ):
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=lineage_df,
         equation='MEAN(area_other) > 0'
     )
@@ -3069,7 +3094,7 @@ def test_symmetric_presets_show_and_save_equations(
     }) == expected
     dialog.test_cb()
     assert dialog.okButton.isEnabled()
-    reopened = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    reopened = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=lineage_df, otherCells=settings
     )
     assert reopened.currentOtherCells() == settings
@@ -3088,7 +3113,7 @@ def test_budding_presets_use_same_frame(app, source, expected):
         'relative_ID': [2, 1, -1, -1], 'area': [10., 2., 10., 5.],
         'parent_ID_tree': [-1, -1, -1, 1],
     }).set_index(['frame_i', 'Cell_ID'])
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=df
     )
     dialog.otherCellsGroup.setChecked(True)
@@ -3136,7 +3161,7 @@ def test_symmetric_presets_use_segmentation_ID(
 
 
 def test_if_condition_and_shift_tooltips(app, acdc_df):
-    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=acdc_df
     )
     for edit in (
@@ -3155,7 +3180,9 @@ def test_if_condition_and_shift_tooltips(app, acdc_df):
 def test_constants_are_disabled(viewer):
     assert not hasattr(viewer, 'editCellConstantsAction')
     assert not hasattr(viewer, 'cellConstants')
-    assert not hasattr(apps, 'CellConstantsDialog')
+    for module in (dialogs_combine_measurements, gui_mixin_dialogs,
+                   viewer_dialogs_predictor_editors):
+        assert not hasattr(module, 'CellConstantsDialog')
     assert not hasattr(timepoint_predictors, 'compute_cell_constants')
     assert not hasattr(timepoint_predictors, 'default_constant')
 

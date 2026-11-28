@@ -20,7 +20,8 @@ from qtpy.QtWidgets import (
 )
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import myutils, html_utils
+from cellacdc import html_utils
+from cellacdc.myutils import misc
 from cellacdc import _palettes
 from cellacdc import QtScoped
 from . import style as widgets_style
@@ -306,7 +307,7 @@ class ProgressBarWithETA(ProgressBar):
             )/self.value()
 
         seconds_left = self.mean_value_duration*value_left
-        ETA = myutils.seconds_to_ETA(seconds_left)
+        ETA = misc.seconds_to_ETA(seconds_left)
         self.ETA_label.setText(ETA)
         self.last_time_update = t
         return ETA

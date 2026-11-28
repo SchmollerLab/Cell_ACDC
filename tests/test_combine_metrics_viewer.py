@@ -8,8 +8,10 @@ from qtpy.QtCore import Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import apps, measurements, measurements_viewer
-from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc import measurements
+from cellacdc.shared.dialogs import combine_measurements as dialogs_combine_measurements
+from qtpy.QtWidgets import QFileDialog
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 
 pytestmark = pytest.mark.viewer
 
@@ -63,7 +65,7 @@ def accept_formula(
 
     def accept(dialog):
         dialogs.append(dialog)
-        assert isinstance(dialog, apps.CombineMetricsEquationDialog)
+        assert isinstance(dialog, dialogs_combine_measurements.CombineMetricsEquationDialog)
         assert not dialog.saveToConfig
         for variable in channel_less:
             offer_channel_less_input(dialog, variable)
@@ -75,7 +77,7 @@ def accept_formula(
             before_accept()
         dialog.ok_cb()
 
-    monkeypatch.setattr(apps.CombineMetricsEquationDialog, 'exec_', accept)
+    monkeypatch.setattr(dialogs_combine_measurements.CombineMetricsEquationDialog, 'exec_', accept)
     return dialogs
 
 
@@ -158,7 +160,7 @@ def test_failed_channel_expansion_is_atomic(viewer, monkeypatch):
 
 def test_cancel_does_not_change_table(viewer, monkeypatch):
     original = viewer.acdc_df
-    monkeypatch.setattr(apps.CombineMetricsEquationDialog, 'exec_', lambda _: None)
+    monkeypatch.setattr(dialogs_combine_measurements.CombineMetricsEquationDialog, 'exec_', lambda _: None)
     viewer.combineMeasurements()
     assert viewer.acdc_df is original
     viewer.plotMeasurements.assert_not_called()
@@ -231,7 +233,7 @@ def test_combined_columns_are_exported(viewer, monkeypatch, tmp_path):
     viewer.combineMeasurements()
     filepath = tmp_path / 'combined.csv'
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         lambda *args: (str(filepath), '')
     )
     viewer.exportMeasurements()

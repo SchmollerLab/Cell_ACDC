@@ -10,7 +10,15 @@ from qtpy.QtWidgets import (
 from qtpy import QtGui
 
 from .. import exception_handler
-from .. import myutils, html_utils, workers, widgets, load, apps
+from .. import html_utils, load
+from cellacdc.myutils import app_info, filesystem, image_utils
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from qtpy.QtCore import (
     Signal, QObject, QMutex, QWaitCondition
 )
@@ -23,7 +31,7 @@ class repeatDataPrepWindow(QDialog):
 
         name = 'repeat data prep'
         
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module=name
         )
 
@@ -68,9 +76,9 @@ class repeatDataPrepWindow(QDialog):
         textLayout.addStretch(1)
 
         buttonsLayout = QHBoxLayout()
-        stopButton = widgets.stopPushButton('Stop process')
-        startButton = widgets.playPushButton('    Start     ')
-        cancelButton = widgets.cancelPushButton('Close')
+        stopButton = widgets_push_buttons.stopPushButton('Stop process')
+        startButton = widgets_push_buttons.playPushButton('    Start     ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Close')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -82,10 +90,10 @@ class repeatDataPrepWindow(QDialog):
         self.stopButton = stopButton
 
         progressBarLayout = QHBoxLayout()
-        self.progressBar = widgets.ProgressBarWithETA(parent=self)
+        self.progressBar = widgets_basic_widgets.ProgressBarWithETA(parent=self)
         progressBarLayout.addWidget(self.progressBar)
         progressBarLayout.addWidget(self.progressBar.ETA_label)
-        self.logConsole = widgets.QLogConsole(parent=self)
+        self.logConsole = widgets_basic_widgets.QLogConsole(parent=self)
 
         layout.addLayout(textLayout)
         layout.addSpacing(20)
@@ -110,7 +118,7 @@ class repeatDataPrepWindow(QDialog):
         self.startButton.hide()
         self.stopButton.show()
 
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = filesystem.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, 'Select experiment folder or specific Position folder', 
             MostRecentPath
@@ -120,9 +128,9 @@ class repeatDataPrepWindow(QDialog):
             self.stop()
             return
         
-        myutils.addToRecentPaths(exp_path, logger=self.logger)
+        filesystem.addToRecentPaths(exp_path, logger=self.logger)
         
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = filesystem.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         if is_pos_folder:
@@ -165,7 +173,7 @@ class repeatDataPrepWindow(QDialog):
         self.workerInitProgressBar(len(posFoldernames))
         
         self.thread = QThread()
-        self.worker = workers.reapplyDataPrepWorker(exp_path, posFoldernames)
+        self.worker = reapplyDataPrepWorker(exp_path, posFoldernames)
 
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
@@ -188,7 +196,7 @@ class repeatDataPrepWindow(QDialog):
             self.ch_names = ch_names
             self.basename = basename
             self.imagesPath = imagesPath
-            browseButton = widgets.browseFileButton(
+            browseButton = widgets_push_buttons.browseFileButton(
                 'Select .tif file to add and prep', start_dir=imagesPath,
                 title='Select .tif file to add and prep', ext={'TIFF files': '.tif'}
             )
@@ -196,7 +204,7 @@ class repeatDataPrepWindow(QDialog):
             additionalButtons = (browseButton,)
         else:
             additionalButtons = []
-        self.selectChannelWindow = widgets.QDialogListbox(
+        self.selectChannelWindow = widgets_item_views.QDialogListbox(
             'Select channel',
             'Select channel names to process:\n',
             ch_names, multiSelection=True, parent=self, 
@@ -210,7 +218,7 @@ class repeatDataPrepWindow(QDialog):
     
     def selectTifFileToAdd(self, tif_file_path):
         tif_filename = os.path.splitext(os.path.basename(tif_file_path))[0]
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             ext='.tif', basename=self.basename, 
             title='Insert a name for new channel', 
             hintText='Insert a name for the new channel', 
@@ -238,7 +246,7 @@ class repeatDataPrepWindow(QDialog):
     
     def warnCopyTifFileFailed(self, tif_file_path, newTifFilePath, error):
         tifFilename = os.path.basename(tif_file_path)
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(f"""
             Unfortunately, <b>copying and renaming</b> the file 
             <code>{tifFilename}</code> <b>failed</b> (see error detail below).<br><br>
@@ -256,7 +264,7 @@ class repeatDataPrepWindow(QDialog):
             'is <b>not a valid folder</b>. '
             'Select a folder that contains the Position_n folders'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.addShowInFileManagerButton(path)
         msg.critical(
             self, 'Incompatible folder', txt,
@@ -270,7 +278,7 @@ class repeatDataPrepWindow(QDialog):
             '<code>{images_path}</code><br><br>'
             '<b>does not valid channel files</b>.<br>'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
         msg.critical(self, err_title, err_msg)
         self.logger.info(err_title)
@@ -312,13 +320,13 @@ class repeatDataPrepWindow(QDialog):
         self.stopButton.hide()
 
         if self.worker.abort:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                 self, 'Process stopped', 
                 html_utils.paragraph('Data prep process stopped!')
             )
         else:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.information(
                 self, 'Process completed', 
                 html_utils.paragraph('Data prep process completed!')
@@ -394,7 +402,7 @@ class reapplyDataPrepWorker(QObject):
             posPath = os.path.join(self.expPath, pos)
             imagesPath = os.path.join(posPath, 'Images')
 
-            ls = myutils.listdir(imagesPath)
+            ls = filesystem.listdir(imagesPath)
             if p == 0:
                 ch_names, basenameNotFound = (
                     ch_name_selector.get_available_channels(ls, imagesPath)
@@ -481,7 +489,7 @@ class reapplyDataPrepWorker(QObject):
                     self.progress.emit('Saving prepped data...')
                     io.savez_compressed(posData.align_npz_path, imageData)
                     if hasattr(posData, 'tif_path'):
-                        myutils.to_tiff(
+                        image_utils.to_tiff(
                             posData.tif_path, imageData
                         )
 

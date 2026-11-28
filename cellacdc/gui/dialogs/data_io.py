@@ -22,8 +22,14 @@ from qtpy.QtWidgets import (
 from cellacdc import _window_stacking
 from cellacdc import load, html_utils
 from cellacdc import is_mac
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    item_views as widgets_item_views,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import fonts
 from cellacdc.shared.dialogs import base as dialogs_base
 
@@ -130,7 +136,7 @@ class QDialogZsliceAbsent(QDialog):
         
 
         cancelButtonLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
         cancelButtonLayout.addStretch(1)
         cancelButtonLayout.addWidget(cancelButton)
         cancelButtonLayout.addStretch(1)
@@ -202,12 +208,12 @@ class QDialogPbar(QDialog):
 
         self.progressLabel = QLabel()
 
-        self.QPbar = widgets.ProgressBar(self)
+        self.QPbar = widgets_basic_widgets.ProgressBar(self)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
         pBarLayout.addWidget(self.ETA_label, 0, 1)
 
-        self.metricsQPbar = widgets.ProgressBar(self)
+        self.metricsQPbar = widgets_basic_widgets.ProgressBar(self)
         self.metricsQPbar.setValue(0)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
@@ -229,7 +235,7 @@ class QDialogPbar(QDialog):
                 self.close()
 
     def askAbort(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             Aborting with <code>{self.abort_text}</code> to abort 
             is <b>not safe</b>.<br><br>
@@ -289,7 +295,7 @@ class SelectAcdcDfVersionToRestore(dialogs_base.QBaseDialog):
             timestamps = [datetime.datetime.strptime(key, f) for key in keys]
             items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
             mainLayout.addWidget(QLabel('Saved annotations:'))
-            self.savedListBox = widgets.listWidget()
+            self.savedListBox = widgets_item_views.listWidget()
             self.savedListBox.addItems(items)
             mainLayout.addWidget(self.savedListBox)
             self.savedListBox.itemSelectionChanged.connect(
@@ -301,7 +307,7 @@ class SelectAcdcDfVersionToRestore(dialogs_base.QBaseDialog):
             recovery_folderpath, 'never_saved'
         )
         self.neverSavedFolderpath = unsaved_recovery_folderpath
-        files = myutils.listdir(unsaved_recovery_folderpath)
+        files = filesystem.listdir(unsaved_recovery_folderpath)
         csv_files = [file for file in files if file.endswith('.csv')]
         self.neverSavedListBox = None
         if csv_files:
@@ -314,14 +320,14 @@ class SelectAcdcDfVersionToRestore(dialogs_base.QBaseDialog):
             ]
             items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
             mainLayout.addWidget(QLabel('Never saved annotations:'))
-            self.neverSavedListBox = widgets.listWidget()
+            self.neverSavedListBox = widgets_item_views.listWidget()
             self.neverSavedListBox.addItems(items)
             mainLayout.addWidget(self.neverSavedListBox)
             self.neverSavedListBox.itemSelectionChanged.connect(
                 self.onItemSelectionChanged
             )
                 
-        cancelOkLayout = widgets.CancelOkButtonsLayout()
+        cancelOkLayout = widgets_push_buttons.CancelOkButtonsLayout()
         
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
@@ -404,7 +410,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         
         row = 0
         gridLayout.addWidget(QLabel(f'Start {navVar}:'), row, 0)
-        self.startNavVarNumberEntry = widgets.SpinBox()
+        self.startNavVarNumberEntry = widgets_numeric_inputs.SpinBox()
         self.startNavVarNumberEntry.setMinimum(1)
         self.startNavVarNumberEntry.setMaximum(maxNavVar-1)
         self.startNavVarNumberEntry.setValue(startFrameNum)
@@ -412,7 +418,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel(f'Stop {navVar}:'), row, 0)
-        self.stopNavVarNumberEntry = widgets.SpinBox()
+        self.stopNavVarNumberEntry = widgets_numeric_inputs.SpinBox()
         self.stopNavVarNumberEntry.setMinimum(2)
         self.stopNavVarNumberEntry.setMaximum(maxNavVar)
         self.stopNavVarNumberEntry.setValue(maxNavVar)
@@ -426,12 +432,12 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('Frame rate (FPS):'), row, 0)
-        self.fpsWidget = widgets.FloatLineEdit(allowNegative=False)
+        self.fpsWidget = widgets_line_edits.FloatLineEdit(allowNegative=False)
         self.fpsWidget.setValue(10.0)
         gridLayout.addWidget(self.fpsWidget, row, 1)
         
         row += 1
-        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget = widgets_line_edits.IntLineEdit(allowNegative=False)
         self.dpiWidget.setValue(300)
         self.dpiWidget.label = QLabel('DPI')
         gridLayout.addWidget(self.dpiWidget.label, row, 0)
@@ -439,17 +445,17 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
-        self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
+        self.folderPathLineEdit = widgets_line_edits.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
         gridLayout.addWidget(self.folderPathLineEdit, row, 1)
-        self.browseButton = widgets.browseFileButton(
+        self.browseButton = widgets_push_buttons.browseFileButton(
             start_dir=startFolderpath, openFolder=True
         )
         gridLayout.addWidget(self.browseButton, row, 2)
         
         row += 1
         gridLayout.addWidget(QLabel('Filename:'), row, 0)
-        self.filenameLineEdit = widgets.alphaNumericLineEdit()
+        self.filenameLineEdit = widgets_line_edits.alphaNumericLineEdit()
         self.filenameLineEdit.setAlignment(Qt.AlignCenter)
         self.filenameLineEdit.setText(startFilename)
         gridLayout.addWidget(self.filenameLineEdit, row, 1)
@@ -458,7 +464,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('Add Scale Bar:'), row, 0)
-        self.addScaleBarToggle = widgets.Toggle()
+        self.addScaleBarToggle = widgets_push_buttons.Toggle()
         gridLayout.addWidget(
             self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter
         )
@@ -467,7 +473,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         if isTimelapseVideo:
             row += 1
             gridLayout.addWidget(QLabel('Add timestamp:'), row, 0)
-            self.addTimestampToggle = widgets.Toggle()
+            self.addTimestampToggle = widgets_push_buttons.Toggle()
             gridLayout.addWidget(
                 self.addTimestampToggle, row, 1, alignment=Qt.AlignCenter
             )
@@ -496,7 +502,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
-        self.saveFramesToggle = widgets.Toggle()
+        self.saveFramesToggle = widgets_push_buttons.Toggle()
         gridLayout.addWidget(
             self.saveFramesToggle, row, 1, alignment=Qt.AlignCenter
         )
@@ -504,7 +510,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         if isTimelapseVideo:
             row += 1
             gridLayout.addWidget(QLabel('Video compression quality preset (crf)'), row, 0)
-            self.crf_widget = widgets.IntLineEdit(allowNegative=False, initial=23, 
+            self.crf_widget = widgets_line_edits.IntLineEdit(allowNegative=False, initial=23, 
                                                 minimum=0, maximum=51)
             gridLayout.addWidget(self.crf_widget, row, 1)
             info_txt = """
@@ -528,7 +534,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
             <a href="https://trac.ffmpeg.org/wiki/Encode/H.264#crf">
             this page</a>.
             """
-            infobutton = widgets.infoPushButton(
+            infobutton = widgets_push_buttons.infoPushButton(
                 info_text=info_txt, 
                 info_title='Constant Rate Factor (CRF) information'
                 )
@@ -548,7 +554,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         if isTimelapseVideo:
             self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -584,7 +590,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         text = html_utils.paragraph(
             'The selected folder path is not a valid folder or does not exist'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Not a valid folder', text)
         return False
     
@@ -596,7 +602,7 @@ class ExportToVideoParametersDialog(dialogs_base.QBaseDialog):
         text = html_utils.paragraph(
             'The filename cannot be empty!'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Not a valid folder', text)
         return False
     
@@ -671,7 +677,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         
         row = 0
         gridLayout.addWidget(QLabel('View range X axis:'), row, 0)
-        self.xRangeSelector = widgets.RangeSelector(integers=True)
+        self.xRangeSelector = widgets_numeric_inputs.RangeSelector(integers=True)
         if startViewRange is not None:
             xRange, yRange = startViewRange
             self.xRangeSelector.setRange(*xRange)
@@ -679,7 +685,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('View range Y axis:'), row, 0)
-        self.yRangeSelector = widgets.RangeSelector(integers=True)
+        self.yRangeSelector = widgets_numeric_inputs.RangeSelector(integers=True)
         if startViewRange is not None:
             xRange, yRange = startViewRange
             self.yRangeSelector.setRange(*yRange)
@@ -687,7 +693,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('Width and Height:'), row, 0)
-        self.widthHeightSelector = widgets.RangeSelector(
+        self.widthHeightSelector = widgets_numeric_inputs.RangeSelector(
             integers=True, ordered=False
         )
         if startViewRange is not None:
@@ -696,7 +702,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
             height = int(yRange[1] - yRange[0])
             self.widthHeightSelector.setRange(width, height)
         gridLayout.addWidget(self.widthHeightSelector, row, 1)
-        self.lockSizeButton = widgets.LockPushButton()
+        self.lockSizeButton = widgets_push_buttons.LockPushButton()
         self.lockSizeButton.setCheckable(True)
         self.lockSizeButton.setToolTip(
             'Lock width and height'
@@ -710,7 +716,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
         
         row += 1
-        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget = widgets_line_edits.IntLineEdit(allowNegative=False)
         self.dpiWidget.setValue(300)
         self.dpiWidget.label = QLabel('DPI')
         gridLayout.addWidget(self.dpiWidget.label, row, 0)
@@ -720,17 +726,17 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
-        self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
+        self.folderPathLineEdit = widgets_line_edits.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
         gridLayout.addWidget(self.folderPathLineEdit, row, 1)
-        self.browseButton = widgets.browseFileButton(
+        self.browseButton = widgets_push_buttons.browseFileButton(
             start_dir=startFolderpath, openFolder=True
         )
         gridLayout.addWidget(self.browseButton, row, 2)
         
         row += 1
         gridLayout.addWidget(QLabel('Filename:'), row, 0)
-        self.filenameLineEdit = widgets.alphaNumericLineEdit()
+        self.filenameLineEdit = widgets_line_edits.alphaNumericLineEdit()
         self.filenameLineEdit.setAlignment(Qt.AlignCenter)
         self.filenameLineEdit.setText(startFilename)
         gridLayout.addWidget(self.filenameLineEdit, row, 1)
@@ -741,7 +747,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         
         row += 1
         gridLayout.addWidget(QLabel('Add Scale Bar:'), row, 0)
-        self.addScaleBarToggle = widgets.Toggle()
+        self.addScaleBarToggle = widgets_push_buttons.Toggle()
         gridLayout.addWidget(
             self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter
         )
@@ -762,7 +768,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
             self.widthHeightManuallyChanged
         )
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -907,7 +913,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         text = html_utils.paragraph(
             'The selected folder path is not a valid folder or does not exist'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Not a valid folder', text)
         return False
     
@@ -919,7 +925,7 @@ class ExportToImageParametersDialog(dialogs_base.QBaseDialog):
         text = html_utils.paragraph(
             'The filename cannot be empty!'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Not a valid folder', text)
         return False
     
@@ -994,13 +1000,13 @@ class AutoSaveIntervalDialog(dialogs_base.QBaseDialog):
         mainLayout = QVBoxLayout()
         
         self.autoSaveIntervalWidget = (
-            widgets.AutoSaveIntervalWidget(parent=self)
+            AutoSaveIntervalWidget(parent=self)
         )
         
         mainLayout.addWidget(QLabel('Autosave interval:'))
         mainLayout.addWidget(self.autoSaveIntervalWidget)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)

@@ -4,7 +4,14 @@ from functools import partial
 import pandas as pd
 
 from .. import exception_handler
-from .. import myutils, apps, widgets, html_utils, printl, workers
+from .. import html_utils, printl
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from . import segm_workers
 from .. import transformation, load
 from ..utils import base
 
@@ -15,7 +22,7 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
             self, app, title: str, infoText: str, parent=None,
             callbackOnFinished=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             app, title, module, infoText, parent
         )
@@ -31,7 +38,7 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
         if not endFilenameSegm:
             return False
         
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             'After clicking "Ok" you will be asked to <b>select the XML '
             'file</b> (.csv) containing the <b>tracking information</b>.'
@@ -75,14 +82,14 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
         
         imagesPath = os.path.join(posPath, 'Images')
         segmFilename = [
-            f for f in myutils.listdir(imagesPath) 
+            f for f in filesystem.listdir(imagesPath) 
             if f.endswith(f'{endFilenameSegm}.npz')
         ][0]
         basename = os.path.splitext(segmFilename)[0]
-        overWriteButton = widgets.savePushButton(
+        overWriteButton = widgets_push_buttons.savePushButton(
             'Overwrite existing segmentation file'
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=f'{basename}_',
             hintText='Insert a <b>filename for the tracked</b> masks file:',
             allowEmpty=False, defaultEntry='tracked', 
@@ -93,7 +100,7 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
         if win.cancel:
             return False
 
-        self.worker = workers.ApplyTrackInfoWorker(
+        self.worker = segm_workers.ApplyTrackInfoWorker(
             self, endFilenameSegm, csvPath, win.filename, columnsInfo, posPath
         )
         if self.callbackOnFinished is not None:
@@ -107,7 +114,7 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
         win.close()
     
     def askDeleteUntrackedIDs(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'Do you want to remove objects that were not tracked?'
         )

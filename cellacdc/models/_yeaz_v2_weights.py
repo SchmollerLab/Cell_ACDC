@@ -6,14 +6,15 @@ the GUI can configure models running in isolated environments.
 
 import os
 
-from cellacdc import load, myutils
+from cellacdc import load
+from cellacdc.myutils import downloads
 
 
 CUSTOM_WEIGHTS_JSON_FILENAME = 'custom_weights_name_filepath.json'
 
 
 def add_model_filepath(name: str, filepath: os.PathLike):
-    _, model_folderpath = myutils.get_model_path(
+    _, model_folderpath = downloads.get_model_path(
         'YeaZ_v2', create_temp_dir=False
     )
     custom_weights_json_file = os.path.join(
@@ -41,7 +42,7 @@ def load_models_filepath():
         'Bright-field': 'weights_budding_BF_multilab_0_1',
         'Fission yeast': 'weights_fission_multilab_0_2',
     }
-    _, model_folderpath = myutils.get_model_path(
+    _, model_folderpath = downloads.get_model_path(
         'YeaZ_v2', create_temp_dir=False
     )
     mapper = {

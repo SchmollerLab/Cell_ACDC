@@ -9,7 +9,7 @@ import itertools
 import shutil
 import pandas as pd
 
-from ... import load, myutils, io
+from ... import load, io
 import re
 from cellacdc.myutils import filesystem
 
@@ -89,7 +89,7 @@ def resize_imgs(images_path_in, factor, images_path_out=None, text_to_append='')
     if images_path_out is None:
         images_path_out = images_path_in
         
-    list_dir = myutils.listdir(images_path_in)
+    list_dir = filesystem.listdir(images_path_in)
     
     # Get a list of all PNG files in the input folder
     images_files = [
@@ -121,7 +121,7 @@ def edit_subs_bkgrROIs(
     if images_path_out is None:
         images_path_out = images_path_in
         
-    list_dir = myutils.listdir(images_path_in)
+    list_dir = filesystem.listdir(images_path_in)
 
     bkgrROIs_jsons = [file for file in list_dir if file.endswith("bkgrROIs.json")]
     bkgrROIs_npzs = [file for file in list_dir if file.endswith("bkgrROIs.npz")]
@@ -155,7 +155,7 @@ def edit_subs_bkgrROIs(
 
             data_scaled.append(data_part)
         
-        bkgrROIs_json_file_out = myutils.append_text_filename(
+        bkgrROIs_json_file_out = append_text_filename(
             bkgrROIs_json_file, text_to_append
         )
         images_path_out_file = os.path.join(
@@ -210,7 +210,7 @@ def edit_acdc_csvs(
         for column in columns_for_scaling:
             acdc_df[column] = (acdc_df[column] * factor).astype(int)
 
-        acdc_csv_file_out = myutils.append_text_filename(
+        acdc_csv_file_out = append_text_filename(
             acdc_csv_file, text_to_append
         )
         images_path_out_file = os.path.join(images_path_out, acdc_csv_file_out)
@@ -224,7 +224,7 @@ def edit_metadata(
     if images_path_out is None:
         images_path_out = images_path_in
         
-    list_dir = myutils.listdir(images_path_in)
+    list_dir = filesystem.listdir(images_path_in)
     data_to_scale_int = ["SizeX", "SizeY"]
     data_to_scale_float = ["PhysicalSizeY", "PhysicalSizeX"]
     metadata_files = [
@@ -251,7 +251,7 @@ def edit_metadata(
 
             new_metadata += ",".join(entries) + "\n"
 
-        metadata_file_out = myutils.append_text_filename(
+        metadata_file_out = append_text_filename(
             metadata_file, text_to_append
         )
         images_path_out_file = os.path.join(images_path_out, metadata_file_out)
@@ -267,7 +267,7 @@ def edit_lost_centroids(
     if images_path_out is None:
         images_path_out = images_path_in
         
-    list_dir = myutils.listdir(images_path_in)
+    list_dir = filesystem.listdir(images_path_in)
     
     lost_centroids_jsons = [
         file for file in list_dir 
@@ -295,7 +295,7 @@ def edit_lost_centroids(
                 frame_new.append(new_centroid)
             lost_centroids[frame_i] = frame_new
 
-        lost_centroids_json_out = myutils.append_text_filename(
+        lost_centroids_json_out = append_text_filename(
             lost_centroids_json, text_to_append
         )
         images_path_out_file = os.path.join(
@@ -334,7 +334,7 @@ def copy_aux_files(images_path_in, images_path_out=None):
     if images_path_out is None:
         images_path_out = images_path_in
 
-    list_dir = myutils.listdir(images_path_in)
+    list_dir = filesystem.listdir(images_path_in)
     files_endings = [
         "_last_tracked_i.txt", "_combine_metrics.ini", "_segm_hyperparams.ini"
     ]

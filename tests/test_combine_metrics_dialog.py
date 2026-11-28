@@ -5,7 +5,14 @@ from types import SimpleNamespace
 from qtpy.QtCore import QPoint, Qt
 from qtpy.QtWidgets import QApplication, QWidget
 
-from cellacdc import apps, cli, config, measurements, timepoint_predictors, widgets
+from cellacdc import cli, config, measurements, timepoint_predictors
+from cellacdc.shared.dialogs import (
+    combine_measurements as dialogs_combine_measurements,
+    preprocessing as dialogs_preprocessing,
+)
+from cellacdc.shared.widgets import search_widgets as widgets_search_widgets
+from cellacdc.utils import computeMultiChannel as utils_computeMultiChannel
+from qtpy.QtGui import QStandardItem, QStandardItemModel
 
 pytestmark = pytest.mark.viewer
 
@@ -33,7 +40,7 @@ def tables():
 
 @pytest.fixture
 def dialog(app, tables):
-    dialog = apps.CombineMetricsMultiDfsDialog(tables, ['GFP'])
+    dialog = utils_computeMultiChannel.CombineMetricsMultiDfsDialog(tables, ['GFP'])
     yield dialog
     dialog.close()
     dialog.deleteLater()
@@ -58,9 +65,9 @@ def tree_items(parent):
 @pytest.mark.parametrize('multi_table', [False, True])
 def test_measurement_search_matches_recipe_fuzzy_logic(app, tables, multi_table):
     if multi_table:
-        dialog = apps.CombineMetricsMultiDfsDialog(tables, ['GFP'])
+        dialog = utils_computeMultiChannel.CombineMetricsMultiDfsDialog(tables, ['GFP'])
     else:
-        dialog = apps.CombineMetricsEquationDialog(
+        dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
             ['GFP'], False, False, acdc_df=tables['first']
         )
     for tree in dialog.metricsTreeWidgets:
@@ -76,17 +83,17 @@ def test_measurement_search_matches_recipe_fuzzy_logic(app, tables, multi_table)
                 dialog.metricsTreeWidgets, dialog.metricsHighlightDelegates
             ):
             items = list(tree_items(tree.invisibleRootItem()))
-            flat = widgets.QStandardItemModel()
+            flat = QStandardItemModel()
             for item in items:
                 if not hasattr(item, 'isCol'):
                     continue
-                reference_item = widgets.QStandardItem(item.text(0))
+                reference_item = QStandardItem(item.text(0))
                 reference_item.setData(
-                    item.text(0), widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE
+                    item.text(0), widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE
                 )
                 flat.appendRow(reference_item)
-            reference = widgets.ButtonSearchCompleter(
-                searchRoles=(widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
+            reference = widgets_search_widgets.ButtonSearchCompleter(
+                searchRoles=(widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
                 tooltipRole=None,
             )
             reference.setSourceModel(flat)
@@ -140,13 +147,13 @@ def test_search_preserves_formula_and_inserts_suffixed_match(dialog):
 
 
 def test_both_dialogs_share_editor_and_controls(app, tables):
-    single = apps.CombineMetricsEquationDialog(
+    single = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP'], False, False, acdc_df=tables['first']
     )
-    multi = apps.CombineMetricsMultiDfsDialog(tables, ['GFP'])
+    multi = utils_computeMultiChannel.CombineMetricsMultiDfsDialog(tables, ['GFP'])
     assert type(single).__bases__ == type(multi).__bases__
     for dialog in (single, multi):
-        assert isinstance(dialog.equationDisplay, apps.FormulaEditWidget)
+        assert isinstance(dialog.equationDisplay, dialogs_combine_measurements.FormulaEditWidget)
         assert not dialog.okButton.isEnabled()
         assert not dialog.formulaEditWidget.checkValidity()[0]
         dialog.deleteLater()
@@ -155,9 +162,9 @@ def test_both_dialogs_share_editor_and_controls(app, tables):
 @pytest.mark.parametrize('multi_table', [False, True])
 def test_name_and_equation_inputs_stay_aligned(app, tables, multi_table):
     if multi_table:
-        dialog = apps.CombineMetricsMultiDfsDialog(tables, ['GFP'])
+        dialog = utils_computeMultiChannel.CombineMetricsMultiDfsDialog(tables, ['GFP'])
     else:
-        dialog = apps.CombineMetricsEquationDialog(
+        dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
             ['GFP'], False, False, acdc_df=tables['first']
         )
     suffix = '_table1' if multi_table else ''
@@ -228,7 +235,7 @@ def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, mode
         'stage': ['G1'],
         'known': [True],
     })
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP'], False, False, acdc_df=None if mode == 'no_table' else df,
         # Only the measurements viewer limits the catalog to loaded columns
         limitToLoadedColumns=(mode == 'viewer')
@@ -283,7 +290,7 @@ def test_main_gui_catalog_keeps_unsaved_and_channel_less_inputs(
         'cell_area_pxl': [10., 20.],
         'cell_cycle_stage': ['G1', 'S'],
     })
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP', 'RFP'], False, False, acdc_df=df, saveToConfig=False
     )
     assert not dialog.limitToLoadedColumns
@@ -308,7 +315,7 @@ def test_row_wise_test_data_copies_only_referenced_columns(app, monkeypatch):
     acdc_df, only the referenced columns of a limited number of rows
     (regression)."""
     _patch_small_catalog(monkeypatch)
-    monkeypatch.setattr(apps._CombineMetricsDialog, 'TEST_DATA_MAX_ROWS', 50)
+    monkeypatch.setattr(dialogs_combine_measurements._CombineMetricsDialog, 'TEST_DATA_MAX_ROWS', 50)
     nrows = 200
     df = pd.DataFrame({
         'GFP_mean': np.arange(nrows, dtype=float) + 1,
@@ -316,7 +323,7 @@ def test_row_wise_test_data_copies_only_referenced_columns(app, monkeypatch):
         'unrelated': np.zeros(nrows),
         'unrelated_obj': ['x'] * nrows,
     })
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP', 'RFP'], False, False, acdc_df=df, saveToConfig=False
     )
     dialog.newColNameLineEdit.setText('ratio')
@@ -336,7 +343,7 @@ def test_row_wise_test_data_copies_only_referenced_columns(app, monkeypatch):
 
 
 def test_catalog_with_empty_dataframe_has_no_measurements(app):
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP'], False, False, acdc_df=pd.DataFrame(),
         limitToLoadedColumns=True
     )
@@ -368,9 +375,9 @@ def test_categorical_buttons_build_valid_formulas(
         app, tables, multi_table, label, before, after, expected
     ):
     if multi_table:
-        dialog = apps.CombineMetricsMultiDfsDialog(tables, ['GFP'])
+        dialog = utils_computeMultiChannel.CombineMetricsMultiDfsDialog(tables, ['GFP'])
     else:
-        dialog = apps.CombineMetricsEquationDialog(
+        dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
             ['GFP'], False, False, acdc_df=tables['first']
         )
     suffix = '_table1' if multi_table else ''
@@ -432,7 +439,7 @@ def test_any_all_reduce_per_cell_and_repeat_on_each_frame(
             names=['frame_i', 'Cell_ID']
         )
     )
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP'], False, False, acdc_df=df, saveToConfig=False,
         allowCellAggregations=True
     )
@@ -475,7 +482,7 @@ def test_evaluate_equation_matches_per_cell_runtime(app, formula, indexed):
     })
     if indexed:
         df = df.set_index(['frame_i', 'Cell_ID'])
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         [], False, False, acdc_df=df, saveToConfig=False,
         allowCellAggregations=True
     )
@@ -541,8 +548,8 @@ def test_evaluate_cell_equation_fast_path_matches_per_cell(
     }, index=[10, 11, 12, 13, 14, 15])
     if indexed:
         df = df.set_index(['frame_i', 'Cell_ID'])
-    evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
-    assert apps._CombineMetricsDialog.isRowWiseFormula(formula) == row_wise
+    evaluate = dialogs_combine_measurements.CombineMetricsEquationDialog.evaluateCellEquation
+    assert dialogs_combine_measurements._CombineMetricsDialog.isRowWiseFormula(formula) == row_wise
     if dtype is bool and not formula.endswith('"G1"') and '>' not in formula:
         # Non-boolean results must be rejected by both paths
         with pytest.raises(ValueError):
@@ -568,7 +575,7 @@ def test_evaluate_equation_enforces_dtype(
         app, cell_functions, formula, dtype, valid
     ):
     df = pd.DataFrame({'value': [1., 2., 3.]})
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         [], False, False, acdc_df=df, saveToConfig=False,
         allowCellAggregations=cell_functions
     )
@@ -660,7 +667,7 @@ def test_multi_table_signals_and_close_contract(dialog):
 
 
 def test_single_table_categorical_inputs_and_persistence(app, tables, monkeypatch):
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP'], False, False, closeOnOk=False, acdc_df=tables['first']
     )
     tree = dialog.metricsTreeWidget
@@ -689,7 +696,7 @@ def test_single_table_categorical_inputs_and_persistence(app, tables, monkeypatc
 
 
 def test_single_channel_and_channel_less_equations_use_exact_tokens(app):
-    dialog = apps.CombineMetricsEquationDialog(['GFP', 'RFP'], False, False)
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(['GFP', 'RFP'], False, False)
     dialog.newColNameLineEdit.setText('ratio')
     dialog.formulaEditWidget.setText('GFP_mean / GFP_sum')
     assert dialog.getEquationsDict() == (
@@ -722,7 +729,7 @@ def test_saved_channel_equation_is_one_channel_variable(app, monkeypatch):
     monkeypatch.setattr(
         measurements, 'read_saved_user_combine_config', lambda: saved
     )
-    dialog = apps.CombineMetricsEquationDialog(['GFP', 'RFP'], False, False)
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(['GFP', 'RFP'], False, False)
     assert dialog.variableNames.count('GFP_ratio') == 1
     assert 'GFP_ratio' not in dialog.channelLessVariables
     # Saved channel-less equations stay channel-less inputs
@@ -753,7 +760,7 @@ def test_saved_channel_equation_is_one_channel_variable(app, monkeypatch):
 
 def test_formula_editor_no_longer_requires_channel_parent(app):
     parent = QWidget()
-    editor = apps.FormulaEditWidget(['img1', 'img2'], parent=parent)
+    editor = dialogs_combine_measurements.FormulaEditWidget(['img1', 'img2'], parent=parent)
     assert editor.checkValidity()[0]
     editor.setText('img1 + img2 * 0.5')
     assert editor.checkValidity()[0]
@@ -766,7 +773,7 @@ def test_formula_editor_no_longer_requires_channel_parent(app):
 
 def test_formula_editor_can_skip_live_validation_and_check_on_demand(app):
     checked = []
-    editor = apps.FormulaEditWidget(
+    editor = dialogs_combine_measurements.FormulaEditWidget(
         ['area'], validator=lambda formula: (
             checked.append(formula) or (True, formula)
         )
@@ -782,8 +789,8 @@ def test_formula_editor_can_skip_live_validation_and_check_on_demand(app):
 
 
 def test_channel_formula_preserves_forbidden_inputs_and_empty_formula(app, monkeypatch):
-    monkeypatch.setattr(apps.CombineChannelsSetupDialog, 'setLoadLastRecipe', lambda _: None)
-    dialog = apps.CombineChannelsSetupDialog(['GFP', 'RFP'])
+    monkeypatch.setattr(dialogs_preprocessing.CombineChannelsSetupDialog, 'setLoadLastRecipe', lambda _: None)
+    dialog = dialogs_preprocessing.CombineChannelsSetupDialog(['GFP', 'RFP'])
     assert dialog.formulaEditWidget.checkValidity()[0]
     dialog.formulaEditWidget.setText('img1 * 2')
     assert dialog.formulaEditWidget.checkValidity()[0]
@@ -799,7 +806,7 @@ def test_channel_formula_preserves_forbidden_inputs_and_empty_formula(app, monke
 
 
 def test_variable_replacement_preserves_literals_and_quoted_names(app):
-    editor = apps.FormulaEditWidget(['_mean', 'GFP_mean', 'cell area'])
+    editor = dialogs_combine_measurements.FormulaEditWidget(['_mean', 'GFP_mean', 'cell area'])
     editor.setText('(_mean / GFP_mean) + (`cell area` == "_mean")')
     assert editor.referencedVariableNames() == ['_mean', 'GFP_mean', 'cell area']
     assert editor.replaceVariableNames({'_mean': 'RFP_mean'}) == (
@@ -825,7 +832,7 @@ def test_digit_quoted_names_are_inputs(app, name):
         'frame_i': [0, 1, 0], 'Cell_ID': [1, 1, 2],
         name: [1., 2., 3.], 'cell_area_pxl': [10., 20., 30.],
     }).set_index(['frame_i', 'Cell_ID'])
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         [name.rsplit('_', 1)[0]], False, False, acdc_df=df,
         saveToConfig=False, allowCellAggregations=True,
         limitToLoadedColumns=True, closeOnOk=False
@@ -848,7 +855,7 @@ def test_digit_quoted_names_are_inputs(app, name):
 
 
 def test_full_table_test_catches_errors_outside_preview(app):
-    dialog = apps.CombineMetricsMultiDfsDialog({
+    dialog = utils_computeMultiChannel.CombineMetricsMultiDfsDialog({
         'first': pd.DataFrame({'value': ['1'] * 10 + ['bad']})
     }, [])
     dialog.formulaEditWidget.setText('value_table1.astype("float")')
@@ -953,7 +960,7 @@ def test_main_gui_yes_no_inputs_test_and_save_agree(
         'is_cell_excluded': [0, 1, 0, 0],
         'is_cell_dead': [0, 0, 0, 1],
     }))
-    dialog = apps.CombineMetricsEquationDialog(
+    dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
         ['GFP'], False, False, acdc_df=loaded, saveToConfig=False
     )
     dialog.newColNameLineEdit.setText('kept')

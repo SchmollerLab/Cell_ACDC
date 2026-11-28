@@ -14,11 +14,15 @@ from qtpy.QtWidgets import QButtonGroup
 from cellacdc import base_cca_dict
 from cellacdc import cca_df_colnames
 from cellacdc import html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from ..widgets import (
+    edit_toolbars as gui_widgets_edit_toolbars,
+    main_window_items as gui_widgets_main_window_items,
+)
 from cellacdc import settings_csv_path
 from cellacdc import autopilot
-from cellacdc.myutils import setupLogger
+from cellacdc.myutils.app_info import setupLogger
 from cellacdc.help import welcome, about
 from cellacdc.plot import imshow
 
@@ -179,7 +183,7 @@ class WindowGuiElements:
         self.gui_createBottomWidgetsToBottomLayout()
         self.searchWidget.registerSearchControls()
 
-        mainContainer = widgets.GuiCentralWidget()
+        mainContainer = gui_widgets_main_window_items.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = self.gui_createMainLayout()
@@ -230,7 +234,7 @@ class WindowGuiElements:
         self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
         self.timestampStartTimedelta = timedelta(seconds=0)
-        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+        self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
         self._ZprojWidgersEnabledState = None
@@ -574,7 +578,7 @@ class WindowGuiElements:
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
-        myutils.showInExplorer(path)
+        filesystem.showInExplorer(path)
 
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)
@@ -582,12 +586,12 @@ class WindowGuiElements:
 
     def openLogFile(self):
         self.logger.info(f'Opening log file "{self.log_path}"...')
-        myutils.showInExplorer(self.log_path)
+        filesystem.showInExplorer(self.log_path)
 
     def showLogFiles(self):
         log_files_path = os.path.dirname(self.log_path)
         self.logger.info(f'Opening log files folder "{log_files_path}"...')
-        myutils.showInExplorer(log_files_path)
+        filesystem.showInExplorer(log_files_path)
 
     def showTipsAndTricks(self):
         self.welcomeWin = welcome.welcomeWin()
@@ -630,7 +634,7 @@ class WindowGuiElements:
             <br><br>
             If you proceed, the <b>other windows will be closed too.<br>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Open windows', txt, 
             buttonsTexts=('Cancel', 'Ok, close now')

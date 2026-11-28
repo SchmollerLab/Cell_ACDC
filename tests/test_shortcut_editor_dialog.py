@@ -4,8 +4,19 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QAction, QKeySequence
 from qtpy.QtWidgets import QApplication, QWidget
 
-from cellacdc import apps, widgets
-from cellacdc.gui_viewer_tools import ShortcutsGuiElements
+from cellacdc.data_structure.dialogs import metadata as data_structure_dialogs_metadata
+from cellacdc.gui.dialogs import data_io as gui_dialogs_data_io
+from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
+from cellacdc.shared.dialogs import (
+    generic as dialogs_generic,
+    model_selection as dialogs_model_selection,
+)
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    lut_items as widgets_lut_items,
+    message_box as widgets_message_box,
+)
+from cellacdc.gui.mixins.window_core import ShortcutsGuiElements
 
 pytestmark = pytest.mark.gui
 
@@ -26,7 +37,7 @@ def make_actions(parent):
 @pytest.mark.parametrize('show', [False, True])
 def test_ok_works_with_and_without_delete_object_row(app, show):
     parent = QWidget()
-    dialog = apps.ShortcutEditorDialog(
+    dialog = gui_mixin_dialogs.ShortcutEditorDialog(
         make_actions(parent), delObjectKey='',
         delObjectButton='Middle click', zoomOutKeyValue=Qt.Key.Key_H,
         hard_shortcuts={'Ctrl+F': 'Foo'},
@@ -50,9 +61,16 @@ def test_conflicts_are_detected_with_mac_key_names(app, monkeypatch, isMac):
     # On macOS the line edits display 'Command+O' (textChanged passes it)
     # while ShortcutLineEdit.text() returns 'Ctrl+O': conflicts between
     # two line edits were never detected there
-    monkeypatch.setattr(widgets, 'is_mac', isMac)
+    # moved: is_mac is read in each of these modules
+    monkeypatch.setattr(data_structure_dialogs_metadata, 'is_mac', isMac)
+    monkeypatch.setattr(gui_dialogs_data_io, 'is_mac', isMac)
+    monkeypatch.setattr(dialogs_generic, 'is_mac', isMac)
+    monkeypatch.setattr(dialogs_model_selection, 'is_mac', isMac)
+    monkeypatch.setattr(widgets_line_edits, 'is_mac', isMac)
+    monkeypatch.setattr(widgets_lut_items, 'is_mac', isMac)
+    monkeypatch.setattr(widgets_message_box, 'is_mac', isMac)
     parent = QWidget()
-    dialog = apps.ShortcutEditorDialog(
+    dialog = gui_mixin_dialogs.ShortcutEditorDialog(
         make_actions(parent), zoomOutKeyValue=Qt.Key.Key_H,
         hard_shortcuts={'Ctrl+F': 'Foo'}, show_delete_object_shortcut=False
     )
@@ -101,7 +119,7 @@ def test_edit_shortcuts_applies_changes_and_keeps_hidden_delete_action(
         seen['show'] = dialog.show_delete_object_shortcut
         dialog.ok_cb()
 
-    monkeypatch.setattr(apps.ShortcutEditorDialog, 'exec_', accept)
+    monkeypatch.setattr(gui_mixin_dialogs.ShortcutEditorDialog, 'exec_', accept)
     host = _Host(show)
     host.editShortcuts_cb()
     assert seen['show'] == show
@@ -122,10 +140,11 @@ def test_edit_shortcuts_applies_changes_and_keeps_hidden_delete_action(
 
 
 def test_main_gui_shows_delete_object_row_and_viewer_hides_it():
-    from cellacdc import gui, measurements_viewer
+    from cellacdc.gui.main_window import window as gui_window
+    from cellacdc.measurements_viewer.main_window import window as viewer_window
     assert ShortcutsGuiElements.showDeleteObjectShortcut is True
-    assert gui.guiWin.showDeleteObjectShortcut is True
+    assert gui_window.guiWin.showDeleteObjectShortcut is True
     assert (
-        measurements_viewer.MeasurementsViewerWin.showDeleteObjectShortcut
+        viewer_window.MeasurementsViewerWin.showDeleteObjectShortcut
         is False
     )

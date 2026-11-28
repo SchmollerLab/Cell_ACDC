@@ -9,8 +9,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from cellacdc import _torch_utils, myutils
-from cellacdc._torch_utils import torch_requirement, torch_version_specifier
+from cellacdc import myutils
+from cellacdc.myutils import installs, torch_utils
+from cellacdc.myutils.torch_utils import (
+    torch_requirement,
+    torch_version_specifier,
+)
 from cellacdc.service import environment, prompts
 
 pytestmark = pytest.mark.models
@@ -22,9 +26,9 @@ def test_legacy_imports_reexport_torch_helpers():
         "get_pytorch_command", "get_torch_device", "get_torch_options",
         "get_torch_options_safe", "resolve_torch_link",
     ):
-        assert getattr(myutils, name) is getattr(_torch_utils, name)
-    assert environment.ensure_torch is _torch_utils.ensure_torch
-    assert environment._torch_import_check is _torch_utils._torch_import_check
+        assert getattr(myutils, name) is getattr(torch_utils, name)
+    assert environment.ensure_torch is torch_utils.ensure_torch
+    assert environment._torch_import_check is torch_utils._torch_import_check
 
 
 @pytest.mark.parametrize("gpu, cuda, mps, expected", [
@@ -41,7 +45,7 @@ def test_relocated_device_selection(monkeypatch, gpu, cuda, mps, expected):
         device=Mock(side_effect=lambda name: name),
     )
     monkeypatch.setitem(sys.modules, "torch", torch)
-    assert _torch_utils.get_torch_device(gpu=gpu) == expected
+    assert torch_utils.get_torch_device(gpu=gpu) == expected
     torch.device.assert_called_once_with(expected)
 
 
@@ -52,21 +56,22 @@ import sys
 from importlib.abc import MetaPathFinder
 import cellacdc
 
-sys.modules.pop('cellacdc._torch_utils', None)
+sys.modules.pop('cellacdc.myutils.torch_utils', None)
 
 class BlockHeavyImports(MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname.split('.')[0] in {'torch', 'torchvision', 'qtpy'} or fullname in {
-            'cellacdc.apps', 'cellacdc.widgets',
             'cellacdc.service.environment',
-        } or (
+        } or fullname.startswith((
+            'cellacdc.gui', 'cellacdc.shared.widgets', 'cellacdc.shared.dialogs',
+        )) or (
             fullname.startswith('cellacdc.myutils.')
             and fullname != 'cellacdc.myutils.torch_utils'
         ):
             raise AssertionError('Unexpected import: ' + fullname)
 
 sys.meta_path.insert(0, BlockHeavyImports())
-import cellacdc._torch_utils
+import cellacdc.myutils.torch_utils
 """
     subprocess.run(
         [sys.executable, "-c", script, "--server"],
@@ -152,7 +157,7 @@ def test_pinned_install_command_and_verification(
     ])
     monkeypatch.setattr(environment.subprocess, "run", run)
     options = Mock(return_value=([("CPU", "cpu-index"), ("CUDA", "cuda-index")], 1))
-    monkeypatch.setattr(_torch_utils, "get_torch_options_safe", options)
+    monkeypatch.setattr(torch_utils, "get_torch_options_safe", options)
     install = Mock()
     monkeypatch.setattr(environment, "run_streaming", install)
     logger = Mock()
@@ -190,7 +195,7 @@ def test_satisfied_pin_does_not_discover_or_install(monkeypatch):
         environment.subprocess, "run", Mock(return_value=Mock(returncode=0))
     )
     options = Mock(side_effect=AssertionError("Must remain lazy"))
-    monkeypatch.setattr(_torch_utils, "get_torch_options_safe", options)
+    monkeypatch.setattr(torch_utils, "get_torch_options_safe", options)
     install = Mock()
     monkeypatch.setattr(environment, "run_streaming", install)
     assert environment.ensure_torch("model-python", torch_version="2.5.1")
@@ -212,16 +217,16 @@ def test_cuda_options_filter_pinned_release(monkeypatch, torch_version, expected
         else platform.machine()
     )
     pages = {
-        _torch_utils.BASE_PYTORCH_LINK: "cu117 cu124 cu126",
-        f"{_torch_utils.BASE_PYTORCH_LINK}cu117/torch/":
+        torch_utils.BASE_PYTORCH_LINK: "cu117 cu124 cu126",
+        f"{torch_utils.BASE_PYTORCH_LINK}cu117/torch/":
             f"torch-1.13.1%2Bcu117-{py}-{py}-{wheel_platform}.whl",
-        f"{_torch_utils.BASE_PYTORCH_LINK}cu124/torch/":
+        f"{torch_utils.BASE_PYTORCH_LINK}cu124/torch/":
             f"torch-2.5.1%2Bcu124-{py}-{py}-{wheel_platform}.whl",
-        f"{_torch_utils.BASE_PYTORCH_LINK}cu126/torch/":
+        f"{torch_utils.BASE_PYTORCH_LINK}cu126/torch/":
             f"torch-2.6.0%2Bcu126-{py}-{py}-{wheel_platform}.whl",
     }
-    monkeypatch.setattr(_torch_utils, "_get", pages.__getitem__)
-    options, preferred = _torch_utils.get_torch_options(
+    monkeypatch.setattr(torch_utils, "_get", pages.__getitem__)
+    options, preferred = torch_utils.get_torch_options(
         driver_cuda_version=(13, 0), torch_version=torch_version
     )
     actual_tags = [url.rsplit("/", 1)[-1] if url else None for _, url in options]
@@ -240,20 +245,20 @@ def test_cuda_options_filter_pinned_release(monkeypatch, torch_version, expected
 def test_cuda_options_use_target_interpreter(
     monkeypatch, target_version, target_platform, machine, wheel_platform
 ):
-    monkeypatch.setattr(myutils.sys, "version_info", (3, 14))
-    monkeypatch.setattr(myutils.sys, "platform", "win32")
+    monkeypatch.setattr(sys, "version_info", (3, 14))
+    monkeypatch.setattr(sys, "platform", "win32")
     run = Mock(return_value=Mock(
         stdout=json.dumps([target_version, target_platform, machine])
     ))
-    monkeypatch.setattr(myutils.subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "run", run)
     pages = {
-        _torch_utils.BASE_PYTORCH_LINK: "cu117",
-        f"{_torch_utils.BASE_PYTORCH_LINK}cu117/torch/":
+        torch_utils.BASE_PYTORCH_LINK: "cu117",
+        f"{torch_utils.BASE_PYTORCH_LINK}cu117/torch/":
             f"torch-1.13.1%2Bcu117-cp310-cp310-{wheel_platform}.whl",
     }
-    monkeypatch.setattr(_torch_utils, "_get", pages.__getitem__)
+    monkeypatch.setattr(torch_utils, "_get", pages.__getitem__)
 
-    options, preferred = _torch_utils.get_torch_options(
+    options, preferred = torch_utils.get_torch_options(
         driver_cuda_version=(12, 4), torch_version="<2", exec_path="model-python"
     )
 
@@ -276,9 +281,9 @@ def test_target_interpreter_probe_script(monkeypatch):
         return result
 
     run = Mock(side_effect=run_probe)
-    monkeypatch.setattr(myutils.subprocess, "run", run)
-    monkeypatch.setattr(_torch_utils, "_get", lambda url: "")
-    _torch_utils.get_torch_options(
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(torch_utils, "_get", lambda url: "")
+    torch_utils.get_torch_options(
         driver_cuda_version=(12, 4), exec_path=Path(sys.executable)
     )
     run.assert_called_once()
@@ -295,10 +300,10 @@ def test_target_interpreter_probe_script(monkeypatch):
     json.JSONDecodeError("invalid probe output", "", 0),
 ])
 def test_target_interpreter_failure_is_not_hidden(monkeypatch, error):
-    monkeypatch.setattr(_torch_utils, "get_min_compute_cap", lambda: None)
-    monkeypatch.setattr(myutils.subprocess, "run", Mock(side_effect=error))
+    monkeypatch.setattr(torch_utils, "get_min_compute_cap", lambda: None)
+    monkeypatch.setattr(subprocess, "run", Mock(side_effect=error))
     with pytest.raises(type(error)):
-        _torch_utils.get_torch_options_safe(
+        torch_utils.get_torch_options_safe(
             driver_cuda_version=(12, 4), exec_path="model-python"
         )
 
@@ -310,13 +315,13 @@ def test_target_interpreter_failure_is_not_hidden(monkeypatch, error):
 ])
 def test_pytorch_command_pins_torch_only(monkeypatch, constraint, requirement):
     monkeypatch.setattr(
-        _torch_utils, "_safe_torch_options",
+        torch_utils, "_safe_torch_options",
         Mock(return_value=([("CPU", "cpu-index")], 0)),
     )
     monkeypatch.setattr(
-        myutils, "get_pip_conda_prefix", lambda **kwargs: ("", "python -m pip install")
+        installs, "get_pip_conda_prefix", lambda **kwargs: ("", "python -m pip install")
     )
-    result = _torch_utils.get_pytorch_command(torch_version=constraint)
+    result = torch_utils.get_pytorch_command(torch_version=constraint)
     commands = next(iter(result.values()))["Pip"]
     assert commands["CPU"] == (
         f"python -m pip install {requirement} torchvision --index-url cpu-index"
@@ -333,15 +338,15 @@ def test_install_dialog_preserves_pin_across_platforms(
     monkeypatch, torch_version, torch_spec
 ):
     from qtpy.QtWidgets import QApplication, QLabel
-    from cellacdc import apps
+    from cellacdc.shared.dialogs import model_selection as dialogs_model_selection
 
     app = QApplication.instance() or QApplication([])
     options = Mock(return_value=([("CPU", "cpu-index"), ("CUDA", "cuda-index")], 1))
-    monkeypatch.setattr(_torch_utils, "get_torch_options_safe", options)
+    monkeypatch.setattr(torch_utils, "get_torch_options_safe", options)
     monkeypatch.setattr(
-        myutils, "get_pip_conda_prefix", lambda **kwargs: ("", "python -m pip install")
+        installs, "get_pip_conda_prefix", lambda **kwargs: ("", "python -m pip install")
     )
-    dialog = apps.InstallPyTorchDialog(
+    dialog = dialogs_model_selection.InstallPyTorchDialog(
         target_python="model-python", platform=sys.platform, found_cuda_version=False,
         torch_version=torch_version,
     )
@@ -359,7 +364,7 @@ def test_install_dialog_preserves_pin_across_platforms(
                 assert dialog.commandWidget.command() == base_command
             else:
                 if sys.platform == "darwin":
-                    preferred_index = cpu_index = f"{_torch_utils.BASE_PYTORCH_LINK}cpu"
+                    preferred_index = cpu_index = f"{torch_utils.BASE_PYTORCH_LINK}cpu"
                 else:
                     preferred_index, cpu_index = "cuda-index", "cpu-index"
                 assert dialog.commandWidget.command() == (
@@ -403,11 +408,11 @@ def test_invalid_torch_constraint_is_rejected(value):
 
 
 def test_qt_prompt_forwards_pin(monkeypatch):
-    from cellacdc import apps
+    from cellacdc.shared.dialogs import model_selection as dialogs_model_selection
 
     dialog = Mock(cancel=False, command="pinned install")
     constructor = Mock(return_value=dialog)
-    monkeypatch.setattr(apps, "InstallPyTorchDialog", constructor)
+    monkeypatch.setattr(dialogs_model_selection, "InstallPyTorchDialog", constructor)
     handler = object.__new__(prompts.QtHandler)
     handler.parent = None
     request = prompts.choice(

@@ -25,8 +25,12 @@ import pyqtgraph as pg
 
 from cellacdc import exception_handler, disableWindow
 from cellacdc import graphLayoutBkgrColor, darkBkgrColor
-from cellacdc import load, apps, workers, html_utils
-from cellacdc import myutils, widgets, colors
+from cellacdc import load, html_utils
+from cellacdc.shared.dialogs import image_tools as dialogs_image_tools
+from . import dialogs as gui_mixin_dialogs
+from cellacdc import colors
+from cellacdc.myutils import filesystem, installs
+from . import widgets as gui_mixin_widgets
 from . import navigation as gui_navigation, overlay as gui_overlay
 from cellacdc import _warnings
 from cellacdc import settings_folderpath, settings_csv_path
@@ -41,7 +45,7 @@ class ZoomGuiElements:
         Y, X = self.currentLab2D.shape
         # Label ROI rectangle
         pen = pg.mkPen('r', width=3, style=Qt.DashLine)
-        self.zoomRectItem = widgets.ZoomROI(
+        self.zoomRectItem = gui_mixin_widgets.ZoomROI(
             (0,0), (0,0),
             maxBounds=QRectF(QRect(0,0,X,Y)),
             scaleSnap=True,
@@ -156,9 +160,9 @@ class ScaleBarTimestampGuiElements:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1ViewRange()
-            self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
+            self.timestampDialog = gui_mixin_dialogs.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
-            self.timestamp = widgets.TimestampItem(
+            self.timestamp = gui_mixin_widgets.TimestampItem(
                 Y, X, viewRange, 
                 secondsPerFrame=posData.TimeIncrement,
                 start_timedelta=self.timestampStartTimedelta
@@ -210,11 +214,11 @@ class ScaleBarTimestampGuiElements:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape[:2]
             viewRange = self.ax1ViewRange()
-            self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
+            self.scaleBarDialog = gui_mixin_dialogs.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
             )
             self.scaleBarDialog.show()
-            self.scaleBar = widgets.ScaleBar(
+            self.scaleBar = gui_mixin_widgets.ScaleBar(
                 (Y, X), viewRange, parent=self.ax1
             )
             self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
@@ -253,7 +257,7 @@ class ScaleBarTimestampGuiElements:
     def editScaleBarProperties(self, properties):
         Y, X = self.img1.image.shape[:2]
         posData = self.data[self.pos_i]
-        self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
+        self.scaleBarDialog = gui_mixin_dialogs.ScaleBarPropertiesDialog(
             X, Y, posData.PhysicalSizeX, parent=self, **properties
         )
         self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
@@ -263,7 +267,7 @@ class ScaleBarTimestampGuiElements:
         self.addTimestampAction.setChecked(False)
 
     def editTimestampProperties(self, properties):
-        self.timestampDialog = apps.TimestampPropertiesDialog(
+        self.timestampDialog = gui_mixin_dialogs.TimestampPropertiesDialog(
             parent=self, **properties
         )
         self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
@@ -583,7 +587,7 @@ class SlideshowGuiElements:
         posData = self.data[self.pos_i]
         self.determineSlideshowWinPos()
         if self.slideshowButton.isChecked():
-            self.slideshowWin = apps.imageViewer(
+            self.slideshowWin = dialogs_image_tools.imageViewer(
                 parent=self,
                 button_toUncheck=self.slideshowButton,
                 linkWindow=posData.SizeT > 1,
@@ -660,14 +664,14 @@ class Volume3DViewerGuiElements:
         QTimer.singleShot(300, partial(self._launch3dViewer, checked))
 
     def _launch3dViewer(self, checked):
-        myutils.check_install_package(
+        installs.check_install_package(
             'PyOpenGL',
             import_pkg_name='OpenGL',
             pypi_name='PyOpenGL',
             parent=self,
         )
         
-        myutils.check_install_package(
+        installs.check_install_package(
             'VisPy',
             import_pkg_name='vispy',
             pypi_name='vispy',
@@ -704,7 +708,7 @@ class Volume3DViewerGuiElements:
         for filename, ol_image_data in ol_data.items():
             volume = ol_image_data
 
-            channel_name = myutils.get_chname_from_basename(
+            channel_name = filesystem.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             volumes[channel_name] = volume
@@ -955,11 +959,3 @@ class BottomLayoutGuiElements:
             return
         self.doubleKeyTimeElapsed = True
         self.countKeyPress = 0
-
-
-# cellacdc-refactor: intermediate compat block (removed in C12)
-# Names that moved out of this module stay reachable here with a
-# DeprecationWarning (cellacdc/_compat.py, see CODEMAP.md).
-from cellacdc import _compat as _acdc_compat  # noqa: E402
-
-__getattr__, __dir__ = _acdc_compat.moved_module(__name__)

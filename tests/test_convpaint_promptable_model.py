@@ -241,11 +241,11 @@ def test_init_configures_convpaint(monkeypatch):
 
 
 def test_model_arg_spec_exposes_gui_params():
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
 
     had_convpaint = 'napari_convpaint' in sys.modules
     module = _load_module()
-    init_params, segment_params = myutils_models.getModelArgSpec(module)
+    init_params, segment_params = model_modules.getModelArgSpec(module)
     # Inspecting the arguments does not import ConvPaint
     assert ('napari_convpaint' in sys.modules) == had_convpaint
 
@@ -258,10 +258,10 @@ def test_model_arg_spec_exposes_gui_params():
         'seg_smoothening', 'min_object_size'
     ]
     assert [p.default for p in segment_params] == [1, 0]
-    assert not myutils_models.model_init_requires_segm_data(module)
+    assert not model_modules.model_init_requires_segm_data(module)
 
     kinds = {
-        p.name: myutils_models._serialize_model_param_type(p.type)
+        p.name: model_modules._serialize_model_param_type(p.type)
         for p in init_params + segment_params
     }
     assert kinds['feature_extractor'] == {
@@ -925,11 +925,11 @@ def test_import_convpaint_model_not_installed(monkeypatch):
 
 
 def test_package_import_checks_installation_only(monkeypatch):
-    from cellacdc import myutils, myutils_models
+    from cellacdc.myutils import model_installs, model_modules, segm_models
 
     calls = []
     monkeypatch.setattr(
-        myutils, 'check_install_convpaint', lambda: calls.append(True)
+        model_installs, 'check_install_convpaint', lambda: calls.append(True)
     )
     for name in (
             'cellacdc.promptable_models.ConvPaint',
@@ -938,20 +938,20 @@ def test_package_import_checks_installation_only(monkeypatch):
         monkeypatch.delitem(sys.modules, name, raising=False)
     had_convpaint = 'napari_convpaint' in sys.modules
 
-    module = myutils_models.import_promptable_segment_module('ConvPaint')
+    module = model_modules.import_promptable_segment_module('ConvPaint')
 
     assert calls == [True]
     assert module.Model.prompt_types == ('brush_stroke',)
     # ConvPaint itself is imported only when the model is created
     assert ('napari_convpaint' in sys.modules) == had_convpaint
-    assert 'ConvPaint' in myutils.get_list_of_promptable_models()
+    assert 'ConvPaint' in segm_models.get_list_of_promptable_models()
 
 
 @pytest.mark.parametrize('installed_version', [None, '1.1', '1.2.0'])
 def test_check_install_convpaint_never_imports_napari_convpaint(
         monkeypatch, installed_version
     ):
-    from cellacdc import myutils
+    from cellacdc.myutils import installs, model_installs
 
     import importlib.machinery
 
@@ -964,13 +964,13 @@ def test_check_install_convpaint_never_imports_napari_convpaint(
         modules_during_check.append(sys.modules.get('napari_convpaint'))
 
     monkeypatch.setattr(
-        myutils, 'check_install_torch', lambda: calls.append('torch')
+        model_installs, 'check_install_torch', lambda: calls.append('torch')
     )
     monkeypatch.setattr(
-        myutils, 'check_install_package', fake_check_install_package
+        installs, 'check_install_package', fake_check_install_package
     )
     monkeypatch.setattr(
-        myutils, 'get_package_version', lambda name: installed_version
+        installs, 'get_package_version', lambda name: installed_version
     )
     find_spec = importlib.util.find_spec
     # Package spec without a loader: if `__init__.py` were executed,
@@ -987,9 +987,9 @@ def test_check_install_convpaint_never_imports_napari_convpaint(
     monkeypatch.setattr(importlib.util, 'find_spec', fake_find_spec)
     monkeypatch.delitem(sys.modules, 'napari_convpaint', raising=False)
 
-    myutils.check_install_convpaint()
+    model_installs.check_install_convpaint()
 
-    assert calls[:2] == ['torch', (myutils._CONVPAINT_PACKAGES, {})]
+    assert calls[:2] == ['torch', (model_installs._CONVPAINT_PACKAGES, {})]
     if installed_version == '1.2.0':
         assert len(calls) == 2
     else:
@@ -1013,20 +1013,20 @@ def test_check_install_convpaint_never_imports_napari_convpaint(
 
 def test_convpaint_environment_config(monkeypatch):
     import importlib.metadata
-    from cellacdc import myutils
+    from cellacdc.myutils import installs, model_installs
     from cellacdc.service import environment
 
     config = environment.load_model_env_config('ConvPaint')
     assert config['python'] == '3.12'
     assert config['torch'] is True
     # Same dependencies in the isolated and in the main environment
-    assert config['packages'] == myutils._CONVPAINT_PACKAGES
+    assert config['packages'] == model_installs._CONVPAINT_PACKAGES
     defaults = dict(
         min_version='', max_version='', exact_version='',
         include_lower_version=False, include_higher_version=False,
     )
     specs = {
-        spec['pkg_name']: spec for spec in myutils._normalize_pkg_specs(
+        spec['pkg_name']: spec for spec in installs._normalize_pkg_specs(
             config['packages'], '', '', defaults
         )
     }
@@ -1035,10 +1035,10 @@ def test_convpaint_environment_config(monkeypatch):
     assert specs['pyyaml']['import_pkg_name'] == 'yaml'
     assert specs['scikit-image']['import_pkg_name'] == 'skimage'
     # Minimum versions are inclusive
-    myutils._check_package_version_constraints(specs['catboost'], '1.2.8')
-    myutils._check_package_version_constraints(specs['timm'], '1.0.20')
+    installs._check_package_version_constraints(specs['catboost'], '1.2.8')
+    installs._check_package_version_constraints(specs['timm'], '1.0.20')
     with pytest.raises(ModuleNotFoundError):
-        myutils._check_package_version_constraints(specs['catboost'], '1.2.7')
+        installs._check_package_version_constraints(specs['catboost'], '1.2.7')
 
     step, = config['setup_steps']
     assert step['commands'] == [

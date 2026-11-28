@@ -17,9 +17,14 @@ if GUI_INSTALLED:
     )
     from qtpy.QtCore import Qt
     from qtpy.QtGui import QFont
-    from . import widgets, apps
+    from cellacdc.shared.dialogs import model_params as dialogs_model_params
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
 
-from . import myutils, printl, html_utils, load
+from . import printl, html_utils, load
+from cellacdc.myutils import filesystem
 from . import settings_folderpath
 
 class select_channel_name:
@@ -103,7 +108,7 @@ class select_channel_name:
         ):
         # First check if metadata.csv already has the channel names
         metadata_csv_path = None
-        for file in myutils.listdir(images_path):
+        for file in filesystem.listdir(images_path):
             if file.endswith('metadata.csv'):
                 metadata_csv_path = os.path.join(images_path, file)
                 break
@@ -119,7 +124,7 @@ class select_channel_name:
                 return channel_names, False
         
         # Next, check if there is the symlink.ini file
-        for file in myutils.listdir(images_path):
+        for file in filesystem.listdir(images_path):
             if file.endswith('_symlink.ini'):
                 channel_names = load.get_channel_names_from_symlink(
                     os.path.join(images_path, file)
@@ -132,7 +137,7 @@ class select_channel_name:
         
         # Find basename as intersection of filenames
         self.basenameNotFound = False
-        isBasenamePresent = myutils.checkDataIntegrity(filenames, images_path)
+        isBasenamePresent = filesystem.checkDataIntegrity(filenames, images_path)
         if basename is None:
             basename = filenames[0]
         basename = filenames[0]
@@ -227,7 +232,7 @@ class select_channel_name:
                 txt.write(selection)
     
     def askChannelName(self, filenames, images_path, ask, ch_names):
-        from . import apps
+        from cellacdc.shared.dialogs import generic as dialogs_generic
         if not ask:
             return ch_names
         filename = self.basename
@@ -245,7 +250,7 @@ class select_channel_name:
             you want to use as <b>the channel name</b>.<br><br>
             Filename: <code>{filename}</code>
         """)
-        win = apps.QDialogCombobox(
+        win = dialogs_generic.QDialogCombobox(
             'Select channel name', possibleChannelNames, txt, 
             CbLabel='Select channel name:  ', parent=None, centeredCombobox=True
         )
@@ -268,10 +273,10 @@ class select_channel_name:
 
     def QtPrompt(self, parent, channel_names, informativeText='',
                  CbLabel='Select channel name:  '):
-        from . import apps
+        from cellacdc.shared.dialogs import generic as dialogs_generic
         font = QFont()
         font.setPixelSize(13)
-        win = apps.QDialogCombobox(
+        win = dialogs_generic.QDialogCombobox(
             'Select channel name',
             channel_names,
             informativeText,
@@ -307,13 +312,13 @@ class select_channel_name:
             exit('Execution aborted by the user')
 
 def exportToImageFinished(filepath, qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     
     txt = 'Exporting to image done!'
     txt = f'{txt}<br><br>Files were saved here:'
     
     txt = html_utils.paragraph(txt)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.information(
         qparent, 'Exporting image finished', txt, 
         commands=(filepath,), 
@@ -323,7 +328,7 @@ def exportToImageFinished(filepath, qparent=None):
 def exportToVideoFinished(
         preferences, conversion_to_mp4_successful, qparent=None
     ):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     
     txt = 'Exporting to video finished!'
     
@@ -349,7 +354,7 @@ def exportToVideoFinished(
     if preferences['save_pngs']:
         commands.append(preferences['pngs_folderpath'])
     
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     getattr(msg, msg_type)(
         qparent, 'Exporting video finished', txt, 
         commands=commands, path_to_browse=folderpath
@@ -363,15 +368,15 @@ def askSamSaveEmbeddings(qparent=None):
     prompts).<br><br>
     Do you want to <b>save the image embeddings</b>?
     """)
-    saveOnlyButton = widgets.BedPushButton('Save only embeddings')
-    saveButton = widgets.BedPlusLabelPushButton('Save also embeddings')
-    saveOnlyButton = widgets.BedPushButton('Save only embeddings')
-    msg = widgets.myMessageBox(wrapText=False)
+    saveOnlyButton = widgets_push_buttons.BedPushButton('Save only embeddings')
+    saveButton = widgets_push_buttons.BedPlusLabelPushButton('Save also embeddings')
+    saveOnlyButton = widgets_push_buttons.BedPushButton('Save only embeddings')
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     _, saveOnlyButton, saveButton, _ = msg.question(
         qparent, 'Save SAM Image Embeddings?', txt, 
         buttonsTexts=(
             'Cancel', saveOnlyButton, saveButton, 
-            widgets.NoBedPushButton('Do not save embeddings')
+            widgets_push_buttons.NoBedPushButton('Do not save embeddings')
         )
     )
     sam_only_embeddings = msg.clickedButton == saveOnlyButton
@@ -387,12 +392,12 @@ def askSamLoadEmbeddings(
     If you load the embeddings, computation time will be much lower.<br><br>
     Do you want to <b>load the image embeddings</b>?
     """)
-    msg = widgets.myMessageBox(wrapText=False)
-    loadButton = widgets.BedPlusLabelPushButton('Load embeddings and segment')
-    doNotLoadButton = widgets.NoBedPushButton('Do not load embeddings')
+    msg = widgets_message_box.myMessageBox(wrapText=False)
+    loadButton = widgets_push_buttons.BedPlusLabelPushButton('Load embeddings and segment')
+    doNotLoadButton = widgets_push_buttons.NoBedPushButton('Do not load embeddings')
     buttons = (loadButton, doNotLoadButton)
     if is_gui_caller:
-        loadOnlyEmbedButton = widgets.BedPushButton('Only load embeddings')
+        loadOnlyEmbedButton = widgets_push_buttons.BedPushButton('Only load embeddings')
         buttons = (loadOnlyEmbedButton, *buttons)
     
     msg.question(
@@ -418,7 +423,7 @@ def init_prompt_model_params(
     existingSegmEndnames = load.get_endnames(
         posData.basename, segm_files
     )
-    win = apps.QDialogModelParams(
+    win = dialogs_model_params.QDialogModelParams(
         init_params,
         segment_params,
         model_name, 
@@ -472,7 +477,7 @@ def init_segm_model_params(
     existingSegmEndnames = load.get_endnames(
         posData.basename, segm_files
     )
-    win = apps.QDialogModelParams(
+    win = dialogs_model_params.QDialogModelParams(
         init_params,
         segment_params,
         model_name, parent=qparent,

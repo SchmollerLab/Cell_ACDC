@@ -25,7 +25,8 @@ from qtpy.QtWidgets import (
 )
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import myutils, html_utils
+from cellacdc import html_utils
+from cellacdc.myutils import filesystem
 from cellacdc import colors
 from cellacdc import QtScoped
 from . import message_box as widgets_message_box
@@ -457,12 +458,12 @@ class showInFileManagerButton(PushButton):
             self.setDefaultText()
     
     def setDefaultText(self):
-        self._text = myutils.get_show_in_file_manager_text()
+        self._text = filesystem.get_show_in_file_manager_text()
         self.setText(self._text)
 
     def setPathToBrowse(self, path: os.PathLike):
         self._path_to_browse = path
-        self.clicked.connect(partial(myutils.showInExplorer, path))
+        self.clicked.connect(partial(filesystem.showInExplorer, path))
 
 
 

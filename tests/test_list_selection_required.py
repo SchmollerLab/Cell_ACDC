@@ -19,12 +19,18 @@ from qtpy.QtWidgets import (
 )
 
 import cellacdc
-from cellacdc import widgets
-from cellacdc.gui import guiWin
-from cellacdc.gui_overlay import (
-    OverlayChannelsGuiElements, OverlayLabelsGuiElements
+from cellacdc.gui.dialogs import segmentation as gui_dialogs_segmentation
+from cellacdc.myutils import segm_models
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
 )
-from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc.gui.main_window.window import guiWin
+from cellacdc.gui.mixins.overlay import (
+    OverlayChannelsGuiElements,
+    OverlayLabelsGuiElements,
+)
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.utils import concat
 
 pytestmark = pytest.mark.gui
@@ -51,7 +57,7 @@ def test_select_item_keeps_the_list_open_until_an_item_is_selected(
     viewer._startupConfigurationPrompted = True
     warnings = []
     monkeypatch.setattr(
-        widgets.QDialogListbox, 'warnSelectionEmpty',
+        widgets_item_views.QDialogListbox, 'warnSelectionEmpty',
         lambda dialog: warnings.append(dialog.isVisible())
     )
     steps = []
@@ -60,7 +66,7 @@ def test_select_item_keeps_the_list_open_until_an_item_is_selected(
         # Record only: never assert inside a timer slot
         dialogs = [
             widget for widget in app.topLevelWidgets()
-            if isinstance(widget, widgets.QDialogListbox)
+            if isinstance(widget, widgets_item_views.QDialogListbox)
             and widget.isVisible()
         ]
         if not dialogs:
@@ -97,10 +103,10 @@ def test_empty_selection_warning_matches_the_selection_mode(
     ):
     texts = []
     monkeypatch.setattr(
-        widgets.myMessageBox, 'warning',
+        widgets_message_box.myMessageBox, 'warning',
         lambda self, parent, title, text, *args, **kwargs: texts.append(text)
     )
-    dialog = widgets.QDialogListbox(
+    dialog = widgets_item_views.QDialogListbox(
         'Select', 'Select:', ['a', 'b'], multiSelection=multiSelection,
         allowEmptySelection=False
     )
@@ -123,7 +129,7 @@ def no_sender(monkeypatch):
     segfaults (Ubuntu PyQt5 CI)."""
     calls = []
     monkeypatch.setattr(
-        widgets.QDialogListbox, 'sender',
+        widgets_item_views.QDialogListbox, 'sender',
         lambda self: calls.append(self), raising=False
     )
     return calls
@@ -131,7 +137,7 @@ def no_sender(monkeypatch):
 
 def test_ok_cb_called_directly_reports_the_ok_button(app, monkeypatch):
     senderCalls = no_sender(monkeypatch)
-    dialog = widgets.QDialogListbox(
+    dialog = widgets_item_views.QDialogListbox(
         'Select', 'Select:', ['a', 'b'], multiSelection=False,
         allowEmptySelection=False
     )
@@ -143,7 +149,7 @@ def test_ok_cb_called_directly_reports_the_ok_button(app, monkeypatch):
     dialog.deleteLater()
 
     # Double-click on an item = OK
-    dialog = widgets.QDialogListbox(
+    dialog = widgets_item_views.QDialogListbox(
         'Select', 'Select:', ['a', 'b'], multiSelection=False
     )
     dialog.listBox.itemDoubleClicked.emit(dialog.listBox.item(1))
@@ -157,11 +163,11 @@ def test_additional_buttons_answer_without_a_selection(app, monkeypatch):
     senderCalls = no_sender(monkeypatch)
     warnings = []
     monkeypatch.setattr(
-        widgets.QDialogListbox, 'warnSelectionEmpty',
+        widgets_item_views.QDialogListbox, 'warnSelectionEmpty',
         lambda dialog: warnings.append(dialog)
     )
     # As segm.py's tracker list: "Do not track" needs no tracker
-    dialog = widgets.QDialogListbox(
+    dialog = widgets_item_views.QDialogListbox(
         'Track objects?', 'Select tracker:', ['A', 'B'],
         additionalButtons=['Do not track'], multiSelection=False,
         allowEmptySelection=False
@@ -175,7 +181,7 @@ def test_additional_buttons_answer_without_a_selection(app, monkeypatch):
     dialog.deleteLater()
 
     # OK still needs a selection
-    dialog = widgets.QDialogListbox(
+    dialog = widgets_item_views.QDialogListbox(
         'Track objects?', 'Select tracker:', ['A', 'B'],
         additionalButtons=['Do not track'], multiSelection=False,
         allowEmptySelection=False
@@ -205,7 +211,7 @@ def test_concat_no_button_skips_copying_without_a_selection(
         noButton.click()
         clicked.append((dialog, noButton))
 
-    monkeypatch.setattr(widgets.QDialogListbox, 'exec_', exec_)
+    monkeypatch.setattr(widgets_item_views.QDialogListbox, 'exec_', exec_)
     host = QWidget()
     worker = host.worker = Mock(abort=False)
     try:
@@ -328,13 +334,13 @@ def test_tracker_selection_requires_a_tracker(app, monkeypatch):
     # `selectedItemsText[0]`
     warned = []
     monkeypatch.setattr(
-        widgets.QDialogListbox, 'warnSelectionEmpty',
+        widgets_item_views.QDialogListbox, 'warnSelectionEmpty',
         lambda dialog: warned.append(dialog)
     )
     monkeypatch.setattr(
-        widgets.myutils, 'get_list_of_trackers', lambda: ['A', 'B']
+        segm_models, 'get_list_of_trackers', lambda: ['A', 'B']
     )
-    dialog = widgets.selectTrackerGUI(3)
+    dialog = gui_dialogs_segmentation.selectTrackerGUI(3)
     dialog.listBox.clearSelection()
     dialog.okButton.click()
     assert warned == [dialog] and dialog.cancel
@@ -352,7 +358,7 @@ def test_escape_cancels_a_single_choice_and_ctrl_keeps_it_single(app):
     def answer():
         dialogs = [
             widget for widget in app.topLevelWidgets()
-            if isinstance(widget, widgets.QDialogListbox)
+            if isinstance(widget, widgets_item_views.QDialogListbox)
             and widget.isVisible()
         ]
         if not dialogs:
@@ -364,7 +370,7 @@ def test_escape_cancels_a_single_choice_and_ctrl_keeps_it_single(app):
         QTest.keyClick(dialog, Qt.Key_Escape)
         steps.append(dialog.isVisible())
 
-    dialog = widgets.QDialogListbox(
+    dialog = widgets_item_views.QDialogListbox(
         'Select', 'Select:', ['a', 'b'], multiSelection=False,
         allowEmptySelection=False
     )
@@ -375,7 +381,7 @@ def test_escape_cancels_a_single_choice_and_ctrl_keeps_it_single(app):
     dialog.deleteLater()
 
     # Multiple choice: Escape still only clears the selection
-    dialog = widgets.QDialogListbox(
+    dialog = widgets_item_views.QDialogListbox(
         'Select', 'Select:', ['a', 'b'], multiSelection=True
     )
     dialog.show()
@@ -401,7 +407,7 @@ def test_overlay_pickers_without_items_report_instead_of_opening(
     )
     opened = []
     monkeypatch.setattr(
-        widgets.QDialogListbox, 'exec_', lambda self: opened.append(self)
+        widgets_item_views.QDialogListbox, 'exec_', lambda self: opened.append(self)
     )
     assert host.askSelectOverlayChannel() is None
     assert host.askLabelsToOverlay() is None

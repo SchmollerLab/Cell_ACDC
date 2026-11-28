@@ -478,8 +478,12 @@ def init_tracker(
         posData, trackerName, realTime=False, qparent=None, 
         return_init_params=False
     ):
-    from cellacdc import apps
-    downloadWin = apps.downloadModel(trackerName, parent=qparent)
+    from cellacdc.shared.dialogs import (
+        model_params as dialogs_model_params,
+        model_selection as dialogs_model_selection,
+        tracker_params as dialogs_tracker_params,
+    )
+    downloadWin = dialogs_model_selection.downloadModel(trackerName, parent=qparent)
     downloadWin.download()
 
     trackerModule = import_tracker_module(trackerName)
@@ -492,7 +496,7 @@ def init_tracker(
             labShape = (posData.SizeZ, Y, X)
         else:
             labShape = (1, Y, X)
-        paramsWin = apps.BayesianTrackerParamsWin(
+        paramsWin = dialogs_tracker_params.BayesianTrackerParamsWin(
             labShape, parent=qparent, channels=posData.chNames, 
             currentChannelName=posData.user_ch_name
         )
@@ -505,12 +509,12 @@ def init_tracker(
                 track_params['image'] = posData.loadChannelData(chName)
                 track_params['image_channel_name'] = chName
     elif trackerName == 'CellACDC':
-        paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
+        paramsWin = dialogs_tracker_params.CellACDCTrackerParamsWin(parent=qparent)
         paramsWin.exec_()
         if not paramsWin.cancel:
             init_params = paramsWin.params
     elif trackerName == 'delta':
-        paramsWin = apps.DeltaTrackerParamsWin(posData=posData, parent=qparent)
+        paramsWin = dialogs_tracker_params.DeltaTrackerParamsWin(posData=posData, parent=qparent)
         paramsWin.exec_()
         if not paramsWin.cancel:
             init_params = paramsWin.params
@@ -542,7 +546,7 @@ def init_tracker(
             if not intensityImgRequiredForTracker:
                 currentChannelName = None
             
-            paramsWin = apps.QDialogModelParams(
+            paramsWin = dialogs_model_params.QDialogModelParams(
                 init_argspecs, track_argspecs, trackerName, url=url,
                 channels=channels, is_tracker=True,
                 currentChannelName=currentChannelName,

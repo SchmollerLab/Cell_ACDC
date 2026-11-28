@@ -9,7 +9,14 @@ from qtpy.QtWidgets import (
 )
 from qtpy import QtGui
 
-from .. import exception_handler, myutils, html_utils, workers, widgets
+from .. import exception_handler, html_utils
+from cellacdc.myutils import app_info, filesystem
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
 from .. import _critical_exception_gui
 
 import os
@@ -27,8 +34,12 @@ from qtpy.QtWidgets import (
 )
 
 from .. import (
-    widgets, apps, workers, html_utils, myutils,
+    html_utils, 
     load, printl, exception_handler
+)
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
 )
 from qtpy.QtWidgets import (
     QWidget, QComboBox, QAbstractItemView, QListWidgetItem, QLayout
@@ -59,7 +70,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self._parent = parent
         self.progressDialogueTitle = progressDialogueTitle 
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module=module
         )
         
@@ -92,7 +103,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         infoLayout.addWidget(QLabel(infoTxt))
 
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -105,7 +116,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.setLayout(mainLayout)
 
     def runWorker(self, worker):
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title=self.progressDialogueTitle, parent=self,
             pbarDesc=f'{self.progressDialogueTitle}...'
         )
@@ -182,7 +193,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             f'{path}<br><br>'
             'Close file and then press "Ok".'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.setDetailedText(traceback_str)
         msg.warning(self, 'Permission error', err_msg)
         self.worker.waitCond.wakeAll()
@@ -192,8 +203,8 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         all_video_files_endnames = set()
         for pos_folder in pos_foldernames:
             images_path = os.path.join(exp_path, pos_folder, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
-            for file in myutils.listdir(images_path):
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
+            for file in filesystem.listdir(images_path):
                 filename, ext = os.path.splitext(file)
                 if ext not in valid_extensions:
                     continue
@@ -203,7 +214,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         
         all_video_files_endnames = natsorted(all_video_files_endnames)
 
-        win = widgets.QDialogListbox(
+        win = widgets_item_views.QDialogListbox(
             'Select video file',
             'Select video file to load:\n',
             all_video_files_endnames, 
@@ -228,10 +239,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images') 
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for basename
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = filesystem.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:
@@ -258,7 +269,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             return
         
         if multiSelection:
-            selectWindow = apps.OrderableListWidgetDialog(
+            selectWindow = OrderableListWidgetDialog(
             self.existingAcdcOutputEndnames, 
             title='Select acdc_output files',
             infoTxt=(
@@ -280,7 +291,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             )
         )
         else:
-            selectWindow = widgets.QDialogListbox(
+            selectWindow = widgets_item_views.QDialogListbox(
                 'Select acdc_output files',
                 f'Select acdc_output files{infoText}\n',
                 self.existingAcdcOutputEndnames, multiSelection=multiSelection, 
@@ -304,7 +315,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             self.worker.waitCond.wakeAll()
             return
         
-        selectWindow = widgets.QDialogListbox(
+        selectWindow = widgets_item_views.QDialogListbox(
             'Select spotmax run(s)',
             f'Select one or more spotmax runs{infoText}\n',
             items, multiSelection=multiSelection, 
@@ -343,10 +354,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for metrics
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = filesystem.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:
@@ -384,7 +395,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         else:
             fileType = with_text.split('_')
     
-        win = apps.SelectSegmFileDialog(
+        win = dialogs_file_selection.SelectSegmFileDialog(
             existingEndNames, exp_path, parent=self, infoText=infoText, 
             fileType=fileType
         )
@@ -431,7 +442,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             event.accept()
             return
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'The process is <b>still running and cannot be safely stopped</b> at this point.'
         ) + html_utils.paragraph(
@@ -526,7 +537,7 @@ class MainThreadSinglePosUtilBase(QDialog):
 
         self._parent = parent
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module=module
         )
         logger.info(f'Utility title: "{title}"')
@@ -557,7 +568,7 @@ class MainThreadSinglePosUtilBase(QDialog):
         infoLayout.addWidget(QLabel(infoTxt))
 
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Close')
+        cancelButton = widgets_push_buttons.cancelPushButton('Close')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -584,7 +595,7 @@ class MainThreadSinglePosUtilBase(QDialog):
             self.logger.removeHandler(handler)
     
     def runWorker(self, worker):
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title=self.progressDialogueTitle, parent=self,
             pbarDesc=f'{self.progressDialogueTitle}...'
         )
@@ -851,12 +862,12 @@ class OrderableListWidgetDialog(dialogs_base.QBaseDialog):
         if infoTxt:
             mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
 
-        self.listWidget = widgets.OrderableList()
+        self.listWidget = OrderableList()
         self.listWidget.addItems(items)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         if helpText:
-            helpButton = widgets.helpPushButton('Help...')
+            helpButton = widgets_push_buttons.helpPushButton('Help...')
             buttonsLayout.insertWidget(3, helpButton)
             helpButton.clicked.connect(self.showHelp)
 
@@ -870,7 +881,7 @@ class OrderableListWidgetDialog(dialogs_base.QBaseDialog):
         self.setLayout(mainLayout)
     
     def showHelp(self):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(self.helpText)
         msg.information(self, 'Select tables help', txt)
     
@@ -895,7 +906,7 @@ class SetupSplitVideoIntoTiffsDialog(dialogs_base.QBaseDialog):
         self.cancel = True
 
         mainLayout = QVBoxLayout()
-        entriesLayout = widgets.FormLayout()
+        entriesLayout = widgets_line_edits.FormLayout()
 
         headerText = ("""
 <b>Split video into single-frame TIFFs setup</b><br><br>
@@ -906,17 +917,17 @@ class SetupSplitVideoIntoTiffsDialog(dialogs_base.QBaseDialog):
         self._headerText = headerText
 
         row = 0
-        self.dstFolderPathControl = widgets.FolderPathControl()
-        self.dstFolderPathFormWidget = widgets.formWidget(
+        self.dstFolderPathControl = widgets_line_edits.FolderPathControl()
+        self.dstFolderPathFormWidget = widgets_line_edits.formWidget(
             self.dstFolderPathControl, 
             labelTextLeft='Destination folder: ',
         )
         entriesLayout.addFormWidget(self.dstFolderPathFormWidget, row=row)
 
         row += 1
-        self.prefixLineEdit = widgets.PrefixFilenameLineEdit('000.tif')
+        self.prefixLineEdit = PrefixFilenameLineEdit('000.tif')
         self.prefixLineEdit.setAlignment(Qt.AlignCenter)
-        self.prefixFormWidget = widgets.formWidget(
+        self.prefixFormWidget = widgets_line_edits.formWidget(
             self.prefixLineEdit, 
             labelTextLeft='Prefix for output TIFF files: ',
         )
@@ -933,7 +944,7 @@ class SetupSplitVideoIntoTiffsDialog(dialogs_base.QBaseDialog):
         _, ext = os.path.splitext(video_filepath)
         image_data = load.load_image_file(video_filepath)
         self._SizeT = len(image_data)
-        self.dtypeCombobox = widgets.ComboBox()
+        self.dtypeCombobox = widgets_combo_boxes.ComboBox()
         self.dtypeCombobox.addItems(dtypes)
         if ext != '.npz':
             dtype = str(image_data.dtype)
@@ -945,7 +956,7 @@ class SetupSplitVideoIntoTiffsDialog(dialogs_base.QBaseDialog):
             dtype = 'uint16'
             self.dtypeCombobox.setCurrentText(dtype)
         
-        self.dtypeFormWidget = widgets.formWidget(
+        self.dtypeFormWidget = widgets_line_edits.formWidget(
             self.dtypeCombobox, 
             stretchWidget=False,
             labelTextLeft='Data type of output TIFF files: ',
@@ -958,8 +969,8 @@ Choose whether to stop until the last frame that has been tracked.<br><br>
 The last tracked frame is the maximum `frame_i` present in the selected 
 `acdc_output.csv` file (see parameter below).
 """)
-        self.onlyUntilTrackedFormWidget = widgets.formWidget(
-            widgets.Toggle(), 
+        self.onlyUntilTrackedFormWidget = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), 
             labelTextLeft='Only until tracked: ',
             stretchWidget=False,
             valueGetterName='isChecked',
@@ -977,8 +988,8 @@ Choose whether to stop until the last frame where the cell cycle/lineage has bee
 The last annotated frame is the maximum `frame_i` present in the "cell_cycle_stage" column in the selected 
 `acdc_output.csv` file (see parameter below).
 """)
-        self.onlyUntilAnnotatedFormWidget = widgets.formWidget(
-            widgets.Toggle(), 
+        self.onlyUntilAnnotatedFormWidget = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), 
             labelTextLeft='Only until lineage annotated: ',
             stretchWidget=False,
             valueGetterName='isChecked',
@@ -994,11 +1005,11 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
         images_path = os.path.dirname(video_filepath)
         self._images_path = images_path
         acdcOutputFiles = load.get_acdc_output_files(images_path)
-        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        basename, chNames = filesystem.getBasenameAndChNames(images_path)
         acdcOutputEndnames = [f[len(basename):] for f in acdcOutputFiles]
-        self.acdcOutputEndnamesCombobox = widgets.ComboBox()
+        self.acdcOutputEndnamesCombobox = widgets_combo_boxes.ComboBox()
         self.acdcOutputEndnamesCombobox.addItems(acdcOutputEndnames)
-        self.acdcOutputEndnamesFormWidget = widgets.formWidget(
+        self.acdcOutputEndnamesFormWidget = widgets_line_edits.formWidget(
             self.acdcOutputEndnamesCombobox, 
             stretchWidget=False,
             labelTextLeft='`acdc_output` file with tracking/lineage info: ',
@@ -1018,8 +1029,8 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
             This number will overwrite the number of frames calculated with 
             "Only until tracked" and "Only until annotated" options.
         """)
-        self.untilFrameNumberFormWidget = widgets.formWidget(
-            widgets.SpinBox(), 
+        self.untilFrameNumberFormWidget = widgets_line_edits.formWidget(
+            widgets_numeric_inputs.SpinBox(), 
             labelTextLeft='Number of frames to save: ',
             addInfoButton=True,
             infoTxt=infoText,
@@ -1030,7 +1041,7 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
         self.untilFrameNumberFormWidget.widget.setValue(self._SizeT)
         entriesLayout.addFormWidget(self.untilFrameNumberFormWidget, row=row)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -1089,7 +1100,7 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
             Thank you for your patience!
         """)
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Invalid destination folder', txt)
 
     def ok_cb(self):

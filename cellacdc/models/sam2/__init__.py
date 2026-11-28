@@ -1,6 +1,6 @@
-from cellacdc import myutils
+from cellacdc.myutils import downloads, model_installs
 
-myutils.check_install_sam2()
+model_installs.check_install_sam2()
 import sam2
 
 import os
@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Get SAM2 models path
 # Using the same pattern as segment_anything
-_, sam_models_path = myutils.get_model_path('sam2', create_temp_dir=False)
+_, sam_models_path = downloads.get_model_path('sam2', create_temp_dir=False)
 
 # SAM2 model configurations
 # Format: 'Display Name': ('config_file', 'checkpoint_filename')

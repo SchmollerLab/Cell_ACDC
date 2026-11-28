@@ -12,8 +12,10 @@ import sys
 
 from cellacdc import is_conda_env, user_profile_path
 from cellacdc._model_startup import startup_timer
-from cellacdc._torch_utils import (
-    _torch_import_check, ensure_torch, torch_version_specifier,
+from cellacdc.myutils.torch_utils import (
+    _torch_import_check,
+    ensure_torch,
+    torch_version_specifier,
 )
 
 
@@ -994,7 +996,7 @@ def ensure_model_dependencies(
     platform: Optional[str] = None,
 ):
     """Ensure specific dependencies for a model are installed in its environment."""
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
     config = load_model_env_config(model_name)
     if config.get("torch"):
@@ -1017,7 +1019,7 @@ def ensure_model_dependencies(
         method = install_method or get_install_method()
         installer = "conda" if method == "conda" else "pip"
         print(specs)
-        myutils.check_install_package(
+        installs.check_install_package(
             specs,
             installer=installer,
             python_exec=python_exec,
@@ -1094,7 +1096,7 @@ def ensure_worker_dependencies(
     auto_install: bool = True,
 ):
     """Ensure base dependencies needed by the model worker service are installed."""
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
     if not ensure_cellacdc_cli(python_exec, logger_func=logger_func):
         raise RuntimeError(
@@ -1108,7 +1110,7 @@ def ensure_worker_dependencies(
     
     base_pkgs_import_names = [import_name for _, import_name in base_pkgs_names]
     base_pkgs = [pkg_name for pkg_name, _ in base_pkgs_names]
-    myutils.check_install_package(
+    installs.check_install_package(
         base_pkgs,
         import_pkg_name=base_pkgs_import_names,
         installer=installer,

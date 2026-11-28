@@ -16,9 +16,11 @@ from qtpy.QtWidgets import (
 import qtpy.compat
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import myutils, html_utils
+from cellacdc import html_utils
+from cellacdc.myutils import filesystem
+from .. import helpers as gui_helpers
 from cellacdc import _palettes
-from cellacdc import apps
+from cellacdc.shared.dialogs import generic as dialogs_generic
 from cellacdc.shared.widgets import line_edits as widgets_line_edits
 from cellacdc.shared.widgets import toolbars as widgets_toolbars
 from cellacdc.shared.widgets import message_box as widgets_message_box
@@ -109,7 +111,7 @@ class KeptObjectIDsList(list):
         super().__init__(*args)
     
     def setText(self):
-        text  = myutils.format_IDs(self)
+        text  = gui_helpers.format_IDs(self)
         
         self.lineEdit.setText(text)
     
@@ -386,7 +388,7 @@ class IDsLineEdit(KeepIDsLineEdit):
         if not isinstance(IDs, set) and not isinstance(IDs, list):
             raise TypeError('IDs must be a set or list')
         
-        formatted_text = myutils.format_IDs(IDs)
+        formatted_text = gui_helpers.format_IDs(IDs)
         super().setText(formatted_text)
 
 class WhitelistIDsToolbar(widgets_toolbars.ToolBar):
@@ -1132,7 +1134,7 @@ class ExportCurrentViewToolbar(widgets_toolbars.ToolBar):
         )
         self.addSeparator()
 
-        startFolder = myutils.get_export_current_view_gui_most_recent_path()
+        startFolder = filesystem.get_export_current_view_gui_most_recent_path()
 
         self.addWidget(QLabel('Destination folder: '))
         self.dstFolderPathControl = widgets_line_edits.ElidingLineEdit()
@@ -1201,7 +1203,7 @@ class ExportCurrentViewToolbar(widgets_toolbars.ToolBar):
         self.addStretch(10)
     
     def selectDstFromRecentPaths(self):
-        recent_paths, dates = myutils.get_export_current_view_gui_recent_paths(
+        recent_paths, dates = filesystem.get_export_current_view_gui_recent_paths(
             self
         )
         if not recent_paths:
@@ -1210,7 +1212,7 @@ class ExportCurrentViewToolbar(widgets_toolbars.ToolBar):
         searchLineEditText = (
             'Search recent paths (Ctrl+click to select multiple)...'
         )
-        self.recentPathsDialog = apps.SearchableListboxDialog(
+        self.recentPathsDialog = dialogs_generic.SearchableListboxDialog(
             recent_paths,
             title='Select destination folder from recent paths',
             searchLineEditText=searchLineEditText,
@@ -1233,7 +1235,7 @@ class ExportCurrentViewToolbar(widgets_toolbars.ToolBar):
             return
         
         self.dstFolderPathControl.setText(folder_path)
-        myutils.add_to_export_current_view_gui_recent_paths(folder_path)
+        filesystem.add_to_export_current_view_gui_recent_paths(folder_path)
 
     def showInFileManager(self):
         dstFolderPath = self.dstFolderPathControl.text()
@@ -1243,7 +1245,7 @@ class ExportCurrentViewToolbar(widgets_toolbars.ToolBar):
             )
             return
         
-        myutils.showInExplorer(dstFolderPath)
+        filesystem.showInExplorer(dstFolderPath)
 
     def isAutoExportOnNext(self):
         return self.autoExportOnNextCheckbox.isChecked()
@@ -1253,7 +1255,7 @@ class ExportCurrentViewToolbar(widgets_toolbars.ToolBar):
     
     def dstFolderPathSelected(self, folderPath):
         self.dstFolderPathControl.setText(folderPath)
-        myutils.addToRecentPaths(folderPath)
+        filesystem.addToRecentPaths(folderPath)
     
     def emitExport(self):
         self.sigExport.emit()

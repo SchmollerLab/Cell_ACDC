@@ -12,7 +12,7 @@ import qtpy
 from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
-from cellacdc import widgets
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from tests.conftest import (
     MAX_ATTEMPTS, AutoAnsweredDialogWarning, LeftOpenDialogWarning,
     _DialogWatchdog, flushDeferredDeletes
@@ -71,7 +71,7 @@ def test_dialog_buttons_normalizes_method_and_list(app):
     msg.setStandardButtons(_standard('Ok') | _standard('Cancel'))
     assert len(_DialogWatchdog.dialogButtons(msg)) == 2
 
-    myMsg = widgets.myMessageBox()
+    myMsg = widgets_message_box.myMessageBox()
     okButton = myMsg.addButton('Ok')
     assert _DialogWatchdog.dialogButtons(myMsg) == [okButton]
 
@@ -127,7 +127,7 @@ def test_static_qmessagebox_question_is_auto_answered(app, safety_net):
 
 
 def test_my_message_box_is_auto_answered(app, safety_net):
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     with pytest.warns(AutoAnsweredDialogWarning, match='Custom message box'):
         msg.warning(
             None, 'Custom message box', 'Something happened',
@@ -162,7 +162,7 @@ class _ValidatingDialog(QDialog):
 
     def ok_cb(self):
         if self.useMyMessageBox:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(self, 'Invalid input', 'Name is empty')
         else:
             msg = QMessageBox(self)
@@ -243,7 +243,7 @@ def test_sequential_custom_message_boxes_get_fresh_state(
     ):
     watchdog = _auto_answer_blocking_dialogs
     for i in range(4):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         with pytest.warns(AutoAnsweredDialogWarning, match=f'Custom seq {i}'):
             msg.warning(
                 None, f'Custom seq {i}', 'Proceed?',

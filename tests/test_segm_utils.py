@@ -5,9 +5,8 @@ import pytest
 from skimage.measure import regionprops
 from types import SimpleNamespace
 
-from cellacdc import myutils
 from cellacdc.regionprops import acdcRegionprops
-from cellacdc.workers import SegForLostIDsWorker
+from cellacdc.gui.workers.segmentation_tracking import SegForLostIDsWorker
 
 from cellacdc.models.thresholding.acdcSegment import Model as ThresholdingModel
 from cellacdc.segm_utils import get_best_overlapping_label

@@ -2,7 +2,9 @@ import os
 import sys
 import numpy as np
 import skimage.measure
-from cellacdc import core, myutils, widgets, load, html_utils
+from cellacdc import core, load, html_utils
+from cellacdc.myutils import filesystem, segm_models
+from cellacdc.shared.widgets import item_views as widgets_item_views
 from cellacdc import data, data_path
 from cellacdc import transformation
 from cellacdc.plot import imshow
@@ -33,14 +35,14 @@ test_data = None
 
 if test_data is None:
     tif_filepath, _ = qtpy.compat.getopenfilename(
-        basedir=myutils.getMostRecentPath(),
+        basedir=filesystem.getMostRecentPath(),
         filters=('Images (*.tif)')
     )
     if not tif_filepath:
         exit('Execution cancelled.')
     
     images_path = os.path.dirname(tif_filepath)
-    basename = os.path.commonprefix(myutils.listdir(images_path))
+    basename = os.path.commonprefix(filesystem.listdir(images_path))
     filename, ext = os.path.splitext(os.path.basename(tif_filepath))
     channel = filename[len(basename):]
     posData = load.loadData(tif_filepath, channel)
@@ -59,11 +61,11 @@ lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
 imshow(lab_stack, axis_titles=['Before tracking'], annotate_labels_idxs=[0])
 
-trackers = myutils.get_list_of_trackers()
+trackers = segm_models.get_list_of_trackers()
 txt = html_utils.paragraph('''
     <b>Select the tracker</b> to use<br><br>
 ''')
-win = widgets.QDialogListbox(
+win = widgets_item_views.QDialogListbox(
     'Select tracker', txt, trackers, multiSelection=False, parent=None,
     allowEmptySelection=False
 )
@@ -75,7 +77,7 @@ if win.cancel:
 trackerName = win.selectedItemsText[0]
 
 # Load tracker
-tracker, track_params = myutils.init_tracker(
+tracker, track_params = segm_models.init_tracker(
     posData, trackerName, qparent=None, realTime=REAL_TIME_TRACKER
 )
 if track_params is None:

@@ -21,7 +21,8 @@ import pyqtgraph as pg
 import skimage.measure
 from qtpy.QtWidgets import QApplication, QToolButton
 
-from cellacdc import gui, widgets
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.shared.widgets import plot_items as widgets_plot_items
 
 
 @pytest.fixture(scope='module')
@@ -49,7 +50,7 @@ def _shownIDs(imageItem):
 
 def _bind(window, *names):
     for name in names:
-        func = getattr(gui.guiWin, name)
+        func = getattr(gui_window.guiWin, name)
         func = getattr(func, '__wrapped__', func)
         setattr(window, name, MethodType(func, window))
 
@@ -76,7 +77,7 @@ def _make_window(keepIDsON=False, whitelistON=False, keptIDs=()):
     whitelistIDsButton.setChecked(whitelistON)
 
     keepIDsTempLayerRight = pg.ImageItem()
-    keepIDsTempLayerLeft = widgets.ParentImageItem(
+    keepIDsTempLayerLeft = widgets_plot_items.ParentImageItem(
         linkedImageItem=keepIDsTempLayerRight
     )
 

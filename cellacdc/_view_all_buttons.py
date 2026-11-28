@@ -10,7 +10,8 @@ from qtpy.QtWidgets import (
     QCheckBox
 )
 
-from cellacdc import widgets, _run
+from cellacdc import _run
+from cellacdc.shared.widgets import push_buttons as widgets_push_buttons
 
 app, splashScreen = _run._setup_app(splashscreen=True, scheme=SCHEME)
 
@@ -38,7 +39,7 @@ for i in range(nrows):
         if idx == nicons:
             break
         button_name = buttons_names[idx]
-        button_class = getattr(widgets, button_name)
+        button_class = getattr(widgets_push_buttons, button_name)
         button = button_class(button_name)
         button.setToolTip(button_name)
         # button.setIconSize(QSize(32,32))

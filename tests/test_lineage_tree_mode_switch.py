@@ -24,13 +24,19 @@ from qtpy.QtCore import QPointF, Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QAction, QApplication, QComboBox
 
-from cellacdc import apps, gui, myutils, widgets
+from cellacdc.gui.dialogs import segmentation as gui_dialogs_segmentation
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.myutils import table_utils
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    message_box as widgets_message_box,
+)
 from cellacdc import base_cca_dict, cca_df_colnames, lineage_tree_cols
 from cellacdc.regionprops import acdcRegionprops
 
 pytestmark = pytest.mark.gui
 
-G = gui.guiWin
+G = gui_window.guiWin
 VIEWER = 'Viewer'
 SEGM = 'Segmentation and Tracking'
 CCA = 'Cell cycle analysis'
@@ -181,7 +187,7 @@ class Host:
     def __init__(self, mode=SEGM):
         posData = SimpleNamespace()
         posData.allData_li = [
-            myutils.get_empty_stored_data_dict() for _ in range(SIZE_T)
+            table_utils.get_empty_stored_data_dict() for _ in range(SIZE_T)
         ]
         posData.frame_i = 0
         posData.SizeT = SIZE_T
@@ -235,7 +241,7 @@ class Host:
         self.last_cca_frame_i = 0
         self.last_lin_tree_frame_i = 0
         self.warnEditingWithAnnotActions = {}
-        combo = widgets.ComboBox()
+        combo = widgets_combo_boxes.ComboBox()
         combo.addItems([VIEWER, SEGM, CCA, LIN])
         combo.blockSignals(True)
         combo.setCurrentText(mode)
@@ -265,7 +271,7 @@ def fake_msg(monkeypatch):
     FakeMsg.goto_answers = []
     FakeMsg.changes_answer = 'Propagate'
     FakeMsg.edit_answer = 'Remove'
-    monkeypatch.setattr(widgets, 'myMessageBox', FakeMsg)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeMsg)
     return FakeMsg
 
 
@@ -672,7 +678,7 @@ def _open_post_processing_dialog(host):
     action.setChecked(True)
     action.toggled.connect(host.postProcessSegm)
     host.postProcessSegmAction = action
-    win = apps.PostProcessSegmDialog(posData)
+    win = gui_dialogs_segmentation.PostProcessSegmDialog(posData)
     win.mainWin = host
     win.setPosData()
     win.sigClosed.connect(host.postProcessSegmWinClosed)

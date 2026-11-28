@@ -9,7 +9,7 @@ import cv2
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
-from cellacdc import myutils
+from cellacdc.myutils import image_utils
 from cellacdc.models.sam2 import model_types, sam_models_path
 
 
@@ -66,7 +66,7 @@ class Model:
         return int(z), float(y), float(x)
 
     def _to_rgb(self, image):
-        img = myutils.to_uint8(image)
+        img = image_utils.to_uint8(image)
         if img.ndim == 2:
             try:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)

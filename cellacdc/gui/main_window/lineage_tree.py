@@ -5,8 +5,9 @@ them.
 from qtpy.QtCore import Qt
 from cellacdc import exception_handler, disableWindow
 from cellacdc import html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import table_utils
+from .. import helpers as gui_helpers
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, has_lineage_tree_values,
     lineage_tree_columns, lineage_tree_annotated_frames,
@@ -106,7 +107,7 @@ class LineageTreeGuiElements:
                 self.distanceListMissingIDs[ID] = relevant_IDs
                 return relevant_IDs
             else:
-                sorted_missing_IDs = myutils.sort_IDs_dist(prev_rp, point=point, relevant_IDs=relevant_IDs)
+                sorted_missing_IDs = gui_helpers.sort_IDs_dist(prev_rp, point=point, relevant_IDs=relevant_IDs)
                 self.distanceListMissingIDs[ID] = sorted_missing_IDs
                 return sorted_missing_IDs
         else:
@@ -280,8 +281,8 @@ class LineageTreeGuiElements:
             ):
                 return f'frame {frame_i+1} has no lineage tree annotations'
 
-        backup_IDs = myutils.checked_reset_index_Cell_ID(backup_df).index
-        IDs = myutils.checked_reset_index_Cell_ID(df).index
+        backup_IDs = table_utils.checked_reset_index_Cell_ID(backup_df).index
+        IDs = table_utils.checked_reset_index_Cell_ID(df).index
         if set(backup_IDs) != set(IDs):
             return f'the objects of frame {frame_i+1} changed'
 
@@ -336,8 +337,8 @@ class LineageTreeGuiElements:
                 # `resetLin_tree_future` after a segmentation edit
                 return
 
-        new_df = myutils.checked_reset_index_Cell_ID(new_df)
-        original_df = myutils.checked_reset_index_Cell_ID(original_df)
+        new_df = table_utils.checked_reset_index_Cell_ID(new_df)
+        original_df = table_utils.checked_reset_index_Cell_ID(original_df)
         # Segmentation edits can add or remove IDs after the backup:
         # compare the cells present in both tables
         IDs = original_df.index.intersection(new_df.index)
@@ -348,7 +349,7 @@ class LineageTreeGuiElements:
         if differences.empty:
             return
         
-        differences = myutils.checked_reset_index_Cell_ID(differences)
+        differences = table_utils.checked_reset_index_Cell_ID(differences)
  
         differences = differences['parent_ID_tree']
         differences = differences.reset_index()
@@ -466,7 +467,7 @@ class LineageTreeGuiElements:
 
         txt = css + html_utils.paragraph(txt_changes + txt_orphan + txt_lost + txt_cells_with_parents)
 
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(self,
                 'lineage tree information', 
                 txt
@@ -561,7 +562,7 @@ class LineageTreeGuiElements:
         txt = txt + 'Do you want to keep, propgagte or discard the changes?'
         txt = css + html_utils.paragraph('<b>Changes made in this frame</b><br>' + txt)
 
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
 
         propagate_btn, discard_btn, _ = msg.question(self,
                       'Changes in lineage tree', 
@@ -583,7 +584,7 @@ class LineageTreeGuiElements:
 
         elif msg.cancel:
             # Go back to current frame
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph('''
             Changes were kept but not propagated!
             Please make sure to come back and propagate them,
@@ -814,7 +815,7 @@ class LineageTreeGuiElements:
                 'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
                 'with lineage tree analysis.')
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.critical(
                 self, 'Tracking was never checked', txt
             )
@@ -839,7 +840,7 @@ class LineageTreeGuiElements:
 
         if posData.frame_i > last_lin_tree_frame_i:
             # Prompt user to go to last annotated frame
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(f"""
                 The <b>last annotated frame</b> is frame {last_lin_tree_frame_i+1}.<br><br>
                 Do you want to restart lineage tree analysis from frame 
@@ -874,7 +875,7 @@ class LineageTreeGuiElements:
             
         elif posData.frame_i < last_lin_tree_frame_i:
             # Prompt user to go to last annotated frame
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(f"""
                 The <b>last annotated frame</b> is frame {last_lin_tree_frame_i+1}.<br><br>
                 Do you want to restart lineage tree analysis from frame

@@ -28,10 +28,19 @@ from qtpy.QtWidgets import QPushButton, QFileDialog
 from cellacdc import _window_stacking
 from cellacdc import exception_handler
 from cellacdc import cca_df_colnames
-from cellacdc import load, prompts, apps, workers, html_utils
-from cellacdc import myutils
+from cellacdc import load, prompts, html_utils
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+)
+from ..dialogs import data_io as gui_dialogs_data_io
+from ..workers import loading_saving as gui_workers_loading_saving
+from cellacdc.myutils import filesystem, image_utils, misc, table_utils
 from cellacdc.data_prep import main_window as dataPrep
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import colors
 from cellacdc import user_manual_url
 from cellacdc import autopilot
@@ -54,7 +63,7 @@ class LoadDataGuiElements:
         self.lazyLoaderWaitCond = QWaitCondition()
         self.waitReadH5cond = QWaitCondition()
         self.readH5mutex = QMutex()
-        self.lazyLoader = workers.LazyLoader(
+        self.lazyLoader = gui_workers_loading_saving.LazyLoader(
             self.lazyLoaderMutex, self.lazyLoaderWaitCond, 
             self.waitReadH5cond, self.readH5mutex
         )
@@ -79,7 +88,7 @@ class LoadDataGuiElements:
         desc = (
             f'Loading new window, range = ({coord0_chunk}, {coord1_chunk})...'
         )
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Loading data...', parent=self, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(0)
@@ -154,7 +163,7 @@ class LoadDataGuiElements:
                 basename = f'{posData.basename}segm'
             else:
                 basename = f'{posData.basename}_segm'
-            win = apps.filenameDialog(
+            win = dialogs_file_selection.filenameDialog(
                 basename=basename,
                 hintText='Insert a <b>filename</b> for the segmentation file:',
                 existingNames=existingEndNames
@@ -166,7 +175,7 @@ class LoadDataGuiElements:
             self.newSegmEndName = win.entryText
         else:
             if len(existingSegmEndNames) > 0:
-                win = apps.SelectSegmFileDialog(
+                win = dialogs_file_selection.SelectSegmFileDialog(
                     existingSegmEndNames, self.exp_path, parent=self,
                     addNewFileButton=True, basename=posData.basename
                 )
@@ -271,7 +280,7 @@ class LoadDataGuiElements:
         else:
             self.isSnapshot = False
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Loading data...', parent=self,
             pbarDesc=f'Loading "{user_ch_file_paths[0]}"...'
         )
@@ -297,7 +306,7 @@ class LoadDataGuiElements:
         self.loadDataMutex = QMutex()
         self.loadDataWaitCond = QWaitCondition()
 
-        self.loadDataWorker = workers.loadDataWorker(
+        self.loadDataWorker = gui_workers_loading_saving.loadDataWorker(
             self, user_ch_file_paths, user_ch_name, firstPosData
         )
 
@@ -373,7 +382,7 @@ class LoadDataGuiElements:
         else:
             last_modified_time_saved = 'Null'
         
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph("""
             Cell-ACDC detected <b>unsaved data</b>.<br><br>
             Do you want to <b>load and recover</b> the unsaved data or 
@@ -384,12 +393,12 @@ class LoadDataGuiElements:
             The user saved the data last time on {last_modified_time_saved}
         """)
         msg.setDetailedText(details)
-        loadUnsavedButton = widgets.reloadPushButton('Recover unsaved data')
-        loadSavedButton = widgets.savePushButton('Load saved data')
-        infoButton = widgets.infoPushButton('More info...')
+        loadUnsavedButton = widgets_push_buttons.reloadPushButton('Recover unsaved data')
+        loadSavedButton = widgets_push_buttons.savePushButton('Load saved data')
+        infoButton = widgets_push_buttons.infoPushButton('More info...')
         loadSafeNpzButton = ''
         if posData.isSafeNpzOverwritePresent():
-            loadSafeNpzButton = widgets.reloadPushButton(
+            loadSafeNpzButton = widgets_push_buttons.reloadPushButton(
                 'Load .safe.npz file from crash'
             )
             buttons = (
@@ -417,7 +426,7 @@ class LoadDataGuiElements:
         # self.AutoPilotProfile.storeLoadSavedData()
 
     def showInfoAutosave(self, posData):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = (f"""
             Cell-ACDC either detected unsaved data in a previous session and it 
             stored it because the <b>Autosave</b><br>
@@ -444,7 +453,7 @@ class LoadDataGuiElements:
         )
 
     def askMismatchSegmDataShape(self, posData):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         title = 'Segm. data shape mismatch'
         f = '3D' if self.isSegm3D else '2D'
         f = f'{f} over time' if posData.SizeT > 1 else f
@@ -466,7 +475,7 @@ class LoadDataGuiElements:
         self.loadDataWorker.waitCond.wakeAll()
 
     def workerPermissionError(self, txt, waitCond):
-        msg = widgets.myMessageBox(parent=self)
+        msg = widgets_message_box.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxCritical')
         msg.setWindowTitle('Permission denied')
         msg.addText(txt)
@@ -478,7 +487,7 @@ class LoadDataGuiElements:
         errTitle = 'All loaded positions contains frames over time!'
         self.titleLabel.setText(errTitle, color='r')
 
-        msg = widgets.myMessageBox(parent=self)
+        msg = widgets_message_box.myMessageBox(parent=self)
 
         err_msg = html_utils.paragraph(f"""
             {errTitle}.<br><br>
@@ -737,7 +746,7 @@ class LoadDataGuiElements:
 
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         if len(pos_foldernames) == 1:
             self.loadPosAction.setDisabled(True)
         else:
@@ -801,7 +810,7 @@ class LoadDataGuiElements:
             for i in range(posData.SizeT):
                 if posData.allData_li[i] is None:
                     posData.allData_li[i] = (
-                        myutils.get_empty_stored_data_dict()
+                        table_utils.get_empty_stored_data_dict()
                     )
             
             posData.lutLevels = {channel: {} for channel in self.ch_names}
@@ -842,7 +851,7 @@ class LoadDataGuiElements:
 
                 # Ask whether to resume from last frame
                 if last_tracked_num>1:
-                    msg = widgets.myMessageBox()
+                    msg = widgets_message_box.myMessageBox()
                     txt = html_utils.paragraph(
                         'Cell-ACDC detected a previous session ended '
                         f'at frame {last_tracked_num}.<br><br>'
@@ -999,7 +1008,7 @@ class LoadDataGuiElements:
         self.workerProgress(err_msg, 'INFO')
         self.titleLabel.setText(err_msg, color='r')
         abort = False
-        msg = widgets.myMessageBox(parent=self)
+        msg = widgets_message_box.myMessageBox(parent=self)
         warn_msg = html_utils.paragraph(f"""
             The folder {pos_foldername} <b>does not contain a
             pre-computed segmentation mask</b>.<br><br>
@@ -1019,11 +1028,11 @@ class LoadDataGuiElements:
         self.loadDataWaitCond.wakeAll()
 
     def warnMemoryNotSufficient(self, total_ram, available_ram, required_ram):
-        total_ram = myutils._bytes_to_GB(total_ram)
-        available_ram = myutils._bytes_to_GB(available_ram)
-        required_ram = myutils._bytes_to_GB(required_ram)
+        total_ram = misc._bytes_to_GB(total_ram)
+        available_ram = misc._bytes_to_GB(available_ram)
+        required_ram = misc._bytes_to_GB(required_ram)
         required_perc = round(100*required_ram/available_ram)
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             The total amount of data that you requested to load is about
             <b>{required_ram:.2f} GB</b> ({required_perc}% of the available memory)
@@ -1144,7 +1153,7 @@ class LoadDataGuiElements:
             for file in filenamesPresent
             if file.endswith(ch) or file.endswith(f'{ch}_aligned')
         ]
-        win = apps.QDialogZsliceAbsent(filename, SizeZ, chNamesPresent)
+        win = gui_dialogs_data_io.QDialogZsliceAbsent(filename, SizeZ, chNamesPresent)
         win.exec_()
         if win.cancel:
             self.worker.abort = True
@@ -1163,7 +1172,7 @@ class LoadDataGuiElements:
                     continue
                 
                 _, _filename = self.getPathAndFilenameNoExtFromChName(channel_name, _posData)
-                df = myutils.getDefault_SegmInfo_df(_posData, _filename)
+                df = table_utils.getDefault_SegmInfo_df(_posData, _filename)
                 _posData.segmInfo_df = pd.concat([df, _posData.segmInfo_df])
                 unique_idx = ~_posData.segmInfo_df.index.duplicated()
                 _posData.segmInfo_df = _posData.segmInfo_df[unique_idx]
@@ -1183,7 +1192,7 @@ class LoadDataGuiElements:
                     self.worker.abort = True
                     self.waitCond.wakeAll()
                     return
-                dst_df = myutils.getDefault_SegmInfo_df(_posData, dstFilename)
+                dst_df = table_utils.getDefault_SegmInfo_df(_posData, dstFilename)
                 for z_info in cellacdc_df.itertuples():
                     frame_i = z_info.Index
                     zProjHow = z_info.which_z_proj
@@ -1306,7 +1315,7 @@ class OpenFileGuiElements:
         else:
             alternativeNdimText = '2D'
             toggleText = 'de-activate'
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         important_txt = ("""
             The toggle to activate 3D segmentation is visible only when 
             the <code>Number of z-slices</code> is greater than 1.
@@ -1337,7 +1346,7 @@ class OpenFileGuiElements:
     def newFile(self):
         self.newSegmEndName = ''
         self.isNewFile = True
-        msg = widgets.myMessageBox(parent=self, showCentered=False)
+        msg = widgets_message_box.myMessageBox(parent=self, showCentered=False)
         msg.setWindowTitle('File or folder?')
         msg.addText(html_utils.paragraph(f"""
             Do you want to load an <b>image file</b> or <b>Position 
@@ -1347,7 +1356,7 @@ class OpenFileGuiElements:
         loadPosButton.setIcon(QIcon(":folder-open.svg"))
         loadFileButton = QPushButton('Load image file', msg)
         loadFileButton.setIcon(QIcon(":image.svg"))
-        helpButton = widgets.helpPushButton('Help...')
+        helpButton = widgets_push_buttons.helpPushButton('Help...')
         msg.addButton(helpButton)
         helpButton.disconnect()
         helpButton.clicked.connect(self.helpNewFile)
@@ -1378,7 +1387,7 @@ class OpenFileGuiElements:
         self.newWindows.append(win)
 
     def helpNewFile(self):
-        msg = widgets.myMessageBox(showCentered=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False)
         href = f'<a href="{user_manual_url}">user manual</a>'
         txt = html_utils.paragraph(f"""
             Cell-ACDC can open both a single image file or files structured 
@@ -1401,7 +1410,7 @@ class OpenFileGuiElements:
 
     def manageVersions(self):
         posData = self.data[self.pos_i]
-        selectVersion = apps.SelectAcdcDfVersionToRestore(posData, parent=self)
+        selectVersion = gui_dialogs_data_io.SelectAcdcDfVersionToRestore(posData, parent=self)
         selectVersion.exec_()
 
         if selectVersion.cancel:
@@ -1463,7 +1472,7 @@ class OpenFileGuiElements:
             Provide some text (e.g., the channel name) to identify the image file.
         """)
         
-        win = apps.QLineEditDialog(
+        win = dialogs_generic.QLineEditDialog(
             title='Provide id text for image file',
             msg=txt,
             defaultTxt=channel_name,
@@ -1478,7 +1487,7 @@ class OpenFileGuiElements:
         return False, win.enteredValue
 
     def askUserCreationImagesFolder(self, images_path, ext):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = (f"""
             Cell-ACDC requires a specific folder structure to load the data.<br><br>
             Specifically, it requires the <b>image(s) to be located in a
@@ -1504,16 +1513,16 @@ class OpenFileGuiElements:
             How do you want to proceed?
         """)
         txt = html_utils.paragraph(txt)
-        symlinkButton = widgets.SegmentPushButton(
+        symlinkButton = widgets_push_buttons.SegmentPushButton(
             'Create symbolic link to the image'
         )
         copyButton = None
         moveButton = None
         if ext == '.tif' or ext == '.npz':
-            copyButton = widgets.copyPushButton(
+            copyButton = widgets_push_buttons.copyPushButton(
                 'Copy the image into the new folder'
             )
-            moveButton = widgets.movePushButton(
+            moveButton = widgets_push_buttons.movePushButton(
                 'Move the image into the new folder'
             )
             buttonsTexts = (
@@ -1523,7 +1532,7 @@ class OpenFileGuiElements:
                 symlinkButton
             )
         else:
-            copyButton = widgets.copyPushButton(
+            copyButton = widgets_push_buttons.copyPushButton(
                 'Create grayscale TIFF file in the new folder'
             )
             buttonsTexts=('Cancel', copyButton, symlinkButton)
@@ -1658,7 +1667,7 @@ class OpenFileGuiElements:
             if not is_imageJ_dtype:
                 data.img_data = skimage.img_as_ubyte(data.img_data)
 
-            myutils.to_tiff(tif_path, data.img_data)
+            image_utils.to_tiff(tif_path, data.img_data)
             self._openFolder(exp_path=exp_path, imageFilePath=tif_path)
 
     def criticalNoTifFound(self, images_path):
@@ -1671,7 +1680,7 @@ class OpenFileGuiElements:
             'Try with <code>File --> Open image/video file...</code> '
             'and directly select the file you want to load.'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
         msg.critical(self, err_title, err_msg)
 
@@ -1685,7 +1694,7 @@ class OpenFileGuiElements:
 
         self.isNewFile = False
         if hasattr(self, 'data') and self.titleLabel.text != 'Saved!':
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'Do you want to <b>save</b> before loading another dataset?'
             )
@@ -1764,7 +1773,7 @@ class OpenFileGuiElements:
         self.addToRecentPaths(exp_path, logger=self.logger)
         self.addPathToOpenRecentMenu(exp_path)
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = filesystem.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.titleLabel.setText('Loading data...', color=self.titleColor)
@@ -1791,7 +1800,7 @@ class OpenFileGuiElements:
             
         elif imageFilePath:
             # images_path = exp_path because called by openFile func
-            filenames = myutils.listdir(exp_path)
+            filenames = filesystem.listdir(exp_path)
             ch_names, basenameNotFound = (
                 ch_name_selector.get_available_channels(filenames, exp_path)
             )
@@ -1809,7 +1818,7 @@ class OpenFileGuiElements:
 
         # Get info from first position selected
         images_path = self.images_paths[0]
-        filenames = myutils.listdir(images_path)
+        filenames = filesystem.listdir(images_path)
         if ch_name_selector.is_first_call and user_ch_name is None:
             ch_names, _ = ch_name_selector.get_available_channels(
                 filenames, images_path
@@ -1912,12 +1921,12 @@ class OpenFileGuiElements:
             
             For more information about the correct folder structure see {href}.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
-        helpButton = widgets.helpPushButton('Help...')
+        msg = widgets_message_box.myMessageBox(wrapText=False)
+        helpButton = widgets_push_buttons.helpPushButton('Help...')
         msg.addButton(helpButton)
         helpButton.clicked.disconnect()
         helpButton.clicked.connect(
-            partial(myutils.browse_url, urls.data_structure_docs_url)
+            partial(filesystem.browse_url, urls.data_structure_docs_url)
         )
         msg.addShowInFileManagerButton(exp_path)
         msg.critical(
@@ -1932,7 +1941,7 @@ class OpenFileGuiElements:
             'Make sure to double check for spelling mistakes or types in the '
             'channel names.'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
         err_msg = html_utils.paragraph(f"""
             The folder<br><br>

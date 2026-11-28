@@ -246,11 +246,11 @@ def _calls(fake, kind):
 
 
 def test_model_arg_spec_exposes_gui_params():
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
 
     had_micro_sam = 'micro_sam' in sys.modules
     module = _load_module()
-    init_params, segment_params = myutils_models.getModelArgSpec(module)
+    init_params, segment_params = model_modules.getModelArgSpec(module)
     # Inspecting the arguments does not import micro-sam
     assert ('micro_sam' in sys.modules) == had_micro_sam
     assert module.Model.prompt_types == ('point', 'box')
@@ -264,7 +264,7 @@ def test_model_arg_spec_exposes_gui_params():
         ('segment_entire_z_stack', True),
     ]
     kinds = {
-        p.name: myutils_models._serialize_model_param_type(p.type)
+        p.name: model_modules._serialize_model_param_type(p.type)
         for p in init_params + segment_params
     }
     assert kinds['lab'] == {'kind': 'hidden'}
@@ -633,7 +633,7 @@ def test_uses_the_sam2_api_of_micro_sam_v2():
 
 
 def test_microsam_v2_environment_config():
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
     from cellacdc.service import environment
 
     assert (
@@ -651,21 +651,21 @@ def test_microsam_v2_environment_config():
         min_version='', max_version='', exact_version='',
         include_lower_version=False, include_higher_version=False,
     )
-    spec, = myutils._normalize_pkg_specs(
+    spec, = installs._normalize_pkg_specs(
         config['packages'], '', '', defaults
     )
     assert spec['pkg_name'] == 'micro_sam'
     assert spec['import_pkg_name'] == 'micro_sam'
     # Installed with pip (official installation), minimum version inclusive
-    myutils._check_package_version_constraints(spec, '2.0.1')
-    myutils._check_package_version_constraints(spec, '2.1.0')
+    installs._check_package_version_constraints(spec, '2.0.1')
+    installs._check_package_version_constraints(spec, '2.1.0')
     # micro-sam 2.0.0 does not declare its `sam2` dependency: the first
     # `--only-binary=:all:` pip attempt of Cell-ACDC installed it without
     # `sam2` (which has only an sdist), and existing environments with it
     # must be repaired
     for version in ('2.0.0', '1.9.0'):
         with pytest.raises(ModuleNotFoundError):
-            myutils._check_package_version_constraints(spec, version)
+            installs._check_package_version_constraints(spec, version)
 
 
 def test_pip_retries_without_only_binary_for_sdist_dependencies(monkeypatch):
@@ -674,7 +674,7 @@ def test_pip_retries_without_only_binary_for_sdist_dependencies(monkeypatch):
     retried with `--prefer-binary` (which builds `sam2`)."""
     import subprocess
 
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
     commands = []
 
@@ -685,9 +685,9 @@ def test_pip_retries_without_only_binary_for_sdist_dependencies(monkeypatch):
             raise subprocess.CalledProcessError(1, command)
 
     monkeypatch.setattr(
-        myutils, '_run_command_streaming', run_command_streaming
+        installs, '_run_command_streaming', run_command_streaming
     )
-    myutils._install_pip_package(
+    installs._install_pip_package(
         '"micro_sam>=2.0.1"', logger=lambda *args: None, python_exec='py'
     )
     assert commands == [
@@ -702,13 +702,13 @@ def test_package_import_requires_microsam_with_sam2(monkeypatch):
     environment) checks micro-sam >= 2.0.1, like the environment config."""
     import runpy
 
-    from cellacdc import myutils
+    from cellacdc.myutils import installs, model_installs
     from cellacdc.service import environment
 
     calls = []
-    monkeypatch.setattr(myutils, 'check_install_torch', lambda: None)
+    monkeypatch.setattr(model_installs, 'check_install_torch', lambda: None)
     monkeypatch.setattr(
-        myutils, 'check_install_package',
+        installs, 'check_install_package',
         lambda *args, **kwargs: calls.append((args, kwargs))
     )
     runpy.run_path(os.path.join(os.path.dirname(MODULE_PATH), '__init__.py'))

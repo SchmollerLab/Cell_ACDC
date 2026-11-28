@@ -9,7 +9,7 @@ the widgets only they use.
 """
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QLabel, QSpinBox, QGridLayout, QGroupBox
-from cellacdc import myutils
+from cellacdc.myutils import segm_models
 from cellacdc.shared.widgets import item_views as widgets_item_views
 import os
 from typing import Iterable
@@ -34,7 +34,10 @@ from qtpy.QtWidgets import (
 from cellacdc import _window_stacking
 from cellacdc import core, html_utils
 from cellacdc import qutils
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import promptable_models_path
 from cellacdc import features
 from cellacdc import fonts
@@ -94,7 +97,7 @@ class selectTrackerGUI(widgets_item_views.QDialogListbox):
     def __init__(
             self, SizeT, currentFrameNo=1, parent=None
         ):
-        trackers = myutils.get_list_of_trackers()
+        trackers = segm_models.get_list_of_trackers()
         super().__init__(
             'Select tracker', 'Select one of the following trackers',
             trackers, multiSelection=False, parent=parent,
@@ -119,13 +122,13 @@ class selectTrackerGUI(widgets_item_views.QDialogListbox):
 
 def addCustomPromptModelMessages(QParent=None):
     modelFilePath = None
-    msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+    msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph("""
     Do you <b>already have</b> the <code>acdcPromptSegment.py</code> file for your code 
     or do you <b>need instructions</b> on how to set-up your custom model?<br>
     """)
-    infoButton = widgets.infoPushButton(' I need instructions')
-    browseButton = widgets.browseFileButton(' I have the model, let me select it')
+    infoButton = widgets_push_buttons.infoPushButton(' I need instructions')
+    browseButton = widgets_push_buttons.browseFileButton(' I have the model, let me select it')
     msg.information(
         QParent, 'Add custom promptable model', txt, 
         buttonsTexts=('Cancel', infoButton, browseButton),
@@ -137,8 +140,8 @@ def addCustomPromptModelMessages(QParent=None):
     if msg.cancel:
         return
     if msg.clickedButton == infoButton:           
-        txt = myutils.get_add_custom_prompt_model_instructions()
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = segm_models.get_add_custom_prompt_model_instructions()
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
             QParent, 'Custom promptable model instructions', 
             txt, buttonsTexts=('Ok',),
@@ -171,8 +174,8 @@ class SelectPromptableModelDialog(dialogs_base.QBaseDialog):
         ))
         mainLayout.addWidget(label, alignment=Qt.AlignCenter)
         
-        listBox = widgets.listWidget()
-        models = myutils.get_list_of_promptable_models()
+        listBox = widgets_item_views.listWidget()
+        models = segm_models.get_list_of_promptable_models()
         listBox.addItems(models)
         listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
@@ -182,7 +185,7 @@ class SelectPromptableModelDialog(dialogs_base.QBaseDialog):
         
         mainLayout.addWidget(listBox)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -236,7 +239,7 @@ class LoadSavedPromptableModelDialog(dialogs_base.QBaseDialog):
         ))
         mainLayout.addWidget(label)
 
-        self.listBox = widgets.listWidget()
+        self.listBox = widgets_item_views.listWidget()
         self.listBox.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
         )
@@ -265,10 +268,10 @@ class LoadSavedPromptableModelDialog(dialogs_base.QBaseDialog):
         mainLayout.addWidget(noteLabel)
 
         buttonsLayout = QHBoxLayout()
-        browseButton = widgets.OpenFilePushButton('Browse...')
-        self.removeButton = widgets.delPushButton('Remove from list')
-        cancelButton = widgets.cancelPushButton('Cancel')
-        self.okButton = widgets.okPushButton(' Load ')
+        browseButton = widgets_push_buttons.OpenFilePushButton('Browse...')
+        self.removeButton = widgets_push_buttons.delPushButton('Remove from list')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        self.okButton = widgets_push_buttons.okPushButton(' Load ')
 
         buttonsLayout.addWidget(browseButton)
         buttonsLayout.addWidget(self.removeButton)
@@ -365,7 +368,7 @@ class LoadSavedPromptableModelDialog(dialogs_base.QBaseDialog):
             os.path.dirname(filepath)
         )
         if not filepath.lower().endswith(self.ext.lower()):
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 f'{self.model_name} models are loaded from '
                 f'<code>{self.ext}</code> files, while the selected file '
@@ -405,7 +408,7 @@ class LoadSavedPromptableModelDialog(dialogs_base.QBaseDialog):
         if model is None:
             return
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         name = html.escape(model.name)
         path = html.escape(model.filepath)
         if model.is_link:
@@ -434,7 +437,7 @@ class LoadSavedPromptableModelDialog(dialogs_base.QBaseDialog):
         try:
             self._saved_models.remove_saved_model(self.model_name, model.name)
         except Exception as err:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 f'The model <b>{name}</b> could not be removed.<br><br>'
                 f'Error: <code>{html.escape(str(err))}</code>'
@@ -448,7 +451,7 @@ class LoadSavedPromptableModelDialog(dialogs_base.QBaseDialog):
             return
 
         if not model.exists:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 f'The file of the model <b>{html.escape(model.name)}</b> '
                 'does not exist anymore:<br><br>'
@@ -476,7 +479,7 @@ class ViewTextDialog(dialogs_base.QBaseDialog):
         textViewWidget.setText(text)
 
         buttonsLayout = QHBoxLayout()
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
 
         okButton.clicked.connect(self.close)
         buttonsLayout.addStretch(1)
@@ -503,12 +506,12 @@ class startStopFramesDialog(dialogs_base.QBaseDialog):
         layout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.selectFramesGroupbox = widgets.selectStartStopFrames(
+        self.selectFramesGroupbox = selectStartStopFrames(
             SizeT, currentFrameNum=currentFrameNum, parent=parent
         )
 
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton('Ok')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -764,27 +767,27 @@ class PostProcessSegmDialog(dialogs_base.QBaseDialog):
         self.postProcessGroupbox.editingFinished.connect(self.onEditingFinished)
 
         if self.isTimelapse:
-            applyAllButton = widgets.futurePushButton(
+            applyAllButton = widgets_push_buttons.futurePushButton(
                 'Apply to all frames...'
             )
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = widgets.okPushButton(
+            applyButton = widgets_push_buttons.okPushButton(
                 'Apply', isDefault=False
             )
             applyButton.clicked.connect(self.apply_cb)
         elif self.isMultiPos:
-            applyAllButton = widgets.futurePushButton(
+            applyAllButton = widgets_push_buttons.futurePushButton(
                 'Apply to all Positions...'
             )
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = widgets.okPushButton('Apply', isDefault=False)
+            applyButton = widgets_push_buttons.okPushButton('Apply', isDefault=False)
             applyButton.clicked.connect(self.apply_cb)
         else:
-            applyAllButton = widgets.okPushButton('Apply', isDefault=False)
+            applyAllButton = widgets_push_buttons.okPushButton('Apply', isDefault=False)
             applyAllButton.clicked.connect(self.ok_cb)
             applyButton = None
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -793,7 +796,7 @@ class PostProcessSegmDialog(dialogs_base.QBaseDialog):
             buttonsLayout.addWidget(applyButton)
         buttonsLayout.addWidget(applyAllButton)
         
-        emitEditingFinishedButton = widgets.okPushButton()
+        emitEditingFinishedButton = widgets_push_buttons.okPushButton()
         buttonsLayout.addWidget(emitEditingFinishedButton)
         emitEditingFinishedButton.hide()
         buttonsLayout.setContentsMargins(0,10,0,0)

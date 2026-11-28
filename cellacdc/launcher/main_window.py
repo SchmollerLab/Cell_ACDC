@@ -27,9 +27,19 @@ import qtpy.compat
 
 from cellacdc.data_prep import main_window as dataPrep
 from cellacdc.segmentation_module import main_window as segm
-from cellacdc import gui
+from cellacdc.gui.main_window import window as gui_window
 from cellacdc.data_structure import data_struct as dataStruct
-from cellacdc import load, help, myutils, cite_url, html_utils, widgets, apps
+from cellacdc import load, help, cite_url, html_utils
+from cellacdc.myutils import app_info, filesystem, misc
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+)
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from . import dialogs as launcher_dialogs
 from cellacdc.data_structure import data_restruct as dataReStruct
 from cellacdc.help import about
 from cellacdc.utils import concat as utilsConcat
@@ -114,7 +124,7 @@ class mainWin(QMainWindow):
         
         self.checkUserDataFolderPath = True
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module='main'
         )
         self.logger = logger
@@ -170,7 +180,7 @@ class mainWin(QMainWindow):
             mainLayout, 'Image preprocessing'
         )
         self.dataStructButton = self.addModuleButton(
-            layout, widgets.setPushButton(
+            layout, widgets_push_buttons.setPushButton(
                 'Create data structure from microscopy/image file(s)...  '
             ),
             self.launchDataStruct, font, iconSize
@@ -294,7 +304,7 @@ class mainWin(QMainWindow):
         layout = QHBoxLayout()
         widget.setLayout(layout)
         # layout.addWidget(label)
-        self.darkModeToggle = widgets.Toggle(
+        self.darkModeToggle = widgets_push_buttons.Toggle(
             label_text='Dark mode',
             label_spacing=10,
             )
@@ -556,7 +566,7 @@ class mainWin(QMainWindow):
             else:
                 treeInfo = self._addActionToTree(action, treeInfo)
          
-        self.utilsHelpWin = apps.TreeSelectorDialog(
+        self.utilsHelpWin = dialogs_generic.TreeSelectorDialog(
             title='Utilities help', 
             infoTxt="Double click on a utility's name to get help about it<br>",
             parent=self, multiSelection=False, widthFactor=2, heightFactor=1.5
@@ -569,7 +579,7 @@ class mainWin(QMainWindow):
         from cellacdc import user_profile_path, user_home_path
         
         if os.path.samefile(user_profile_path, user_home_path):
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'The user profile data is already in the default folder.'
             )
@@ -594,7 +604,7 @@ class mainWin(QMainWindow):
         
         txt = html_utils.paragraph(txt)
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self, 'Reset default user profile folder path', txt, 
             buttonsTexts=('Cancel', 'Ok')
@@ -628,7 +638,7 @@ class mainWin(QMainWindow):
         
         txt = html_utils.paragraph(txt)
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self, 'Change user profile folder path', txt, 
             buttonsTexts=('Cancel', 'Ok')
@@ -648,7 +658,7 @@ class mainWin(QMainWindow):
             return
         
         if os.path.samefile(user_profile_path, new_user_profile_path):
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'The user profile data is already in the selected folder.'
             )
@@ -660,7 +670,7 @@ class mainWin(QMainWindow):
         )
         
     def startMigrateUserProfileWorker(self, src_path, dst_path, acdc_folders):
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Migrate user profile data', parent=self,
             pbarDesc='Migrating user profile data...',
             showInnerPbar=True
@@ -668,10 +678,10 @@ class mainWin(QMainWindow):
         self.progressWin.sigClosed.connect(self.progressWinClosed)
         self.progressWin.show(self.app)
         
-        from cellacdc import workers
+        from . import workers as launcher_workers
         self.workerName = 'Migrating user profile data'
         self._thread = QtCore.QThread()
-        self.migrateWorker = workers.MigrateUserProfileWorker(
+        self.migrateWorker = launcher_workers.MigrateUserProfileWorker(
             src_path, dst_path, acdc_folders
         )
         self.migrateWorker.moveToThread(self._thread)
@@ -719,7 +729,7 @@ class mainWin(QMainWindow):
     
     def migrateWorkerFinished(self, worker):
         self.workerFinished()
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             To make this change effective, please <b>restart</b> Cell-ACDC.<br><br>
             Thanks!
@@ -735,8 +745,8 @@ class mainWin(QMainWindow):
             return
         utilityName = item.text(0)
         infoText = html_utils.paragraph(utilsInfo[utilityName])
-        runUtilityButton = widgets.playPushButton('Run utility...')
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        runUtilityButton = widgets_push_buttons.playPushButton('Run utility...')
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
             self.utilsHelpWin, f'"{utilityName}" help', infoText,
             buttonsTexts=(runUtilityButton, 'Close'), showDialog=False
@@ -1010,7 +1020,7 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             self.aboutSmaxAction.triggered.connect(self.showAboutSmax)
 
-        self.userManualAction.triggered.connect(myutils.browse_docs)
+        self.userManualAction.triggered.connect(filesystem.browse_docs)
         self.contributeAction.triggered.connect(self.showContribute)
         self.citeAction.triggered.connect(
             partial(QDesktopServices.openUrl, QUrl(cite_url))
@@ -1035,32 +1045,32 @@ class mainWin(QMainWindow):
     
     def openSettingsFolder(self):
         from cellacdc import settings_folderpath
-        myutils.showInExplorer(settings_folderpath)
+        filesystem.showInExplorer(settings_folderpath)
     
     def openUserProfileFolder(self):
         from cellacdc import user_profile_path
-        myutils.showInExplorer(user_profile_path)
+        filesystem.showInExplorer(user_profile_path)
     
     def showLogFiles(self):
-        logs_path = myutils.get_logs_path()
-        myutils.showInExplorer(logs_path)
+        logs_path = app_info.get_logs_path()
+        filesystem.showInExplorer(logs_path)
     
     def launchUpdateSpotmax(self):
-        res = myutils.update_package(self, 'spotmax',)
+        res = update_package(self, 'spotmax',)
         if res:
             self.showUpdateInfo('spotMAX')
         else:
             self.showNoUpdateInfo('spotMAX')
 
     def launchUpdateACDC(self):
-        res = myutils.update_package(self, 'cellacdc')
+        res = update_package(self, 'cellacdc')
         if res:
             self.showUpdateInfo('Cell-ACDC')
         else:
             self.showNoUpdateInfo('Cell-ACDC')
     
     def showNoUpdateInfo(self, package_name):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             {package_name} is already up to date, or operation has failed.<br>
             It is recommended to install git for a better update experience.<br>
@@ -1069,7 +1079,7 @@ class mainWin(QMainWindow):
         msg.information(self, f'No update for {package_name} performed', txt)
 
     def showUpdateInfo(self, package_name):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             {package_name} has been updated.<br>
             Please <b>restart</b> the application for the changes to take effect.
@@ -1080,19 +1090,19 @@ class mainWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.recentPathsMenu.clear()
         # Step 1. Read recent Paths
-        recentPaths, dates = myutils.get_recent_paths()
+        recentPaths, dates = filesystem.get_recent_paths()
         # Step 2. Dynamically create the actions
         actions = []
         for path in recentPaths[:20]:
             action = QAction(path, self)
-            action.triggered.connect(partial(myutils.showInExplorer, path))
+            action.triggered.connect(partial(filesystem.showInExplorer, path))
             actions.append(action)
 
         # Step 3. Add the actions to the menu
         self.recentPathsMenu.addActions(actions)
         
         # Step 4. Create the "More/Search..." dialog and action
-        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+        self.openRecentMoreDialog = dialogs_generic.SearchableListboxDialog(
             recentPaths,
             title='Recent paths',
             dates=dates,
@@ -1104,7 +1114,7 @@ class mainWin(QMainWindow):
             self.showOpenRecentMoreWidget
         )
         self.openRecentMoreDialog.sigOk.connect(
-            myutils.showInExplorer
+            filesystem.showInExplorer
         )
         self.recentPathsMenu.addSeparator()
         self.recentPathsMenu.addAction(self.openRecentMoreAction)
@@ -1126,7 +1136,7 @@ class mainWin(QMainWindow):
         win.exec_()
     
     def getSelectedPosPath(self, utilityName):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph("""
             After you click "Ok" on this dialog you will be asked
             to <b>select one position folder</b> that contains timelapse
@@ -1140,7 +1150,7 @@ class mainWin(QMainWindow):
             print(f'{utilityName} aborted by the user.')
             return
         
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = filesystem.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, 'Select Position_n folder',
             mostRecentPath
@@ -1149,7 +1159,7 @@ class mainWin(QMainWindow):
             print(f'{utilityName} aborted by the user.')
             return
         
-        myutils.addToRecentPaths(exp_path)
+        filesystem.addToRecentPaths(exp_path)
         baseFolder = os.path.basename(exp_path)
         isPosFolder = re.search(r'Position_(\d+)$', baseFolder) is not None
         isImagesFolder = baseFolder == 'Images'
@@ -1162,9 +1172,9 @@ class mainWin(QMainWindow):
             posFolders = [os.path.basename(posPath)]
             exp_path = os.path.dirname(exp_path)
         else:
-            posFolders = myutils.get_pos_foldernames(exp_path)
+            posFolders = filesystem.get_pos_foldernames(exp_path)
             if not posFolders:
-                msg = widgets.myMessageBox()
+                msg = widgets_message_box.myMessageBox()
                 msg.addShowInFileManagerButton(
                     exp_path, txt='Show selected folder...'
                 )
@@ -1184,7 +1194,7 @@ class mainWin(QMainWindow):
                     return
 
         if len(posFolders) > 1:
-            win = apps.QDialogCombobox(
+            win = dialogs_generic.QDialogCombobox(
                 'Select position folder', posFolders, 'Select position folder',
                 'Positions: ', parent=self
             )
@@ -1196,7 +1206,7 @@ class mainWin(QMainWindow):
         return posPath
 
     def getSelectedExpPaths(self, utilityName, **kwargs):
-        selectFoldersWin = apps.SelectFoldersToAnalyse(
+        selectFoldersWin = dialogs_file_selection.SelectFoldersToAnalyse(
             parent=self, 
             instructionsText=
                 'Select experiment folders to process',
@@ -1219,7 +1229,7 @@ class mainWin(QMainWindow):
         return selectedExpPaths
     
     def warnNoValidExpPaths(self, selected_path):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             The selected folder does 
             <b>not contain any valid experiment folders</b>.
@@ -1235,8 +1245,8 @@ class mainWin(QMainWindow):
         return msg.cancel
     
     def warnExpPathAlreadySelected(self, selected_path, exp_path):
-        selected_text = myutils.to_relative_path(selected_path)
-        exp_text = myutils.to_relative_path(exp_path)
+        selected_text = to_relative_path(selected_path)
+        exp_text = to_relative_path(exp_path)
         txt = html_utils.paragraph(f""" 
             The experiment folder of the selected path was already previously selected.<br><br>
             Are you adding Position folders one by one? If yes, you do not 
@@ -1249,7 +1259,7 @@ class mainWin(QMainWindow):
             Selected path: <code>{selected_text}</code><br><br>
             Experiment path: <code>{exp_text}</code>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Folder already selected!', txt, 
             buttonsTexts=('Cancel', 'Yes'), 
@@ -1268,7 +1278,7 @@ class mainWin(QMainWindow):
         txt = html_utils.paragraph(
             'Are you sure you want to restart Cell-ACDC?<br>'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Restart?', txt, buttonsTexts=('Cancel', 'Yes'))
         return msg.cancel
     
@@ -1340,7 +1350,7 @@ class mainWin(QMainWindow):
             win.close()          
         
     def applyTrackingFromTackmateXMLFinished(self):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             'Apply tracking info from TrackMate XML data completed.'
         )
@@ -1349,7 +1359,7 @@ class mainWin(QMainWindow):
         self.applyTrackMateXMLWin.close()
     
     def applyTrackingFromTableFinished(self):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             'Apply tracking info from tabular data completed.'
         )
@@ -1358,12 +1368,12 @@ class mainWin(QMainWindow):
         self.applyTrackWin.close()
     
     def launchNapariUtil(self, action):
-        myutils.check_install_package('napari', parent=self)
+        installs.check_install_package('napari', parent=self)
         if action == self.arboretumAction:
             self._launchArboretum()
 
     def _launchArboretum(self):
-        myutils.check_install_package('napari_arboretum', parent=self)
+        installs.check_install_package('napari_arboretum', parent=self)
 
         from cellacdc.napari_utils import arboretum
         
@@ -1400,7 +1410,7 @@ class mainWin(QMainWindow):
     
     def launchFromImageJroiToSegmUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        myutils.check_install_package('roifile', parent=self)
+        installs.check_install_package('roifile', parent=self)
 
         import roifile
 
@@ -1439,7 +1449,7 @@ class mainWin(QMainWindow):
     
     def launchToImageJroiUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        myutils.check_install_package('roifile', parent=self)
+        installs.check_install_package('roifile', parent=self)
 
         import roifile
 
@@ -1484,7 +1494,7 @@ class mainWin(QMainWindow):
             win.close()  
     
     def generateMothBudTotTableFinished(self):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             'Generating mothers, buds, and total cell table completed.'
         )
@@ -1640,7 +1650,7 @@ class mainWin(QMainWindow):
         if selectedExpPaths is None:
             return
         
-        SizeZwin = apps.NumericEntryDialog(
+        SizeZwin = dialogs_generic.NumericEntryDialog(
             title='Number of z-slices', 
             instructions='Enter number of z-slices required',
             currentValue=1, parent=self, 
@@ -1718,7 +1728,7 @@ class mainWin(QMainWindow):
         if selectedExpPaths is None:
             return
         
-        win = apps.TrackSubCellObjectsDialog()
+        win = launcher_dialogs.TrackSubCellObjectsDialog()
         win.exec_()
         if win.cancel:
             return
@@ -1802,7 +1812,7 @@ class mainWin(QMainWindow):
             posFoldersInfo = {}
             for pos in posFoldernames:
                 pos_path = os.path.join(exp_path, pos)
-                status = myutils.get_pos_status(pos_path, caller=caller)
+                status = filesystem.get_pos_status(pos_path, caller=caller)
                 posFoldersInfo[pos] = status
             infoPaths[exp_path] = posFoldersInfo
         return infoPaths
@@ -1865,7 +1875,7 @@ class mainWin(QMainWindow):
         QTimer.singleShot(100, self._showDataStructWin)
 
     def _showDataStructWin(self):
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'
         bioformats_href = html_utils.href_tag(
             '<b>Bio-Formats</b>', bioformats_url
@@ -1995,7 +2005,7 @@ class mainWin(QMainWindow):
             self.restoreDefaultButtons()
         
         elif msg.clickedButton == restructButton:
-            self.progressWin = apps.QDialogWorkerProgress(
+            self.progressWin = dialogs_generic.QDialogWorkerProgress(
                 title='Re-structure image files log', parent=self,
                 pbarDesc='Re-structuring image files running...'
             )
@@ -2010,7 +2020,7 @@ class mainWin(QMainWindow):
                 self.logger.info('Re-structuring files NOT completed.')
     
     def runFijiMacroWorkflow(self):
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Initialising Fiji', 
             parent=self,
             pbarDesc='Initialising Fiji...'
@@ -2044,7 +2054,7 @@ class mainWin(QMainWindow):
         self.progressWin.mainPbar.setMaximum(totalIter)
     
     def workerFinished(self, worker=None):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             f'{self.workerName} process finished.'
         )
@@ -2127,7 +2137,7 @@ class mainWin(QMainWindow):
 
     def launchGui(self, checked=False):
         self.logger.info('Opening GUI...')
-        guiWin = gui.guiWin(
+        guiWin = gui_window.guiWin(
             self.app, mainWin=self, version=self._version, 
             launcherSlot=self.launchGui
         )
@@ -2169,8 +2179,8 @@ class mainWin(QMainWindow):
     def launchMeasurementsViewer(self, checked=False):
         self.logger.info('Opening measurements viewer...')
         # Imported lazily: the viewer module is large and only needed here
-        from cellacdc import measurements_viewer
-        win = measurements_viewer.MeasurementsViewerWin()
+        from cellacdc.measurements_viewer.main_window import window as viewer_window
+        win = viewer_window.MeasurementsViewerWin()
         self.measurementsViewerWins.append(win)
         win.sigClosed.connect(self.measurementsViewerClosed)
         win.show()
@@ -2260,7 +2270,7 @@ class mainWin(QMainWindow):
             if str(self.df_settings.at['doNotAskMigrate', 'value']) == 'Yes':
                 return
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'Starting from version 1.4.0, Cell-ACDC default <b>user profile path</b> '
             f'has been <b>changed</b> to <code>{user_profile_path}</code><br><br>'
@@ -2360,7 +2370,7 @@ class mainWin(QMainWindow):
         if not openModules:
             return True, openModules
 
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         warn_txt = html_utils.paragraph(
             'There are still <b>other Cell-ACDC windows open</b>.<br><br>'
             'Are you sure you want to close everything?'
@@ -2401,7 +2411,7 @@ class mainWin(QMainWindow):
                 print('Failed to restart Cell-ACDC. Please restart manually')
         else:
             self.logger.info('**********************************************')
-            self.logger.info(f'Cell-ACDC closed. {myutils.get_salute_string()}')
+            self.logger.info(f'Cell-ACDC closed. {misc.get_salute_string()}')
             self.logger.info('**********************************************')
 
 

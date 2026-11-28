@@ -6,7 +6,8 @@ import pytest
 from qtpy.QtCore import QObject, Signal
 from qtpy.QtWidgets import QApplication, QMenu, QPushButton
 
-from cellacdc import _main, measurements_viewer
+from cellacdc.launcher import main_window as launcher_window
+from cellacdc.measurements_viewer.main_window import window as viewer_window
 from cellacdc.info import utilsInfo
 
 pytestmark = pytest.mark.gui
@@ -36,9 +37,9 @@ class _FakeViewerWin(QObject):
 class _LauncherHost:
     """Minimal stand-in for `mainWin`: real action creation/connection and
     launch slots, no-op for every other slot."""
-    launchMeasurementsViewer = _main.mainWin.launchMeasurementsViewer
-    measurementsViewerClosed = _main.mainWin.measurementsViewerClosed
-    getOpenModules = _main.mainWin.getOpenModules
+    launchMeasurementsViewer = launcher_window.mainWin.launchMeasurementsViewer
+    measurementsViewerClosed = launcher_window.mainWin.measurementsViewerClosed
+    getOpenModules = launcher_window.mainWin.getOpenModules
 
     def __init__(self):
         self.measurementsViewerWins = []
@@ -62,12 +63,12 @@ def test_measurements_viewer_action_opens_and_tracks_window(
     ):
     _FakeViewerWin.instances = []
     monkeypatch.setattr(
-        measurements_viewer, 'MeasurementsViewerWin', _FakeViewerWin
+        viewer_window, 'MeasurementsViewerWin', _FakeViewerWin
     )
     host = _LauncherHost()
     host.recentPathsMenu = QMenu()
-    _main.mainWin.createActions(host)
-    _main.mainWin.connectActions(host)
+    launcher_window.mainWin.createActions(host)
+    launcher_window.mainWin.connectActions(host)
 
     action = host.launchMeasurementsViewerAction
     # Listed in the Utilities help

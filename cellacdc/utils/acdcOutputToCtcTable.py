@@ -1,6 +1,8 @@
 import os
 
-from .. import apps, myutils, workers, widgets, html_utils, printl
+from .. import html_utils, printl
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 from qtpy.QtCore import Signal
@@ -13,7 +15,7 @@ class ConvertAcdcOutputToCtcTableUtil(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -21,7 +23,7 @@ class ConvertAcdcOutputToCtcTableUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.CreateCtcTableFromAcdcOutput(self)
+        self.worker = CreateCtcTableFromAcdcOutput(self)
         self.worker.sigCancelled.connect(self.workerCancelled)
         super().runWorker(self.worker)
     
@@ -33,8 +35,8 @@ class ConvertAcdcOutputToCtcTableUtil(NewThreadMultipleExpBaseUtil):
         video_filepath = None
         for pos_folder in pos_foldernames:
             images_path = os.path.join(exp_path, pos_folder, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
-            for file in myutils.listdir(images_path):
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
+            for file in filesystem.listdir(images_path):
                 if file == f'{basename}{video_endname}':
                     video_filepath = os.path.join(images_path, file)
                     break
@@ -42,7 +44,7 @@ class ConvertAcdcOutputToCtcTableUtil(NewThreadMultipleExpBaseUtil):
             if video_filepath is not None:
                 break
         
-        win = apps.SetupSplitVideoIntoTiffsDialog(video_filepath)
+        win = utils_base.SetupSplitVideoIntoTiffsDialog(video_filepath)
         win.exec_()
 
         if win.cancel:
@@ -68,7 +70,7 @@ class ConvertAcdcOutputToCtcTableUtil(NewThreadMultipleExpBaseUtil):
         else:
             txt = f'{self.windowTitle()} process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -120,7 +122,7 @@ class CreateCtcTableFromAcdcOutput(utils_base.BaseWorkerUtil):
                 )
 
                 images_path = os.path.join(exp_path, pos, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                basename, chNames = filesystem.getBasenameAndChNames(images_path)
                 for acdcOutEndname in selectedAcdcOutputEndnames:
                     df_ctc, df_ctc_filepath = (
                         load.create_ctc_table_from_images_path(

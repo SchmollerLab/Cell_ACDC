@@ -33,15 +33,18 @@ import pyqtgraph as pg
 from qtpy.QtCore import QSaveFile, QIODevice
 from qtpy.QtGui import QColor
 
-from cellacdc import myutils, load
+from cellacdc import load
+from cellacdc.myutils import filesystem
 from . import phase_translator
 from cellacdc import (
-    cca_df_colnames, apps, core, timepoint_predictors, measurement_processing,
+    cca_df_colnames, core, timepoint_predictors, measurement_processing,
     background_values, settings_csv_path, qutils
 )
+from cellacdc.shared.dialogs import combine_measurements as dialogs_combine_measurements
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX, parse_flags
-from cellacdc.apps_measurements_viewer import (
-    is_formatting_color, _FormattingConditionDialog,
+from .dialogs.conditional_formatting import (
+    _FormattingConditionDialog,
+    is_formatting_color,
 )
 from cellacdc.gui.mixins.custom_annotations import custom_annot_state_to_save
 from .custom_annotation_predictors import CustomAnnotationPredictor
@@ -209,7 +212,7 @@ def get_images_paths(folderpath):
     if os.path.isdir(images_path):
         return [images_path]
     
-    pos_foldernames = myutils.get_pos_foldernames(folderpath)
+    pos_foldernames = filesystem.get_pos_foldernames(folderpath)
     images_paths = [
         os.path.join(folderpath, pos, 'Images') for pos in pos_foldernames
     ]
@@ -219,7 +222,7 @@ def get_images_paths(folderpath):
 def get_channels_and_segm_endnames(images_path):
     """Return the channel names and the segmentation files end names 
     (e.g., 'segm' or 'segm_<name>') available in `images_path`."""
-    basename, chNames = myutils.getBasenameAndChNames(images_path)
+    basename, chNames = filesystem.getBasenameAndChNames(images_path)
     segm_files = load.get_segm_files(images_path)
     segm_endnames = load.get_endnames(basename, segm_files)
     segm_endnames = [
@@ -233,7 +236,7 @@ def acdc_output_columns(images_path, segm_endname='segm'):
     """Column names (set) of the acdc_output table that `load_position`
     loads with the segmentation `segm_endname` of `images_path` (only the
     header is read), None if the file does not exist."""
-    basename, _ = myutils.getBasenameAndChNames(images_path)
+    basename, _ = filesystem.getBasenameAndChNames(images_path)
     endname = (segm_endname or 'segm').replace('segm', 'acdc_output')
     filepath = os.path.join(images_path, f'{basename}{endname}.csv')
     if not os.path.exists(filepath):
@@ -247,7 +250,7 @@ def get_channel_from_filepath(file_path):
     images_path = os.path.dirname(file_path)
     filename, _ = os.path.splitext(os.path.basename(file_path))
     try:
-        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        basename, chNames = filesystem.getBasenameAndChNames(images_path)
     except Exception as err:
         return
     
@@ -419,7 +422,7 @@ def evaluate_masked_cell_equation(df, expression, SizeT=None, last_frame=None):
     is indexed like those rows (assigning it to a column of the full table
     leaves NaN on the later rows). Without `last_frame`, it is exactly
     `evaluateCellEquation` on `df` with `SizeT`."""
-    evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
+    evaluate = dialogs_combine_measurements.CombineMetricsEquationDialog.evaluateCellEquation
     if last_frame is None:
         return evaluate(df, expression, SizeT=SizeT)
     source = viewer_position_data.mask_frames(df, last_frame)
@@ -1801,11 +1804,3 @@ class MeasurementsViewerUtils(
 
 
 INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
-
-
-# cellacdc-refactor: intermediate compat block (removed in C12)
-# Names that moved out of this module stay reachable here with a
-# DeprecationWarning (cellacdc/_compat.py, see CODEMAP.md).
-from cellacdc import _compat as _acdc_compat  # noqa: E402
-
-__getattr__, __dir__ = _acdc_compat.moved_module(__name__)

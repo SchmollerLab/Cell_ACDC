@@ -12,12 +12,36 @@ from qtpy.QtGui import QKeySequence
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QDialog, QLabel
 
-from cellacdc import apps, apps_measurements_viewer, gui_custom_annotations, measurements_viewer
-from cellacdc import measurements_viewer_utils
-from cellacdc.custom_annotation_predictors import (
-    CustomAnnotationPredictor, DEFAULT_SHORTCUTS
+from cellacdc.gui.mixins import (
+    custom_annotations as gui_custom_annotations,
+    dialogs as gui_mixin_dialogs,
 )
-from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc.measurements_viewer import (
+    annotation_data as viewer_annotation_data,
+    widgets as viewer_widgets,
+)
+from cellacdc.measurements_viewer.dialogs import (
+    phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs,
+    predictor_editors as viewer_dialogs_predictor_editors,
+)
+from cellacdc.measurements_viewer.main_window import (
+    configuration as viewer_configuration,
+    data_io as viewer_data_io,
+    image_panel as viewer_image_panel,
+)
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+)
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import QFileDialog, QMenu
+from cellacdc.measurements_viewer import viewer_utils
+from cellacdc.measurements_viewer.custom_annotation_predictors import (
+    CustomAnnotationPredictor,
+    DEFAULT_SHORTCUTS,
+)
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import (
     CellFilter, TIMEPOINT_PREFIX, TimepointPredictor
 )
@@ -265,7 +289,7 @@ def annot_state(name='Big', shortcut='A', predictor=None, autoApply=False):
 @pytest.mark.parametrize('editing', [False, True])
 @pytest.mark.parametrize('predictor_options', [None, {}])
 def test_annotation_dialog_has_no_type_dropdown(app, editing, predictor_options):
-    dialog = apps.customAnnotationDialog(
+    dialog = gui_mixin_dialogs.customAnnotationDialog(
         {}, state=annot_state() if editing else None,
         predictorOptions=predictor_options
     )
@@ -295,8 +319,8 @@ def test_annotation_dialog_loads_legacy_saved_annotation(app, monkeypatch):
         cancel=False, selectedItemsText=['Big'], _additionalButtons=[]
     )
     selection.listBox.count.return_value = 1
-    monkeypatch.setattr(apps.widgets, 'QDialogListbox', Mock(return_value=selection))
-    dialog = apps.customAnnotationDialog({'Big': annot_state()})
+    monkeypatch.setattr(widgets_item_views, 'QDialogListbox', Mock(return_value=selection))
+    dialog = gui_mixin_dialogs.customAnnotationDialog({'Big': annot_state()})
     try:
         dialog.loadSavedAnnot()
         assert dialog.nameWidget.widget.text() == 'Big'
@@ -329,9 +353,9 @@ def test_load_saved_annotation_restores_predictor_and_options(
     )
     selection.listBox.count.return_value = 1
     monkeypatch.setattr(
-        apps.widgets, 'QDialogListbox', Mock(return_value=selection)
+        widgets_item_views, 'QDialogListbox', Mock(return_value=selection)
     )
-    dialog = apps.customAnnotationDialog({'Big': saved}, predictorOptions={})
+    dialog = gui_mixin_dialogs.customAnnotationDialog({'Big': saved}, predictorOptions={})
     try:
         group = dialog.predictorGroupbox
         assert group.predictorType() != 'equation'
@@ -386,7 +410,7 @@ def test_main_gui_annotation_dialog_has_no_overrides_phases_option(
     state = annot_state()
     if overrides:
         state['overridesPhases'] = True
-    dialog = apps.customAnnotationDialog({}, state=state)
+    dialog = gui_mixin_dialogs.customAnnotationDialog({}, state=state)
     try:
         assert dialog.overridesPhasesToggle is None
         assert not any(
@@ -394,7 +418,7 @@ def test_main_gui_annotation_dialog_has_no_overrides_phases_option(
             for label in dialog.findChildren(QLabel)
         )
         info = Mock()
-        monkeypatch.setattr(apps.widgets, 'myMessageBox', info)
+        monkeypatch.setattr(widgets_message_box, 'myMessageBox', info)
         dialog.showOptionsInfo()
         assert 'Overrides phases' not in info.return_value.addText.call_args.args[0]
         assert set(accept_annotation_dialog(dialog)) == {
@@ -415,7 +439,7 @@ def test_viewer_annotation_dialog_overrides_phases_option(
     state = annot_state(predictor=equation('area > 12'))
     if saved is not None:
         state['overridesPhases'] = saved
-    dialog = apps.customAnnotationDialog(
+    dialog = gui_mixin_dialogs.customAnnotationDialog(
         {}, state=state, predictorOptions={}
     )
     try:
@@ -428,7 +452,7 @@ def test_viewer_annotation_dialog_overrides_phases_option(
             for label in dialog.findChildren(QLabel)
         )
         info = Mock()
-        monkeypatch.setattr(apps.widgets, 'myMessageBox', info)
+        monkeypatch.setattr(widgets_message_box, 'myMessageBox', info)
         dialog.showOptionsInfo()
         assert 'Overrides phases' in info.return_value.addText.call_args.args[0]
         assert accept_annotation_dialog(dialog)['overridesPhases'] is bool(saved)
@@ -440,7 +464,7 @@ def test_viewer_annotation_dialog_overrides_phases_option(
 
 
 def test_new_viewer_annotation_does_not_override_phases(app):
-    dialog = apps.customAnnotationDialog({}, predictorOptions={})
+    dialog = gui_mixin_dialogs.customAnnotationDialog({}, predictorOptions={})
     try:
         assert not dialog.overridesPhasesToggle.isChecked()
         dialog.nameWidget.widget.setText('Big')
@@ -460,8 +484,8 @@ def phase_rule(name='Cycle', phases=('G1', 'S'), timepoints=('Start',)):
 
 def test_phase_translator_dialog_lists_annotation_overrides(app):
     rules = [phase_rule(), phase_rule('Fallback', ['Other'], ())]
-    without = apps_measurements_viewer.PhaseTranslatorDialog(rules, [], [], {})
-    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+    without = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(rules, [], [], {})
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
         rules, [], [], {}, phaseColors={'Excluded': '#123456'},
         annotationOverrides=('Excluded', 'Arrested', 'G1')
     )
@@ -490,7 +514,7 @@ def test_phase_translator_dialog_lists_annotation_overrides(app):
         for name in dialog.annotationOverrides:
             assert f'<b>{name}</b>' in text
         assert 'first one' in text
-        assert 'Overrides phases' in apps_measurements_viewer.PHASE_TRANSLATOR_HELP
+        assert 'Overrides phases' in viewer_dialogs_phase_translator_dialogs.PHASE_TRANSLATOR_HELP
         # Removing every rule keeps the override colors and Apply enabled
         dialog.removeRule()
         dialog.removeRule()
@@ -510,10 +534,10 @@ def test_phase_translator_dialog_lists_annotation_overrides(app):
 
 
 def test_phase_translator_dialog_without_rules_or_overrides(app):
-    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
         [], [], [], {}, annotationOverrides=[]
     )
-    single = apps_measurements_viewer.PhaseTranslatorDialog(
+    single = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog(
         [], [], [], {}, annotationOverrides=['Arrested']
     )
     try:
@@ -532,7 +556,7 @@ def test_phase_translator_dialog_without_rules_or_overrides(app):
 
 
 def test_predictor_dialog_consolidation_roundtrip(app):
-    dialog = apps.customAnnotationDialog(
+    dialog = gui_mixin_dialogs.customAnnotationDialog(
         {}, state=annot_state(predictor=equation('area > 12', consolidation='most')),
         predictorOptions={}
     )
@@ -549,7 +573,7 @@ def test_predictor_dialog_consolidation_roundtrip(app):
 
 @pytest.mark.parametrize('mode, cells', [('all', 0), ('none', 1), ('most', 1)])
 def test_equation_editor_preview_uses_consolidation(app, acdc_df, mode, cells):
-    dialog = apps_measurements_viewer.CustomAnnotationPredictorEquationDialog(
+    dialog = viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog(
         [], False, False, acdc_df=acdc_df, equation='area > 12',
         SizeT=4, consolidation=mode
     )
@@ -569,10 +593,10 @@ def test_annotation_dialog_is_disabled_while_equation_editor_runs(
     ):
     # The editor is not modal: OK of the annotation dialog meanwhile would
     # save the old predictor and drop the edit
-    dialog = apps.customAnnotationDialog(
+    dialog = gui_mixin_dialogs.customAnnotationDialog(
         {}, predictorOptions={'acdc_df': acdc_df, 'SizeT': 4}
     )
-    Editor = apps_measurements_viewer.CustomAnnotationPredictorEquationDialog
+    Editor = viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog
     original = Editor.exec_
     states = {}
 
@@ -641,7 +665,7 @@ def test_hide_annotations_menu_toggles_and_keeps_state(viewer, monkeypatch):
         assert action.isChecked() == next(expected)
         action.trigger()
 
-    monkeypatch.setattr(apps.widgets.QMenu, 'exec', select_hide)
+    monkeypatch.setattr(QMenu, 'exec', select_hide)
     event = Mock()
     event.globalPos.return_value = QPoint()
     button.showContextMenu(event)
@@ -686,7 +710,7 @@ def test_hide_annotations_option_is_a_user_setting_per_annotation(
             if action.text() == 'Hide annotations'
         )
 
-    monkeypatch.setattr(apps.widgets.QMenu, 'exec', record_hide)
+    monkeypatch.setattr(QMenu, 'exec', record_hide)
     event = Mock()
     event.globalPos.return_value = QPoint()
     big.showContextMenu(event)
@@ -824,11 +848,11 @@ def test_annotation_shortcut_used_by_a_tool_key_is_not_set(viewer, capsys):
 
 
 @pytest.mark.parametrize('filename', sorted(
-    name for name in os.listdir(measurements_viewer.PREMADE_CONFIGURATIONS_PATH)
+    name for name in os.listdir(viewer_configuration.PREMADE_CONFIGURATIONS_PATH)
     if name.endswith('.json')
 ))
 def test_premade_shortcuts_do_not_collide(viewer, filename):
-    path = os.path.join(measurements_viewer.PREMADE_CONFIGURATIONS_PATH, filename)
+    path = os.path.join(viewer_configuration.PREMADE_CONFIGURATIONS_PATH, filename)
     with open(path) as file:
         template = json.load(file)
     items = (
@@ -841,7 +865,7 @@ def test_premade_shortcuts_do_not_collide(viewer, filename):
         if not shortcut:
             continue
         shortcuts.append(QKeySequence(shortcut).toString())
-        autoText = measurements_viewer.auto_shortcut_text(shortcut)
+        autoText = viewer_widgets.auto_shortcut_text(shortcut)
         if autoText:
             shortcuts.append(autoText)
     reserved = viewer.reservedShortcuts()
@@ -979,13 +1003,13 @@ def test_modify_rename_and_remove(viewer, monkeypatch):
     button = viewer.customAnnotButtonByName('Big')
     viewer.customAnnotShortcutTriggered(button)
     newState = annot_state(name='Large', shortcut='D')
-    newState['symbolColor'] = measurements_viewer.QColor(0, 255, 0)
+    newState['symbolColor'] = QColor(0, 255, 0)
     dialog = SimpleNamespace(
         cancel=False, state=newState, symbol='o', exec_=Mock(),
         sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
-        gui_custom_annotations.apps, 'customAnnotationDialog', 
+        gui_mixin_dialogs, 'customAnnotationDialog', 
         Mock(return_value=dialog)
     )
     viewer.customAnnotModify(button)
@@ -1027,7 +1051,7 @@ def test_removing_annotation_column_warns_about_dependents(viewer, monkeypatch):
             return buttons
 
     monkeypatch.setattr(
-        gui_custom_annotations.widgets, 'myMessageBox', FakeMessageBox
+        widgets_message_box, 'myMessageBox', FakeMessageBox
     )
     viewer.removeCustomAnnotButton(button)
     assert len(texts) == 1
@@ -1044,13 +1068,13 @@ def test_removing_annotation_column_warns_about_dependents(viewer, monkeypatch):
 
 def modify_annotation(viewer, monkeypatch, button, state):
     state = dict(state)
-    state['symbolColor'] = measurements_viewer.QColor(*state['symbolColor'])
+    state['symbolColor'] = QColor(*state['symbolColor'])
     dialog = SimpleNamespace(
         cancel=False, state=state, symbol='o', exec_=Mock(),
         sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
-        gui_custom_annotations.apps, 'customAnnotationDialog',
+        gui_mixin_dialogs, 'customAnnotationDialog',
         Mock(return_value=dialog)
     )
     viewer.customAnnotModify(button)
@@ -1122,7 +1146,7 @@ def test_removal_note_lists_phase_rules_using_column_as_input(viewer):
 
 def test_loading_existing_column_keeps_assignments_of_visited_cells(viewer):
     viewer.acdc_df['Big'] = [0, 0, 0, 0, 1, 1, 1, 1]
-    viewer.acdc_df[measurements_viewer.VISITED_COLUMN] = True
+    viewer.acdc_df[viewer_annotation_data.VISITED_COLUMN] = True
     viewer.setCustomAnnotations([annot_state(
         predictor=equation('area > 100'), autoApply=True
     )])
@@ -1176,10 +1200,10 @@ def test_rename_moves_selection_and_formatting(viewer, monkeypatch):
     button = viewer.customAnnotButtonByName('Big')
     for item in viewer.columnsModel.measurementItems():
         if item.text() == 'Big':
-            item.setCheckState(measurements_viewer.Qt.Checked)
+            item.setCheckState(Qt.Checked)
     rules = [{'condition': 'area > 12', 'color': '#ff0000'}]
     viewer.conditionalFormatting['Big'] = rules
-    color = measurements_viewer.QColor(0, 255, 0)
+    color = QColor(0, 255, 0)
     viewer.measurementsColors['Big'] = color
     viewer.plotOnNewYAxis('Big')
     modify_annotation(viewer, monkeypatch, button, annot_state(name='Large'))
@@ -1216,7 +1240,7 @@ def test_load_legacy_definitions_does_not_overwrite_global_library(viewer, monke
     selection = Mock(
         cancel=False, selectedItemsText=['Big'], _additionalButtons=[]
     )
-    monkeypatch.setattr(apps.widgets, 'QDialogListbox', Mock(return_value=selection))
+    monkeypatch.setattr(widgets_item_views, 'QDialogListbox', Mock(return_value=selection))
     viewer.loadCustomAnnotations()
     button = viewer.customAnnotButtonByName('Big')
     assert button is not None
@@ -1241,7 +1265,7 @@ def record_warnings(monkeypatch):
             warnings.append(text)
 
     monkeypatch.setattr(
-        gui_custom_annotations.widgets, 'myMessageBox', FakeMessageBox
+        widgets_message_box, 'myMessageBox', FakeMessageBox
     )
     return warnings
 
@@ -1265,7 +1289,7 @@ def test_loading_annotation_named_like_a_measurement_is_refused(
         cancel=False, selectedItemsText=list(saved), _additionalButtons=[]
     )
     monkeypatch.setattr(
-        apps.widgets, 'QDialogListbox', Mock(return_value=selection)
+        widgets_item_views, 'QDialogListbox', Mock(return_value=selection)
     )
     warnings = record_warnings(monkeypatch)
     viewer.loadCustomAnnotations()
@@ -1288,10 +1312,10 @@ def test_flag_column_conflicts_lists_non_flag_columns():
         None,
         pd.DataFrame({'Dead': ['True', 'False'], 'Empty': [np.nan] * 2}),
     ]
-    assert measurements_viewer_utils.flag_column_conflicts(
+    assert viewer_annotation_data.flag_column_conflicts(
         ['stage', 'Dead', 'missing', 'Empty', 'ratio'], tables
     ) == ['stage', 'ratio']
-    assert measurements_viewer_utils.flag_column_conflicts(['ratio'], []) == []
+    assert viewer_annotation_data.flag_column_conflicts(['ratio'], []) == []
 
 
 def test_adding_annotation_named_like_another_output_is_refused(
@@ -1300,13 +1324,13 @@ def test_adding_annotation_named_like_another_output_is_refused(
     viewer.acdc_df['ratio'] = viewer.acdc_df['area'] / 7
     before = viewer.acdc_df['ratio'].copy()
     state = annot_state('ratio', 'D')
-    state['symbolColor'] = measurements_viewer.QColor(*state['symbolColor'])
+    state['symbolColor'] = QColor(*state['symbolColor'])
     dialog = SimpleNamespace(
         cancel=False, state=state, symbol='o', exec_=Mock(),
         sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
-        gui_custom_annotations.apps, 'customAnnotationDialog',
+        gui_mixin_dialogs, 'customAnnotationDialog',
         Mock(return_value=dialog)
     )
     ask = Mock(return_value=True)
@@ -1431,7 +1455,7 @@ def test_export_contains_cellwide_annotation_column(viewer, tmp_path, monkeypatc
     viewer.replaceTimepoints(identifier.uid, {1: [2]}, {1, 2})
     path = tmp_path / 'measurements.csv'
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         Mock(return_value=(str(path), 'CSV (*.csv)'))
     )
     viewer.exportMeasurements()
@@ -1471,12 +1495,21 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch):
     
     viewer.setCustomAnnotations([])
     assert viewer.customAnnotDict == {}
+    # moved: get_channels_and_segm_endnames is read in each of these modules
     monkeypatch.setattr(
-        measurements_viewer, 'get_channels_and_segm_endnames',
+        viewer_configuration, 'get_channels_and_segm_endnames',
         Mock(return_value=(['GFP'], ['segm']))
     )
     monkeypatch.setattr(
-        measurements_viewer_utils, 'load_position', Mock(return_value=posData)
+        viewer_data_io, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_image_panel, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_utils, 'load_position', Mock(return_value=posData)
     )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())

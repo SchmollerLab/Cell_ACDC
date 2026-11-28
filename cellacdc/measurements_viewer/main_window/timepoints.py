@@ -12,14 +12,15 @@ from qtpy.QtGui import QIcon, QPixmap, QPainter, QCursor, QKeySequence
 from qtpy.QtWidgets import QAction, QMenu, QAbstractButton
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import widgets, qutils
+from cellacdc import qutils
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import html_utils
 from cellacdc import timepoint_predictors
-from cellacdc import apps_measurements_viewer
+from ..dialogs import predictor_editors as viewer_dialogs_predictor_editors
 from cellacdc.timepoint_predictors import (
     TimepointIdentifier, TIMEPOINT_PREFIX, parse_flags
 )
-from cellacdc.measurements_viewer_utils import VISITED_COLUMN
+from ..annotation_data import VISITED_COLUMN
 from .. import widgets as viewer_widgets
 
 
@@ -318,7 +319,7 @@ class ViewerTimepointsGuiElements:
             other.name for other in self.timepointIdentifiers
             if other.uid != identifier.uid
         }
-        dialog = apps_measurements_viewer.TimepointIdentifierDialog(
+        dialog = viewer_dialogs_predictor_editors.TimepointIdentifierDialog(
             identifier.name, identifier.color, identifier.shortcut,
             predictor=identifier.predictor, existingNames=names,
             reservedShortcuts=lambda: self.reservedShortcuts(
@@ -585,7 +586,7 @@ class ViewerTimepointsGuiElements:
                 f'\n\nNote: "{column}" is used by {", ".join(dependents)}, '
                 'which will fail until edited.' if dependents else ''
             )
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             _, yes = msg.question(
                 self, 'Remove time point identifier?',
                 f'Remove "{identifier.name}" and its time points of all '
@@ -956,7 +957,7 @@ class ViewerPredictorEvaluationGuiElements:
             '<br><br>Do you want to overwrite the manual edits or skip the '
             'edited cells?'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, skipButton, overwriteButton = msg.warning(
             self, 'Overwrite manual edits?', txt, detailsText=details,
             buttonsTexts=('Cancel', 'Skip edited cells', 'Overwrite')

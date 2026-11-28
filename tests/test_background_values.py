@@ -17,10 +17,13 @@ import skimage.io
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication, QDialog, QMainWindow, QMenu
 
-from cellacdc import _main, apps, background_values as bv, workers
+from cellacdc import background_values as bv
+from cellacdc.launcher import main_window as launcher_window
+from cellacdc.utils import computeBackgroundValues as utils_computeBackgroundValues
 from cellacdc.info import utilsInfo
 from cellacdc.utils import base as utilsBase
 from cellacdc.utils import computeBackgroundValues as utilsComputeBackgroundValues
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 pytestmark = pytest.mark.core
 
@@ -204,7 +207,7 @@ DEFAULT_PARAMS = {
 
 def _run_worker(expPaths, params, monkeypatch):
     """Run the worker synchronously, answering its questions directly."""
-    worker = workers.ComputeBackgroundValuesWorker(_UtilStub(expPaths))
+    worker = utils_computeBackgroundValues.ComputeBackgroundValuesWorker(_UtilStub(expPaths))
 
     def askParams(expPaths):
         worker.params = params
@@ -340,7 +343,7 @@ def test_output_name_cannot_be_the_name_of_another_file(tmp_path):
 def test_params_dialog_validates_and_returns_params(app, monkeypatch):
     warnings = []
     taken = {'acdc_output': 'exp_s01_acdc_output.csv'}
-    win = apps.BackgroundValuesParamsDialog(
+    win = utils_computeBackgroundValues.BackgroundValuesParamsDialog(
         ['GFP', 'mCherry'], findExistingFile=taken.get
     )
     monkeypatch.setattr(win, '_warn', warnings.append)
@@ -411,7 +414,7 @@ def test_params_dialog_presets(app, monkeypatch):
         statistic='median', exclude_zero_pixels=False, low_percentile=10.0,
         high_percentile=90.0, output_name='bkgr'
     )
-    win = apps.BackgroundValuesParamsDialog(
+    win = utils_computeBackgroundValues.BackgroundValuesParamsDialog(
         ['BF', 'GFP', 'mCherry'], presetParams=preset, presetNote='Preset'
     )
     assert win.selectedChannels() == ['mCherry']
@@ -465,7 +468,7 @@ def test_worker_cancelled_during_last_position_saves_no_summary(
         exp_path, 'Position_1', segm, images,
         pd.DataFrame({'frame_i': [0], 'Cell_ID': [1], 'GFP_mean': [1.0]})
     )
-    process = workers.ComputeBackgroundValuesWorker._processPosition
+    process = utils_computeBackgroundValues.ComputeBackgroundValuesWorker._processPosition
 
     def processThenCancel(self, *args, **kwargs):
         result = process(self, *args, **kwargs)
@@ -473,11 +476,11 @@ def test_worker_cancelled_during_last_position_saves_no_summary(
         return result
 
     monkeypatch.setattr(
-        workers.ComputeBackgroundValuesWorker, '_processPosition',
+        utils_computeBackgroundValues.ComputeBackgroundValuesWorker, '_processPosition',
         processThenCancel
     )
     aborted = []
-    worker = workers.ComputeBackgroundValuesWorker(
+    worker = utils_computeBackgroundValues.ComputeBackgroundValuesWorker(
         _UtilStub({exp_path: ['Position_1']})
     )
     worker.sigAborted.connect(lambda: aborted.append(True))
@@ -518,7 +521,7 @@ def _patch_util_dialogs(monkeypatch, shown, messages):
         self.worker.abort = False
         self.worker.waitCond.wakeAll()
 
-    monkeypatch.setattr(apps.BackgroundValuesParamsDialog, 'exec_', acceptPresets)
+    monkeypatch.setattr(utils_computeBackgroundValues.BackgroundValuesParamsDialog, 'exec_', acceptPresets)
     monkeypatch.setattr(Util, 'selectSegmFileLoadData', selectSegm)
     monkeypatch.setattr(Util, 'selectAcdcOutputTables', selectAcdc)
     box = SimpleNamespace(
@@ -527,7 +530,7 @@ def _patch_util_dialogs(monkeypatch, shown, messages):
         critical=lambda *a: messages.append(a),
     )
     monkeypatch.setattr(
-        utilsComputeBackgroundValues.widgets, 'myMessageBox',
+        widgets_message_box, 'myMessageBox',
         lambda **kwargs: box
     )
     return Util
@@ -580,7 +583,7 @@ def test_util_error_closes_modal_window_and_stops_thread(
         raise RuntimeError('test failure')
 
     monkeypatch.setattr(
-        workers.ComputeBackgroundValuesWorker, '_processPosition', fail
+        utils_computeBackgroundValues.ComputeBackgroundValuesWorker, '_processPosition', fail
     )
     # Keep the base class cleanup (it closes the progress window), only
     # replace the error dialog: a recorder that replaced `workerCritical`
@@ -654,11 +657,11 @@ def test_util_with_presets_runs_modally_and_returns_summary(
 
 class _MenuHost(QMainWindow):
     """Real launcher actions, menus and launch slot; no-op otherwise."""
-    createActions = _main.mainWin.createActions
-    connectActions = _main.mainWin.connectActions
-    createMenuBar = _main.mainWin.createMenuBar
+    createActions = launcher_window.mainWin.createActions
+    connectActions = launcher_window.mainWin.connectActions
+    createMenuBar = launcher_window.mainWin.createMenuBar
     launchComputeBackgroundValuesUtil = (
-        _main.mainWin.launchComputeBackgroundValuesUtil
+        launcher_window.mainWin.launchComputeBackgroundValuesUtil
     )
 
     def __init__(self):
@@ -680,7 +683,7 @@ def test_launcher_misc_menu_launches_utility(app, monkeypatch):
             launched.append('shown')
 
     monkeypatch.setattr(
-        _main.utilsComputeBackgroundValues, 'ComputeBackgroundValuesUtil',
+        utils_computeBackgroundValues, 'ComputeBackgroundValuesUtil',
         _FakeUtil
     )
     host = _MenuHost()

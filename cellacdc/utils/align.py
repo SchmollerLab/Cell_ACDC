@@ -2,7 +2,16 @@ from functools import partial
 
 from qtpy.QtWidgets import QFileDialog
 
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem, image_utils
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+)
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -18,7 +27,7 @@ class alignWin(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -26,7 +35,7 @@ class alignWin(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.AlignWorker(self)
+        self.worker = AlignWorker(self)
         self.worker.sigAskUseSavedShifts.connect(self.askUseSavedShifts)
         self.worker.sigAskSelectChannel.connect(self.askSelectChannel)
         self.worker.sigAborted.connect(self.workerAborted)
@@ -42,7 +51,7 @@ class alignWin(NewThreadMultipleExpBaseUtil):
             contains <b>saved shifts from a previous alignment process</b>.<br><br>
             What do you want to do?
         """)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         _, useShiftsButton, ignoreShiftsButton, revertButton = msg.question(
             self, 'Select how saved shifts', txt,
             buttonsTexts=(
@@ -65,9 +74,9 @@ class alignWin(NewThreadMultipleExpBaseUtil):
             txt = html_utils.paragraph(f"""
                 How do you want to save the image file with reverted alignment?
             """)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            overWriteButton = widgets.savePushButton('Overwrite existing file')
-            saveAsButton = widgets.newFilePushButton('Save as new file...')
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
+            overWriteButton = widgets_push_buttons.savePushButton('Overwrite existing file')
+            saveAsButton = widgets_push_buttons.newFilePushButton('Save as new file...')
             _, overWriteButton, saveAsButton = msg.question(
                 self, 'Select how saved shifts', txt,
                 buttonsTexts=('Cancel', overWriteButton, saveAsButton),
@@ -86,7 +95,7 @@ class alignWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
     
     def askAppendedName(self, basename, parent):
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             ext='.tif', title='Reverted alignment data filename',
             hintText='Insert a text to append to the filename', 
             parent=self, basename=basename, allowEmpty=False
@@ -99,7 +108,7 @@ class alignWin(NewThreadMultipleExpBaseUtil):
         parent.close()
     
     def askSelectChannel(self, channels):
-        selectChannelWin = apps.QDialogCombobox(
+        selectChannelWin = dialogs_generic.QDialogCombobox(
             'Select channel', channels, 'Select reference channel for the aligment',
             CbLabel='Select channel:  ', parent=self
         )
@@ -120,7 +129,7 @@ class alignWin(NewThreadMultipleExpBaseUtil):
         else:
             txt = 'Aligning frames process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -163,11 +172,11 @@ class AlignWorker(utils_base.BaseWorkerUtil):
             shiftsFound = False
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, 'Images')
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 for file in ls:
                     if file.endswith('align_shift.npy'):
                         shiftsFound = True
-                        basename, chNames = myutils.getBasenameAndChNames(
+                        basename, chNames = filesystem.getBasenameAndChNames(
                             images_path, useExt=('.tif', '.h5')
                         )
                         break
@@ -198,7 +207,7 @@ class AlignWorker(utils_base.BaseWorkerUtil):
 
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(
+                basename, chNames = filesystem.getBasenameAndChNames(
                     images_path, useExt=('.tif', '.h5')
                 )
 
@@ -212,7 +221,7 @@ class AlignWorker(utils_base.BaseWorkerUtil):
                         return
                     chName = self.chName
                 
-                file_path = myutils.getChannelFilePath(images_path, chName)
+                file_path = filesystem.getChannelFilePath(images_path, chName)
 
                 # Load data
                 posData = load.loadData(file_path, chName)
@@ -268,7 +277,7 @@ class AlignWorker(utils_base.BaseWorkerUtil):
                         if chName == posData.user_ch_name:
                             data = posData.img_data
                         else:
-                            file_path = myutils.getChannelFilePath(
+                            file_path = filesystem.getChannelFilePath(
                                 images_path, chName
                             )
                             data = load.load_image_file(file_path)
@@ -296,7 +305,7 @@ class AlignWorker(utils_base.BaseWorkerUtil):
                         if chName == posData.user_ch_name:
                             data = posData.img_data
                         else:
-                            file_path = myutils.getChannelFilePath(
+                            file_path = filesystem.getChannelFilePath(
                                 images_path, chName
                             )
                             data = load.load_image_file(file_path)
@@ -337,7 +346,7 @@ class AlignWorker(utils_base.BaseWorkerUtil):
             SizeZ = 1
             if data.ndim == 4:
                 SizeZ = data.shape[1]
-            myutils.to_tiff(filePath, data)
+            image_utils.to_tiff(filePath, data)
         elif ext == '.npz':
             io.savez_compressed(filePath, data)
         elif ext == '.h5':

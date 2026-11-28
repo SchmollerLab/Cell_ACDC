@@ -1,3 +1,3 @@
-from cellacdc import myutils
+from cellacdc.myutils import installs
 
-myutils.check_install_package('trackpy')
+installs.check_install_package('trackpy')

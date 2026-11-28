@@ -23,7 +23,12 @@ from qtpy.QtWidgets import (
     QGridLayout, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QTextEdit
 )
 from cellacdc import load, measurements, html_utils
-from cellacdc import widgets
+from ..widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+    search_widgets as widgets_search_widgets,
+)
 from cellacdc import fonts
 from cellacdc.timepoint_predictors import debug_trace as timepoint_debug_trace
 from . import base as dialogs_base
@@ -73,10 +78,10 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
         self.metricsHighlightDelegates = []
         self._metricsSearchState = None
         for tree in self.metricsTreeWidgets:
-            proxy = widgets.MeasurementTreeSearchProxy(self)
+            proxy = widgets_search_widgets.MeasurementTreeSearchProxy(self)
             proxy.setSourceModel(tree.model())
             self.metricsSearchProxies.append(proxy)
-            delegate = widgets._ButtonSearchHighlightDelegate(tree)
+            delegate = widgets_search_widgets._ButtonSearchHighlightDelegate(tree)
             tree.setItemDelegate(delegate)
             self.metricsHighlightDelegates.append(delegate)
         self.measurementsSearchLineEdit.textChanged.connect(self.filterMeasurements)
@@ -93,16 +98,16 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
             ('log10', 'log10('),
         ]
         for name, text in self.operators:
-            button = widgets.PushButton(icon=QIcon(f':{name}.svg'))
+            button = widgets_push_buttons.PushButton(icon=QIcon(f':{name}.svg'))
             button.setIconSize(QSize(iconSize, iconSize))
             button.setToolTip(text)
             button.clicked.connect(partial(self.insertEquationText, text))
             operatorsLayout.addWidget(button)
             self.operatorButtons.append(button)
 
-        clearButton = widgets.PushButton(icon=QIcon(':clear.svg'))
+        clearButton = widgets_push_buttons.PushButton(icon=QIcon(':clear.svg'))
         clearButton.setIconSize(QSize(iconSize, iconSize))
-        clearEntryButton = widgets.PushButton(icon=QIcon(':backspace.svg'))
+        clearEntryButton = widgets_push_buttons.PushButton(icon=QIcon(':backspace.svg'))
         clearEntryButton.setIconSize(QSize(iconSize, iconSize))
         operatorsLayout.addWidget(clearButton)
         operatorsLayout.addWidget(clearEntryButton)
@@ -130,7 +135,7 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
                 ('ALL', 'all(', 'True on every frame only if the condition is true in every frame of the cell'),
             ))
         for label, text, tooltip in categoricalOperators:
-            button = widgets.PushButton(label)
+            button = widgets_push_buttons.PushButton(label)
             button.setToolTip(tooltip)
             button.clicked.connect(partial(self.insertEquationText, text))
             categoricalOperatorsLayout.addWidget(button)
@@ -140,7 +145,7 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
         nameAndEqualsWidget = QWidget()
         nameAndEqualsLayout = QHBoxLayout(nameAndEqualsWidget)
         nameAndEqualsLayout.setContentsMargins(0, 0, 0, 0)
-        self.newColNameLineEdit = widgets.alphaNumericLineEdit()
+        self.newColNameLineEdit = widgets_line_edits.alphaNumericLineEdit()
         self.newColNameLineEdit.setAlignment(Qt.AlignCenter)
         nameAndEqualsLayout.addWidget(self.newColNameLineEdit)
         nameAndEqualsLayout.addWidget(QLabel(' = '))
@@ -175,16 +180,16 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
             The result is saved as a column with the new measurement name.
         """)
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
-        helpButton = widgets.infoPushButton('  Help...')
-        testButton = widgets.calcPushButton('Test equation')
-        self.okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        helpButton = widgets_push_buttons.infoPushButton('  Help...')
+        testButton = widgets_push_buttons.calcPushButton('Test equation')
+        self.okButton = widgets_push_buttons.okPushButton(' Ok ')
         self.okButton.setDisabled(True)
         self.statusLabel = QLabel()
         buttonsLayout.addWidget(self.statusLabel)
         buttonsLayout.addStretch(1)
         if debug:
-            debugButton = widgets.PushButton('Debug')
+            debugButton = widgets_push_buttons.PushButton('Debug')
             debugButton.clicked.connect(self._debug)
             buttonsLayout.addWidget(debugButton)
         for button in (cancelButton, helpButton, testButton, self.okButton):
@@ -299,7 +304,7 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
                 item = QTreeWidgetItem(otherParent, [otherName])
                 item.isCol = True
                 item.setData(
-                    0, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
+                    0, widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
                     otherName
                 )
                 item.variableName = otherName
@@ -505,7 +510,7 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
             if isCol:
                 _item.isCol = True
                 _item.setData(
-                    0, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE, text
+                    0, widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE, text
                 )
                 variable = text if index is None else f'{text}_table{index+1}'
                 _item.variableName = variable
@@ -717,7 +722,7 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
             self.logger.info(self.statusLabel.text())
 
     def warnEmptyEquationName(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.critical(
             self, 'Empty new measurement name',
             html_utils.paragraph('"New measurement name" field cannot be empty!')
@@ -725,7 +730,7 @@ class _CombineMetricsDialog(dialogs_base.QBaseDialog):
 
     def showHelp(self):
         txt = measurements.get_combine_metrics_help_txt()
-        msg = widgets.myMessageBox(
+        msg = widgets_message_box.myMessageBox(
             showCentered=False, wrapText=False,
             scrollableText=True, enlargeWidthFactor=1.7
         )
@@ -942,10 +947,10 @@ class CombineFeaturesCalculator(dialogs_base.QBaseDialog):
     def createButtonsOutputLayout(self):
         buttonsLayout = QHBoxLayout()
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        helpButton = widgets.infoPushButton('  Help...')
-        testButton = widgets.calcPushButton('Test output')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        helpButton = widgets_push_buttons.infoPushButton('  Help...')
+        testButton = widgets_push_buttons.calcPushButton('Test output')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         okButton.setDisabled(True)
         self.okButton = okButton
         okButton.setToolTip('Click "Test output" to check the equation and enable this button')
@@ -1018,7 +1023,7 @@ class CombineFeaturesCalculator(dialogs_base.QBaseDialog):
         self.testOutputDisplay.setHtml(text)
     
     def warnEmptyEquationName(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph("""
             "New measurement name" field <b>cannot be empty</b>!
         """)
@@ -1054,7 +1059,7 @@ class CombineFeaturesCalculator(dialogs_base.QBaseDialog):
     
     def createNewFeatureNameLayout(self):
         newFeatureNameLayout = QVBoxLayout()
-        newFeatureNameLineEdit = widgets.alphaNumericLineEdit()
+        newFeatureNameLineEdit = widgets_line_edits.alphaNumericLineEdit()
         newFeatureNameLineEdit.setAlignment(Qt.AlignCenter)
         self.newFeatureNameLineEdit = newFeatureNameLineEdit
         newFeatureNameLayout.addStretch(1)

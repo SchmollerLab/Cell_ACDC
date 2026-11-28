@@ -19,9 +19,11 @@ from qtpy.QtWidgets import QAction, QMessageBox
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from cellacdc import exception_handler
-from cellacdc import apps, html_utils
-from cellacdc import core, myutils
-from cellacdc import widgets
+from cellacdc import html_utils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from cellacdc import core
+from cellacdc.myutils import image_utils
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import qutils
 from cellacdc import transformation
 from cellacdc.config import STANDARD_MOUSE_BUTTONS
@@ -75,7 +77,7 @@ class LeftImageMouseGuiElements:
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
@@ -283,7 +285,7 @@ class LeftImageMouseGuiElements:
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             self.isMouseDragImg2 = False
             self.updateAllImages()
             return
@@ -419,7 +421,7 @@ class LeftImageMouseGuiElements:
             if isTimelapse:
                 start_n = self.labelRoiStartFrameNoSpinbox.value()
                 stop_n = self.labelRoiStopFrameNoSpinbox.value()
-                self.progressWin = apps.QDialogWorkerProgress(
+                self.progressWin = dialogs_generic.QDialogWorkerProgress(
                     title='ROI segmentation', parent=self,
                     pbarDesc=f'Segmenting frames n. {start_n} to {stop_n}...'
                 )
@@ -468,7 +470,7 @@ class LeftImageMouseGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                mothID_prompt = apps.QLineEditDialog(
+                mothID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as mother cell',
@@ -501,7 +503,7 @@ class LeftImageMouseGuiElements:
                     'To assign a bud <b>start by clicking on the bud</b> '
                     'and release on a cell in G1'
                 )
-                msg = widgets.myMessageBox()
+                msg = widgets_message_box.myMessageBox()
                 msg.critical(
                     self, 'Released on a bud', txt
                 )
@@ -518,7 +520,7 @@ class LeftImageMouseGuiElements:
                 new_mother_obj = posData.rp.get_obj_from_ID(new_mothID)
                 if bug_obj.area >= new_mother_obj.area:
                     self.assignBudMothButton.setChecked(False)
-                    msg = widgets.myMessageBox()
+                    msg = widgets_message_box.myMessageBox()
                     txt = (
                         f'You clicked FIRST on ID {budID} and then on {new_mothID}.<br>'
                         f'For me this means that you want ID {budID} to be the '
@@ -1251,7 +1253,7 @@ class LeftImageMouseGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                keepID_win = apps.QLineEditDialog(
+                keepID_win = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to keep',
@@ -1283,7 +1285,7 @@ class LeftImageMouseGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                keepID_win = apps.QLineEditDialog(
+                keepID_win = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to select',
@@ -1540,7 +1542,7 @@ class LeftImageMouseGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                divID_prompt = apps.QLineEditDialog(
+                divID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
@@ -1583,7 +1585,7 @@ class LeftImageMouseGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                budID_prompt = apps.QLineEditDialog(
+                budID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID of a bud you want to correct mother assignment',
@@ -1632,7 +1634,7 @@ class LeftImageMouseGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                unknownID_prompt = apps.QLineEditDialog(
+                unknownID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as '
@@ -1662,7 +1664,7 @@ class LeftImageMouseGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                clickedBkgrDialog = apps.QLineEditDialog(
+                clickedBkgrDialog = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
@@ -1729,7 +1731,7 @@ class LeftImageMouseGuiElements:
             nearest_ID = core.nearest_nonzero_2D(
                 self.get_2Dlab(posData.lab,force_z=False), ydata, xdata
             )
-            clickedBkgrID = apps.QLineEditDialog(
+            clickedBkgrID = dialogs_generic.QLineEditDialog(
                 title=f'{action.capitalize()} on background',
                 msg=msg, parent=self, allowedValues=posData.IDs,
                 defaultTxt=str(nearest_ID),

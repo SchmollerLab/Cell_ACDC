@@ -32,10 +32,21 @@ from qtpy.QtWidgets import (
     QGraphicsItem, QGroupBox, QLabel, QToolButton, QWidget, QWidgetAction
 )
 
-from cellacdc import apps, apps_measurements_viewer, qutils
-from cellacdc.measurements_viewer import (
-    MeasurementsViewerWin, PREMADE_CONFIGURATIONS_PATH
+from cellacdc import qutils
+from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
+from cellacdc.measurements_viewer.dialogs import (
+    conditional_formatting as viewer_dialogs_conditional_formatting,
+    phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs,
+    predictor_editors as viewer_dialogs_predictor_editors,
+    premade_setup as viewer_dialogs_premade_setup,
+    processing_recipe as viewer_dialogs_processing_recipe,
 )
+from cellacdc.shared.dialogs import (
+    combine_measurements as dialogs_combine_measurements,
+    preprocessing as dialogs_preprocessing,
+)
+from cellacdc.measurements_viewer.main_window.configuration import PREMADE_CONFIGURATIONS_PATH
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
 pytestmark = pytest.mark.viewer
@@ -631,19 +642,19 @@ def setup_dynamic_tooltips(viewer, fucci):
 
 
 DIALOG_CLASSES = [
-    apps.CombineMetricsEquationDialog,
-    apps.customAnnotationDialog,
-    apps.FunctionParamsDialog,
-    apps_measurements_viewer.TimepointIdentifierDialog,
-    apps_measurements_viewer.TimepointPredictorEquationDialog,
-    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
-    apps_measurements_viewer._TimepointCellFilterEquationDialog,
-    apps_measurements_viewer._FormattingConditionDialog,
-    apps_measurements_viewer.ConditionalFormattingDialog,
-    apps_measurements_viewer.PhaseTranslatorDialog,
-    apps_measurements_viewer.PhaseTranslatorRuleDialog,
-    apps_measurements_viewer.ChannelPlaceholderMappingDialog,
-    apps_measurements_viewer.MeasurementProcessingRecipeDialog,
+    dialogs_combine_measurements.CombineMetricsEquationDialog,
+    gui_mixin_dialogs.customAnnotationDialog,
+    dialogs_preprocessing.FunctionParamsDialog,
+    viewer_dialogs_predictor_editors.TimepointIdentifierDialog,
+    viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog,
+    viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog,
+    viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog,
+    viewer_dialogs_conditional_formatting._FormattingConditionDialog,
+    viewer_dialogs_conditional_formatting.ConditionalFormattingDialog,
+    viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog,
+    viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog,
+    viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog,
+    viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog,
 ]
 
 
@@ -673,23 +684,22 @@ def last_opened(dialogs, cls):
 
 def open_viewer_dialogs(viewer, dialogs):
     """Open (and nest) the dialogs of the viewer as the user would."""
-    mv = apps_measurements_viewer
 
     viewer.combineMeasurements()
-    last_opened(dialogs, apps.CombineMetricsEquationDialog)
+    last_opened(dialogs, dialogs_combine_measurements.CombineMetricsEquationDialog)
 
     viewer.processMeasurements()
-    recipe = last_opened(dialogs, mv.MeasurementProcessingRecipeDialog)
+    recipe = last_opened(dialogs, viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog)
     selector = recipe.preProcessParamsWidget.stepsWidgets[1]['selector']
     for i in range(selector.count()):
         selector.setCurrentIndex(i)
         # Parameters dialog with the info of the run() docstring
         selector.askSetParams()
-        last_opened(dialogs, apps.FunctionParamsDialog)
+        last_opened(dialogs, dialogs_preprocessing.FunctionParamsDialog)
 
     # Time point identifiers: new and edited (predictor editor, filters)
     viewer.addTimepointIdentifier()
-    last_opened(dialogs, mv.TimepointIdentifierDialog)
+    last_opened(dialogs, viewer_dialogs_predictor_editors.TimepointIdentifierDialog)
     identifier, = [
         identifier for identifier in viewer.timepointIdentifiers
         if identifier.name == 'M_start'  # with other-cell settings
@@ -697,41 +707,41 @@ def open_viewer_dialogs(viewer, dialogs):
     viewer.execTimepointIdentifierDialog(
         identifier, 'Edit time point identifier'
     )
-    identifierDialog = last_opened(dialogs, mv.TimepointIdentifierDialog)
+    identifierDialog = last_opened(dialogs, viewer_dialogs_predictor_editors.TimepointIdentifierDialog)
     identifierDialog.editEquation()
-    equationDialog = last_opened(dialogs, mv.TimepointPredictorEquationDialog)
+    equationDialog = last_opened(dialogs, viewer_dialogs_predictor_editors.TimepointPredictorEquationDialog)
     equationDialog.editMainCellCondition()
-    last_opened(dialogs, mv._TimepointCellFilterEquationDialog)
+    last_opened(dialogs, viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog)
     equationDialog.editOtherCellsCondition()
-    last_opened(dialogs, mv._TimepointCellFilterEquationDialog)
+    last_opened(dialogs, viewer_dialogs_predictor_editors._TimepointCellFilterEquationDialog)
 
     # Custom annotations: new and edited (predictor editor)
     viewer.addCustomAnnotation()
-    last_opened(dialogs, apps.customAnnotationDialog)
+    last_opened(dialogs, gui_mixin_dialogs.customAnnotationDialog)
     viewer.customAnnotModify(viewer.customAnnotButtonByName('Arrested'))
-    annotDialog = last_opened(dialogs, apps.customAnnotationDialog)
+    annotDialog = last_opened(dialogs, gui_mixin_dialogs.customAnnotationDialog)
     annotDialog.predictorGroupbox.editEquation()
-    last_opened(dialogs, mv.CustomAnnotationPredictorEquationDialog)
+    last_opened(dialogs, viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog)
 
     # Phases: translator, new rule and rule with eligibility formula
     viewer.configurePhaseTranslator()
-    phaseDialog = last_opened(dialogs, mv.PhaseTranslatorDialog)
+    phaseDialog = last_opened(dialogs, viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog)
     phaseDialog.addRule()
-    last_opened(dialogs, mv.PhaseTranslatorRuleDialog)
+    last_opened(dialogs, viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog)
     phaseDialog.rules[0]['predictor'] = {
         'type': 'equation', 'equation': LONG_EQUATION
     }
     phaseDialog.rulesList.setCurrentRow(0)
     phaseDialog.editRule()
-    ruleDialog = last_opened(dialogs, mv.PhaseTranslatorRuleDialog)
+    ruleDialog = last_opened(dialogs, viewer_dialogs_phase_translator_dialogs.PhaseTranslatorRuleDialog)
     ruleDialog.predictorGroupbox.editEquation()
-    last_opened(dialogs, mv.CustomAnnotationPredictorEquationDialog)
+    last_opened(dialogs, viewer_dialogs_predictor_editors.CustomAnnotationPredictorEquationDialog)
 
     # Conditional formatting and its condition editor
     viewer.editConditionalFormatting('area')
-    last_opened(dialogs, mv.ConditionalFormattingDialog)
+    last_opened(dialogs, viewer_dialogs_conditional_formatting.ConditionalFormattingDialog)
     viewer.editFormattingCondition(LONG_CONDITION)
-    last_opened(dialogs, mv._FormattingConditionDialog)
+    last_opened(dialogs, viewer_dialogs_conditional_formatting._FormattingConditionDialog)
 
 
 @pytest.mark.slow
@@ -778,7 +788,7 @@ def test_premade_setup_dialog_tooltips(app, filename):
         backgroundValues = MeasurementsViewerWin.validateBackgroundValuesSpec(
             template['background_values'], placeholders, inputs
         )
-    dialog = apps_measurements_viewer.ChannelPlaceholderMappingDialog(
+    dialog = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog(
         placeholders, [GFP, MCHERRY, 'phase_contr'], inputs=inputs,
         validate=Mock(), backgroundValues=backgroundValues,
         computeBackgroundValues=Mock(), tableStartDir='',

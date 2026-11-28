@@ -180,11 +180,11 @@ def _calls(fake, kind):
 
 
 def test_model_arg_spec_exposes_gui_params():
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
 
     had_micro_sam = 'micro_sam' in sys.modules
     module = _load_module()
-    init_params, segment_params = myutils_models.getModelArgSpec(module)
+    init_params, segment_params = model_modules.getModelArgSpec(module)
     # Inspecting the arguments does not import micro-sam
     assert ('micro_sam' in sys.modules) == had_micro_sam
     assert module.Model.prompt_types == ('point', 'box')
@@ -199,7 +199,7 @@ def test_model_arg_spec_exposes_gui_params():
         ('iou_threshold', 0.5), ('box_extension', 0.05),
     ]
     kinds = {
-        p.name: myutils_models._serialize_model_param_type(p.type)
+        p.name: model_modules._serialize_model_param_type(p.type)
         for p in init_params + segment_params
     }
     assert kinds['lab'] == {'kind': 'hidden'}
@@ -622,15 +622,15 @@ def test_real_microsam_points_and_box():
 
 
 def test_package_import_checks_installation(monkeypatch):
-    from cellacdc import myutils
+    from cellacdc.myutils import installs, model_installs
 
     calls = []
-    monkeypatch.setattr(myutils, 'check_install_torch', lambda: None)
+    monkeypatch.setattr(model_installs, 'check_install_torch', lambda: None)
     monkeypatch.setattr(
-        myutils, 'check_install_package',
+        installs, 'check_install_package',
         lambda *args, **kwargs: calls.append((args, kwargs))
     )
-    myutils.check_install_microsam()
+    model_installs.check_install_microsam()
     assert calls == [(
         ('micro_sam',),
         {'pypi_name': 'micro_sam', 'min_version': '2.0',
@@ -639,7 +639,7 @@ def test_package_import_checks_installation(monkeypatch):
 
 
 def test_microsam_environment_config():
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
     from cellacdc.service import environment
 
     assert (
@@ -653,17 +653,17 @@ def test_microsam_environment_config():
         min_version='', max_version='', exact_version='',
         include_lower_version=False, include_higher_version=False,
     )
-    spec, = myutils._normalize_pkg_specs(
+    spec, = installs._normalize_pkg_specs(
         config['packages'], '', '', defaults
     )
     assert spec['pkg_name'] == 'micro_sam'
     assert spec['import_pkg_name'] == 'micro_sam'
     # Installed with pip (official installation), minimum version inclusive:
     # micro-sam 1.x has no `micro_sam.v1`
-    myutils._check_package_version_constraints(spec, '2.0.0')
-    myutils._check_package_version_constraints(spec, '2.0.1')
+    installs._check_package_version_constraints(spec, '2.0.0')
+    installs._check_package_version_constraints(spec, '2.0.1')
     with pytest.raises(ModuleNotFoundError):
-        myutils._check_package_version_constraints(spec, '1.9.0')
+        installs._check_package_version_constraints(spec, '1.9.0')
 
     # MobileSAM (vit_t models) from the GitHub archive: git not required.
     # Optional: the other models work without it

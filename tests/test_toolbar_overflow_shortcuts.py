@@ -15,8 +15,11 @@ from qtpy.QtCore import Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QMainWindow, QToolButton, QWidget
 
-from cellacdc import widgets
-from cellacdc.gui_viewer_tools import ShortcutsGuiElements
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    toolbars as widgets_toolbars,
+)
+from cellacdc.gui.mixins.window_core import ShortcutsGuiElements
 
 pytestmark = pytest.mark.gui
 
@@ -33,7 +36,7 @@ class _Window(QMainWindow, ShortcutsGuiElements):
     the shared `setShortcuts` of the main GUI and the viewer."""
     def __init__(self, width, keys=KEYS):
         super().__init__()
-        self.toolbar = widgets.ToolBar('Edit', self)
+        self.toolbar = widgets_toolbars.ToolBar('Edit', self)
         self.addToolBar(self.toolbar)
         self.buttons = {}
         self.actions = {}
@@ -57,7 +60,7 @@ class _Window(QMainWindow, ShortcutsGuiElements):
     def addOtherToolbar(self, key):
         """Toolbar on its own row with one visible button using `key`."""
         self.addToolBarBreak()
-        other = widgets.ToolBar('Other', self)
+        other = widgets_toolbars.ToolBar('Other', self)
         self.addToolBar(other)
         button = self.newButton(key)
         other.addWidget(button)
@@ -177,7 +180,7 @@ def test_shortcut_edited_while_hidden_by_overflow(make_window, app):
     button = window.buttons['H']
     assert not button.isVisible()
 
-    window.setShortcuts({'Tool H': ('J', widgets.KeySequenceFromText('J'))}, save=False)
+    window.setShortcuts({'Tool H': ('J', widgets_line_edits.KeySequenceFromText('J'))}, save=False)
     press_key(window, app, Qt.Key.Key_H)
     assert not button.isChecked()
     press_key(window, app, Qt.Key.Key_J)

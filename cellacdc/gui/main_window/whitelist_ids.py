@@ -8,8 +8,10 @@ import skimage.measure
 from typing import Set, List, Tuple
 import time
 from cellacdc import (
-    html_utils, apps, widgets, exception_handler, disableWindow, printl
+    html_utils, exception_handler, disableWindow, printl
 )
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import whitelist
 
 
@@ -38,7 +40,7 @@ class WhitelistGUIElements:
             self.logger.warning(txt)
             if not warning:
                 return False
-            msg = widgets.myMessageBox.warning(
+            msg = widgets_message_box.myMessageBox.warning(
                 self, 'No original labels', txt,
             )
             
@@ -89,7 +91,7 @@ class WhitelistGUIElements:
             'labels will be kept.'
         )
 
-        win = apps.SelectSegmFileDialog(
+        win = dialogs_file_selection.SelectSegmFileDialog(
             existingEndnames, images_path, parent=self, 
             basename=posData.basename, infoText=infoText,
             custom_first=custom_first

@@ -9,11 +9,10 @@ from qtpy.QtGui import QGuiApplication
 from qtpy.QtWidgets import QAction, QActionGroup
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import load, myutils, transformation, qutils
+from cellacdc import load, transformation, qutils
+from cellacdc.myutils import image_utils
 from cellacdc.config import STANDARD_MOUSE_BUTTONS
-from cellacdc.measurements_viewer_utils import (
-    get_channels_and_segm_endnames, loaded_data_status
-)
+from ..viewer_utils import get_channels_and_segm_endnames, loaded_data_status
 
 
 class ViewerImagePanelGuiElements:
@@ -690,7 +689,7 @@ class ViewerImagePanelGuiElements:
         
         Y, X = self.currentLab2D.shape
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             self.wcLabel.setText('')
             return
         

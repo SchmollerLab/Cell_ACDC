@@ -1,5 +1,11 @@
-from .. import myutils, workers, widgets, html_utils
-from .. import apps
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 
 from .base import NewThreadMultipleExpBaseUtil
 from qtpy.QtCore import Qt
@@ -21,7 +27,7 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -30,12 +36,12 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.FromImajeJroiToSegmNpzWorker(self)
+        self.worker = FromImajeJroiToSegmNpzWorker(self)
         self.worker.sigSelectRoisProps.connect(self.selectRoisProps)
         super().runWorker(self.worker)
     
     def selectRoisProps(self, roi_filepath, TZYX_shape, is_multi_pos):
-        win = apps.ImageJRoisToSegmManager(
+        win = ImageJRoisToSegmManager(
             roi_filepath, TZYX_shape, 
             addUseSamePropsForNextPosButton=is_multi_pos,
             parent=self.qparent
@@ -60,7 +66,7 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
         super().workerFinished(worker)
         txt = 'Converting from ImageJ ROIs to Cell-ACDC segmentation file(s) completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, 'Process completed', html_utils.paragraph(txt))
         self.close()
 
@@ -135,14 +141,14 @@ class ImageJRoisToSegmManager(dialogs_base.QBaseDialog):
             rois = [rois]
         self.rois = {roi.name: roi for roi in rois}
         
-        roisNamesTreeWidget = widgets.TreeWidget()
+        roisNamesTreeWidget = widgets_item_views.TreeWidget()
         roisNamesTreeWidget.setHeaderLabels(['ROI name', 'Cell_ID'])
         roisNamesTreeWidget.header().setSectionResizeMode(
             QHeaderView.ResizeToContents
         )
         # roisNamesTreeWidget.header().setStretchLastSection(False)
         for r, roi in enumerate(rois):
-            item = widgets.TreeWidgetItem()
+            item = widgets_item_views.TreeWidgetItem()
             item.setText(0, roi.name)
             item.setText(1, str(r+1))
             roisNamesTreeWidget.addTopLevelItem(item)
@@ -154,7 +160,7 @@ class ImageJRoisToSegmManager(dialogs_base.QBaseDialog):
         mainLayout.addWidget(roisNamesTreeWidget)
         self.roisNamesTreeWidget = roisNamesTreeWidget
         mainLayout.addSpacing(10)
-        mainLayout.addWidget(widgets.QHLine())
+        mainLayout.addWidget(widgets_basic_widgets.QHLine())
         mainLayout.addSpacing(5)
         
         self.repeatRoiZstackGroupbox = None
@@ -169,11 +175,11 @@ class ImageJRoisToSegmManager(dialogs_base.QBaseDialog):
             )
             self.repeatRoiZstackGroupbox.setChecked(False)
             self.repeatRoiZstackGroupbox.setLayout(repeatRoiZstackLayout)
-            self.lowZspinbox = widgets.SpinBox()
+            self.lowZspinbox = widgets_numeric_inputs.SpinBox()
             self.lowZspinbox.setMinimum(0)
             self.lowZspinbox.setMaximum(SizeZ-1)
             
-            self.highZspinbox = widgets.SpinBox()
+            self.highZspinbox = widgets_numeric_inputs.SpinBox()
             self.highZspinbox.setMinimum(0)
             self.highZspinbox.setMaximum(SizeZ-1)
             self.highZspinbox.setValue(SizeZ-1)
@@ -190,18 +196,18 @@ class ImageJRoisToSegmManager(dialogs_base.QBaseDialog):
         if self.repeatRoiZstackGroupbox is not None:
             mainLayout.addWidget(self.repeatRoiZstackGroupbox)
             mainLayout.addSpacing(5)
-            mainLayout.addWidget(widgets.QHLine())
+            mainLayout.addWidget(widgets_basic_widgets.QHLine())
             mainLayout.addSpacing(10)
         
-        self.rescaleRoisGroupbox = widgets.RescaleImageJroisGroupbox(TZYX_shape)
+        self.rescaleRoisGroupbox = RescaleImageJroisGroupbox(TZYX_shape)
         self.rescaleRoisGroupbox.setChecked(False)
         mainLayout.addWidget(self.rescaleRoisGroupbox)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         
         self.useSamePropsForNextPos = False
         if addUseSamePropsForNextPosButton:
-            useSamePropsForNextPosButton = widgets.reloadPushButton(
+            useSamePropsForNextPosButton = widgets_push_buttons.reloadPushButton(
                 'Keep the same preferences for all next Positions'
             )
             buttonsLayout.insertWidget(3, useSamePropsForNextPosButton)
@@ -226,7 +232,7 @@ class ImageJRoisToSegmManager(dialogs_base.QBaseDialog):
             You did not select any ROI.<br><br>
             <b>ROIs selection cannot be empty</b>. Thank you for your patience! 
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'ROIs selection empty', txt)
     
     def ok_cb(self):
@@ -302,7 +308,7 @@ class FromImajeJroiToSegmNpzWorker(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameRoi = self.mainWin.endFilenameWithText
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 rois_filepaths = [
                     os.path.join(images_path, f) for f in ls 
                     if (
@@ -351,7 +357,7 @@ class FromImajeJroiToSegmNpzWorker(utils_base.BaseWorkerUtil):
                     }
 
                 self.logger.log('Generating segm mask from ROIs...')
-                segm_data = myutils.from_imagej_rois_to_segm_data(
+                segm_data = from_imagej_rois_to_segm_data(
                     TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
                     self.repeatRoisZslicesRange
                 ) 

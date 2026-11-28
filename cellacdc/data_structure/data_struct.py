@@ -38,7 +38,19 @@ from qtpy import QtGui
 # a separate process that doesn't have a parent package
 from cellacdc import issues_url
 from cellacdc import exception_handler
-from cellacdc import apps, myutils, widgets, html_utils, printl
+from cellacdc import html_utils, printl
+from cellacdc.myutils import app_info, filesystem, image_utils, installs
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from . import helpers as data_structure_helpers
+from .dialogs import (
+    metadata as data_structure_dialogs_metadata,
+    setup as data_structure_dialogs_setup,
+)
 from cellacdc import load, settings_csv_path
 from cellacdc import cellacdc_path
 from cellacdc import _palettes
@@ -47,7 +59,7 @@ from cellacdc import acdc_fiji_path
 from cellacdc import fiji_macros
 from cellacdc import acdc_regex
 from cellacdc import io
-from cellacdc import workers
+from . import workers as data_structure_workers
 
 if os.name == 'nt':
     try:
@@ -771,7 +783,7 @@ class bioFormatsWorker(QObject):
         
         if not self.to_h5:
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
-            myutils.to_tiff(
+            image_utils.to_tiff(
                 filePath, imgData_ch, 
                 SizeT=savedSizeT,
                 SizeZ=self.SizeZ,
@@ -943,7 +955,7 @@ class bioFormatsWorker(QObject):
                 raw_src_path = os.path.dirname(rawFilePath)
                 rawFilePath = [
                     os.path.join(raw_src_path, f)
-                    for f in myutils.listdir(raw_src_path)
+                    for f in filesystem.listdir(raw_src_path)
                     if f.find(rawFilename)!=-1
                 ][0]
 
@@ -1004,7 +1016,7 @@ class bioFormatsWorker(QObject):
                 # contain "otherFilename" in the name
                 otherFilename = f'{basename}{pos_n}'
                 rawFilePath = set()
-                for f in myutils.listdir(raw_src_path):
+                for f in filesystem.listdir(raw_src_path):
                     notRawFile = all(
                         [f.find(rawName)==-1 for rawName in pos_rawFilenames]
                     )
@@ -1161,11 +1173,11 @@ class createDataStructWin(QMainWindow):
         super().__init__(parent)
 
         if version is None:
-            version = myutils.read_version()
+            version = app_info.read_version()
         
         self._version = version
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module='dataStruct-bioformats'
         )
         self.logger = logger
@@ -1248,7 +1260,7 @@ class createDataStructWin(QMainWindow):
         self.logWin.setReadOnly(True)
         mainLayout.addWidget(self.logWin)
 
-        cancelButton = widgets.cancelPushButton(' Stop process ')
+        cancelButton = widgets_push_buttons.cancelPushButton(' Stop process ')
         cancelButton.clicked.connect(self.close)
         self.cancelButton = cancelButton
         
@@ -1279,7 +1291,7 @@ class createDataStructWin(QMainWindow):
         self.checkInstallPythonBioformats(parent)
 
     def checkInstallBioIO(self, parent):
-        myutils.check_install_package(
+        installs.check_install_package(
             'BioIO', 
             import_pkg_name='bioio', 
             pypi_name='bioio', 
@@ -1299,12 +1311,12 @@ class createDataStructWin(QMainWindow):
             self.close()
             raise OSError('This module is supported ONLY on Windows 10/10 and macOS')
 
-        success, jar_dst_path = myutils.download_bioformats_jar(
+        success, jar_dst_path = data_structure_helpers.download_bioformats_jar(
             qparent=self, logger_info=self.logger.info, 
             logger_exception=self.logger.exception
         )
         self.logger.info('Checking if Java is installed...')
-        myutils.check_upgrade_javabridge()
+        data_structure_helpers.check_upgrade_javabridge()
         try:
             import javabridge
         except ModuleNotFoundError as e:
@@ -1312,13 +1324,13 @@ class createDataStructWin(QMainWindow):
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             print('======================================')
-            cancel = myutils.install_javabridge_help(parent=self)
+            cancel = data_structure_helpers.install_javabridge_help(parent=self)
             if cancel:
                 raise ModuleNotFoundError(
                     'User aborted javabridge installation'
                 )
 
-            isGitInstalled = myutils.check_git_installed(parent=self)
+            isGitInstalled = data_structure_helpers.check_git_installed(parent=self)
             if not isGitInstalled:
                 raise ModuleNotFoundError(
                     'Git is not installed. Install from '
@@ -1326,15 +1338,15 @@ class createDataStructWin(QMainWindow):
                 )
 
             try:
-                jre_path, jdk_path, url = myutils.download_java()
+                jre_path, jdk_path, url = data_structure_helpers.download_java()
             except Exception as e:
                 print('======================================')
                 traceback_str = traceback.format_exc()
                 self.logger.exception(traceback_str)
                 print('======================================')
-                java_info = myutils.get_java_url()
+                java_info = data_structure_helpers.get_java_url()
                 url, file_size, os_foldername, unzipped_foldername = java_info
-                acdc_java_path, _ = myutils.get_acdc_java_path()
+                acdc_java_path, _ = data_structure_helpers.get_acdc_java_path()
                 java_href = f'<a href="{url}">this</a>'
                 s = (
                     f'1. Download {java_href} .zip file and unzip it.<br>'
@@ -1348,7 +1360,7 @@ class createDataStructWin(QMainWindow):
                     'copy the link below and paste it into the browser</i><br><br>'
                     f'{url}'
                 )
-                msg = widgets.myMessageBox(wrapText=False)
+                msg = widgets_message_box.myMessageBox(wrapText=False)
                 txt = html_utils.paragraph(f"""
                     This module requires Java to work.<br><br>
                     Follow the instructions below and then try
@@ -1366,27 +1378,27 @@ class createDataStructWin(QMainWindow):
                 )
 
             if not is_win:
-                cancel = myutils.install_java()
+                cancel = data_structure_helpers.install_java()
                 if cancel:
                     raise ModuleNotFoundError(
                         'User aborted Java installation'
                     )
                     return
 
-            myutils.install_javabridge()
+            data_structure_helpers.install_javabridge()
 
         except Exception as e:
             print('======================================')
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             print('======================================')
-            cancel = myutils.install_java()
+            cancel = data_structure_helpers.install_java()
             if cancel:
                 raise ModuleNotFoundError(
                     'User aborted Java installation'
                 )
                 return
-            myutils.install_javabridge(
+            data_structure_helpers.install_javabridge(
                 force_compile=True, attempt_uninstall_first=True
             )
 
@@ -1410,7 +1422,7 @@ class createDataStructWin(QMainWindow):
                 issues_url, html_utils.href_tag(issues_url, issues_url)
             )
             txt = html_utils.paragraph(txt)
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.critical(
                 self, title, txt, detailsText=traceback_str
             )
@@ -1419,11 +1431,11 @@ class createDataStructWin(QMainWindow):
             )
 
     def criticalOSnotSupported(self):
-        from cellacdc import widgets
+        from cellacdc.shared.widgets import message_box as widgets_message_box
         if self.parent() is None:
-            msg = widgets.myMessageBox(self)
+            msg = widgets_message_box.myMessageBox(self)
         else:
-            msg = widgets.myMessageBox(self.parent())
+            msg = widgets_message_box.myMessageBox(self.parent())
         msg.setIcon(iconName='SP_MessageBoxCritical')
         msg.setWindowTitle('Not a supported OS')
         msg.addButton('    Ok     ')
@@ -1484,7 +1496,7 @@ class createDataStructWin(QMainWindow):
     @exception_handler
     def main(self):
         self.log('Asking to setup conversion process...')
-        win = apps.DataStructureSetupDialogue(
+        win = data_structure_dialogs_setup.DataStructureSetupDialogue(
             logger_func=self.log, parent=self
         )
         win.exec_()
@@ -1532,7 +1544,7 @@ class createDataStructWin(QMainWindow):
         
         self.loadEntirePosIntoRam = loadEntirePosIntoRam
 
-        myutils.addToRecentPaths(exp_dst_path)
+        filesystem.addToRecentPaths(exp_dst_path)
         self.addPbar()
         self.initBioIO(raw_src_path, rawFilenames)
 
@@ -1589,12 +1601,12 @@ class createDataStructWin(QMainWindow):
             and try again without letting Cell-ACDC move the files.<br><br>
             Thank you for your patience!
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Moving files failed', txt, detailsText=traceback_text)
         self.worker.finished.emit()
 
     def _installLazyLoadModules(self):
-        myutils.check_install_package(
+        installs.check_install_package(
             'zarr',
             installer='pip', 
             is_cli=False,
@@ -1664,7 +1676,7 @@ class createDataStructWin(QMainWindow):
         bioformats._utils.check_raise_exception(uuid4)
     
     def addPbar(self):
-        self.QPbar = widgets.ProgressBar(self)
+        self.QPbar = widgets_basic_widgets.ProgressBar(self)
         self.QPbar.setValue(0)
         self.mainLayout.insertWidget(3, self.QPbar)
 
@@ -1676,7 +1688,7 @@ class createDataStructWin(QMainWindow):
 
     def taskEnded(self):
         if self.worker.cancelled and not self.worker.isCriticalError:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 'Conversion task cancelled.'
             )
@@ -1685,7 +1697,7 @@ class createDataStructWin(QMainWindow):
             )
             self.close()
         elif not self.worker.cancelled:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 'Conversion task ended.<br><br>'
                 'Files saved to'
@@ -1707,7 +1719,7 @@ class createDataStructWin(QMainWindow):
         stripped_filenames = []
         for file in rawFilenames:
             filename, ext = os.path.splitext(file)
-            m_iter = myutils.findalliter(fr'(\d+)_(.+)', filename)
+            m_iter = data_structure_helpers.findalliter(fr'(\d+)_(.+)', filename)
             if len(m_iter) <= 1:
                 self.criticalNoFilenamePattern()
                 return False
@@ -1726,7 +1738,7 @@ class createDataStructWin(QMainWindow):
                 self.criticalNoFilenamePattern(error=traceback.format_exc())
                 return False
 
-        basename = myutils.getBasename(stripped_filenames)
+        basename = filesystem.getBasename(stripped_filenames)
         if not basename:
             self.criticalNoFilenamePattern()
             return False
@@ -1762,7 +1774,7 @@ class createDataStructWin(QMainWindow):
         msg.exec_()
 
     def criticalBioFormats(self, actionTxt, tracebackFormat, filename):
-        msg = widgets.myMessageBox(self, wrapText=True)
+        msg = widgets_message_box.myMessageBox(self, wrapText=True)
 
         url = 'https://docs.openmicroscopy.org/bio-formats/6.7.0/supported-formats.html'
         seeHere = f'<a href=\"{url}">here</a>'
@@ -1799,7 +1811,7 @@ class createDataStructWin(QMainWindow):
         if self.rawDataStruct == 2:
             filename = self.basename
         self.metadataDialogIsOpen = True
-        self.metadataWin = apps.QDialogMetadataXML(
+        self.metadataWin = data_structure_dialogs_metadata.QDialogMetadataXML(
             title=f'Metadata for {filename}', rawFilename=filename,
             LensNA=LensNA, SizeT=SizeT, SizeZ=SizeZ, SizeC=SizeC, SizeS=SizeS,
             TimeIncrement=TimeIncrement, TimeIncrementUnit=TimeIncrementUnit,
@@ -1836,7 +1848,7 @@ class InitFijiMacro:
         self.logger = self.acdcLauncher.logger
     
     def askSelectInstalledFiji(self):
-        if os.path.exists(myutils.get_fiji_exec_folderpath()):
+        if os.path.exists(fiji_macros.get_fiji_exec_folderpath()):
             return False, False
         
         txt = html_utils.paragraph(f"""    
@@ -1847,12 +1859,12 @@ class InitFijiMacro:
             download Fiji for you.
         """)
         selectFijiButton = (
-            widgets.OpenFilePushButton('Select Fiji.app location')
+            widgets_push_buttons.OpenFilePushButton('Select Fiji.app location')
         )
         downloadFijiButton = (
-            widgets.DownloadPushButton('Download Fiji.app')
+            widgets_push_buttons.DownloadPushButton('Download Fiji.app')
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.did_user_selected_fiji = False
         msg.question(
             self.acdcLauncher, 'Select Fiji location', txt, 
@@ -1902,7 +1914,7 @@ class InitFijiMacro:
             its creation process and cancel its execution later.
         """)
         self.logger.info('Testing Fiji command...')
-        fiji_success = myutils.test_fiji_base_command(self.logger.info)
+        fiji_success = fiji_macros.test_fiji_base_command(self.logger.info)
         commands = None
         if not fiji_success:
             if not did_user_selected_fiji:
@@ -1925,7 +1937,7 @@ class InitFijiMacro:
             commands = (acdc_fiji_path,)
             
         txt = html_utils.paragraph(txt)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self.acdcLauncher, 'Running Fiji in the command line', txt, 
             buttonsTexts=('Cancel', 'Ok'),
@@ -1935,9 +1947,9 @@ class InitFijiMacro:
             self.cancel()
             return
         
-        myutils.download_fiji(logger_func=self.logger.info)
+        fiji_macros.download_fiji(logger_func=self.logger.info)
         
-        win = apps.InitFijiMacroDialog(parent=self.acdcLauncher)
+        win = data_structure_dialogs_metadata.InitFijiMacroDialog(parent=self.acdcLauncher)
         win.exec_()
         if win.cancel:
             self.cancel()
@@ -1968,7 +1980,7 @@ class InitFijiMacro:
         txt = f'{txt}<br>Command to run the macro:'
         
         txt = html_utils.paragraph(txt)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, _, okButton = msg.information(
             self.acdcLauncher, 'Fiji macro command', txt, 
             buttonsTexts=('Cancel', 'I already ran the macro', 'Ok'),
@@ -2009,7 +2021,7 @@ class InitFijiMacro:
             """)
             msg_func = 'information'
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         getattr(msg, msg_func)(
             self.acdcLauncher, 'Macro execution completed', txt, 
             commands=(macro_filepath,)
@@ -2033,7 +2045,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         self.logWin = QPlainTextEdit()
         self.logWin.setReadOnly(True)
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module='dataStruct-symLinkToPos', QLogWidget=self.logWin
         )
         self.logger = logger
@@ -2062,7 +2074,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         
         infoLabel = QLabel(infoText)
         
-        self.pbar = widgets.ProgressBarWithETA()
+        self.pbar = widgets_basic_widgets.ProgressBarWithETA()
         self.pbar.setValue(0)
         self.pbar.setMaximum(0)
         
@@ -2071,7 +2083,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         mainLayout.addWidget(self.logWin)
         
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton(' Close ')
+        cancelButton = widgets_push_buttons.cancelPushButton(' Close ')
         cancelButton.clicked.connect(self.cancelProcess)
         self.cancelButton = cancelButton
         
@@ -2084,7 +2096,7 @@ class CreateSymLinkToPosWin(QMainWindow):
     def main(self):
         self.logger.info('Creating symbolic links to Position folders started.')
         self.logger.info('Asking to select Position folders...')
-        selectFoldersWin = apps.SelectFoldersToAnalyse(
+        selectFoldersWin = dialogs_file_selection.SelectFoldersToAnalyse(
             parent=self, 
             instructionsText=
                 'Select experiment or specific <b>Position folders '
@@ -2113,17 +2125,17 @@ class CreateSymLinkToPosWin(QMainWindow):
             You will now be asked to <b>select the destination folder</b> where to 
             create all new experiment folders.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Select destination folder', text)
         if msg.cancel:
             self.cancelProcess()
             return
         
-        dst_folderpath = apps.get_existing_directory(
+        dst_folderpath = dialogs_file_selection.get_existing_directory(
             allow_images_path=False,
             parent=self, 
             caption='Select folder where to save configuration file',
-            basedir=myutils.getMostRecentPath(),
+            basedir=filesystem.getMostRecentPath(),
             # options=QFileDialog.DontUseNativeDialog
         )
         if not dst_folderpath:
@@ -2161,7 +2173,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             Destination folder:
             <copiable>{dst_folderpath}</copiable>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self, 'Symbolic links created successfully!', text,
             path_to_browse=dst_folderpath
@@ -2175,7 +2187,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             More information in the terminal or in the following log file:
             <copiable>{self.log_path}</copiable>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Symbolic links creation failed', text,
             path_to_browse=self.logs_path,
@@ -2196,7 +2208,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             specific files to copy.<br><br>
             How do you want to proceed?
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, noButton, copyAllButton, selectButton = msg.question(
             self, 
             'Copy segmentation files?', 
@@ -2204,8 +2216,8 @@ class CreateSymLinkToPosWin(QMainWindow):
             buttonsTexts=(
                 'Cancel', 
                 'No, do not copy segm. files', 
-                widgets.copyPushButton('Copy all segm. files'), 
-                widgets.setPushButton('Let me select segm. files to copy')
+                widgets_push_buttons.copyPushButton('Copy all segm. files'), 
+                widgets_push_buttons.setPushButton('Let me select segm. files to copy')
             )
         )
         if msg.cancel:
@@ -2231,7 +2243,7 @@ class CreateSymLinkToPosWin(QMainWindow):
             images_path = os.path.join(exp_path, pos_foldernames[0], 'Images')
             basename = load.get_basename(images_path)
             
-            win = apps.SelectSegmFileDialog(
+            win = dialogs_file_selection.SelectSegmFileDialog(
                 existingSegmEndNames, 
                 exp_path, 
                 parent=self,
@@ -2254,7 +2266,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         ):
         self._worker_thread = QThread()
         
-        self._worker = workers.CreateSymLinkToPosWinWorker(
+        self._worker = data_structure_workers.CreateSymLinkToPosWinWorker(
             exp_pos_mapper, 
             dst_folderpath, 
             exp_segm_files_to_copy_mapper
@@ -2325,7 +2337,7 @@ class CreateSymLinkToPosWin(QMainWindow):
         text = html_utils.paragraph(f"""
             Creating symbolic links to Position folders process cancelled.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Symbolic links creation cancelled', text,
             path_to_browse=self.logs_path,

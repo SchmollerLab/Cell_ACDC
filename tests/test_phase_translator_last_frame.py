@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cellacdc import phase_translator
-from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
+from cellacdc.measurements_viewer import phase_translator
+from cellacdc.measurements_viewer.custom_annotation_predictors import CustomAnnotationPredictor
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 
 pytestmark = pytest.mark.viewer

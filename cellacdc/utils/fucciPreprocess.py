@@ -2,7 +2,13 @@ import os
 
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils, load
+from .. import html_utils, load
+from cellacdc.myutils import filesystem, segm_models
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    message_box as widgets_message_box,
+)
 
 from .base import NewThreadMultipleExpBaseUtil
 from qtpy.QtCore import Qt
@@ -26,7 +32,7 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -34,7 +40,7 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.FucciPreprocessWorker(self)
+        self.worker = FucciPreprocessWorker(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigAskParams.connect(self.askSelectParams)
         self.worker.sigAborted.connect(self.workerAborted)
@@ -46,7 +52,7 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
             channel_names.update(chNames)
             if df_metadata is not None:
                 continue
@@ -60,13 +66,13 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
                 'pre-processing.'
             )
             self.logger.error(txt)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.critical(self, 'Error', html_utils.paragraph(txt))
             self.worker.abort = True
             self.worker.waitCond.wakeAll()
             return
         
-        win = apps.FucciPreprocessDialog(
+        win = FucciPreprocessDialog(
             channel_names,
             df_metadata=df_metadata,
             parent=self
@@ -97,7 +103,7 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
             the name will be the same as the original file.
             """
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             hintText='Insert a name for the <b>new combined channels</b> file:',
             defaultEntry='fucci_combined',
@@ -123,7 +129,7 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
         else:
             txt = 'FUCCI pre-processing completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -140,7 +146,7 @@ class FucciPreprocessDialog(dialogs_preprocessing.FunctionParamsDialog):
         ):
         
         from cellacdc.preprocess import fucci_filter
-        params_argspecs = myutils.get_function_argspec(fucci_filter)
+        params_argspecs = segm_models.get_function_argspec(fucci_filter)
         
         super().__init__(
             params_argspecs, 
@@ -170,7 +176,7 @@ class FucciPreprocessDialog(dialogs_preprocessing.FunctionParamsDialog):
         channelNamesLayout.setColumnStretch(1, 1)
         
         self.mainLayout.insertLayout(0, channelNamesLayout)
-        self.mainLayout.insertWidget(1, widgets.QHLine())
+        self.mainLayout.insertWidget(1, widgets_basic_widgets.QHLine())
     
     def ok_cb(self):
         self.firstChannelName = self.firstChNameWidget.currentText()
@@ -277,7 +283,7 @@ class FucciPreprocessWorker(utils_base.BaseWorkerUtil):
                     first_ch_data, second_ch_data, self.fucciFilterKwargs
                 )
                 
-                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                basename, chNames = filesystem.getBasenameAndChNames(images_path)
                 _, ext = os.path.splitext(first_ch_filepath)
                 processed_filename = f'{basename}{appendedName}{ext}'
                 processed_filepath = os.path.join(

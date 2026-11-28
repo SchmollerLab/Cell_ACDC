@@ -26,9 +26,14 @@ from cellacdc import core, measurements, html_utils
 from cellacdc import settings_folderpath, config
 from cellacdc import segm_recipes_path
 from cellacdc import printl
-from cellacdc import myutils
+from cellacdc.myutils import filesystem
 from cellacdc import qutils
-from cellacdc import widgets
+from ..widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import _types
 from cellacdc import fonts
 from . import base as dialogs_base
@@ -264,9 +269,9 @@ class QDialogAutomaticThresholding(dialogs_base.QBaseDialog):
             formLayout.addWidget(segmentSliceBySliceCheckbox, row, 2)
             self.segment3Dcheckbox.setChecked(True)
 
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
-        helpButton = widgets.helpPushButton('Help...')
+        okButton = widgets_push_buttons.okPushButton('Ok')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        helpButton = widgets_push_buttons.helpPushButton('Help...')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -361,7 +366,7 @@ class PostProcessSegmParams(QGroupBox):
         label = QLabel("Minimum area (pixels) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
 
-        minSize_SB = widgets.PostProcessSegmWidget(
+        minSize_SB = PostProcessSegmWidget(
             1, 1000, 10, useSliders, label=label
         )
         
@@ -370,7 +375,7 @@ class PostProcessSegmParams(QGroupBox):
         )
 
         layout.addWidget(minSize_SB, row, 1)
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         infoButton.clicked.connect(self.showInfo)
         infoButton.tooltip = txt
         infoButton.name = 'area'
@@ -385,7 +390,7 @@ class PostProcessSegmParams(QGroupBox):
         row += 1
         label = QLabel("Minimum solidity (0-1) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        minSolidity_DSB = widgets.PostProcessSegmWidget(
+        minSolidity_DSB = PostProcessSegmWidget(
             0, 1.0, 0.5, useSliders, isFloat=True, normalize=True,
             label=label
         )
@@ -401,7 +406,7 @@ class PostProcessSegmParams(QGroupBox):
         )
 
         layout.addWidget(minSolidity_DSB, row, 1)
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         infoButton.clicked.connect(self.showInfo)
         infoButton.tooltip = txt
         infoButton.name = 'solidity'
@@ -412,7 +417,7 @@ class PostProcessSegmParams(QGroupBox):
         row += 1
         label = QLabel("Max elongation (1=circle) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        maxElongation_DSB = widgets.PostProcessSegmWidget(
+        maxElongation_DSB = PostProcessSegmWidget(
             0, 100, 3, useSliders, isFloat=True, normalize=False,
             label=label
         )
@@ -426,7 +431,7 @@ class PostProcessSegmParams(QGroupBox):
         )
 
         layout.addWidget(maxElongation_DSB, row, 1)
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         infoButton.clicked.connect(self.showInfo)
         infoButton.tooltip = txt
         infoButton.name = 'elongation'
@@ -439,7 +444,7 @@ class PostProcessSegmParams(QGroupBox):
             row += 1
             label = QLabel("Minimum number of z-slices ")
             layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-            minObjSizeZ_SB = widgets.PostProcessSegmWidget(
+            minObjSizeZ_SB = PostProcessSegmWidget(
                 0, SizeZ, 3, useSliders, isFloat=False, normalize=False,
                 label=label
             )
@@ -449,7 +454,7 @@ class PostProcessSegmParams(QGroupBox):
             )
 
             layout.addWidget(minObjSizeZ_SB, row, 1)
-            infoButton = widgets.infoPushButton()
+            infoButton = widgets_push_buttons.infoPushButton()
             infoButton.clicked.connect(self.showInfo)
             infoButton.tooltip = txt
             infoButton.name = 'number of z-slices'
@@ -458,11 +463,11 @@ class PostProcessSegmParams(QGroupBox):
             self.minObjSizeZ_SB = minObjSizeZ_SB
             self.controlWidgets.append(minObjSizeZ_SB)
         else:
-            self.minObjSizeZ_SB = widgets.NoneWidget()
+            self.minObjSizeZ_SB = NoneWidget()
 
         row += 1
         addCustomFeatureLayout = QHBoxLayout()
-        self.addCustomFeaturesButton = widgets.setPushButton(
+        self.addCustomFeaturesButton = widgets_push_buttons.setPushButton(
             'Select custom features for post-processing...',
         )
         addCustomFeatureLayout.addWidget(self.addCustomFeaturesButton)
@@ -545,7 +550,7 @@ class PostProcessSegmParams(QGroupBox):
                 called "Post-processing parameters".
             """
             txt = f'{txt}{note}'
-        msg = widgets.myMessageBox(showCentered=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False)
         msg.information(self, title, html_utils.paragraph(txt))
 
 
@@ -639,7 +644,7 @@ class QDialogModelParams(QDialog):
         # Center COLUMN: Init, Segmentation/Eval
         row = 0
         self.secondColLayout = QVBoxLayout()
-        self.initParamsScrollArea = widgets.ScrollArea()
+        self.initParamsScrollArea = widgets_basic_widgets.ScrollArea()
         initParamsScrollAreaLayout = QVBoxLayout()
         self.initParamsScrollArea.setVerticalLayout(initParamsScrollAreaLayout)
         
@@ -647,8 +652,8 @@ class QDialogModelParams(QDialog):
             init_params, 'Parameters for model initialization'
         )
         self.init_params = init_params
-        initDefaultButton = widgets.reloadPushButton('Restore default')
-        initLoadLastSelButton = widgets.OpenFilePushButton(
+        initDefaultButton = widgets_push_buttons.reloadPushButton('Restore default')
+        initLoadLastSelButton = widgets_push_buttons.OpenFilePushButton(
             'Load last parameters'
         )
         initLoadLastSelButton.setIcon(QIcon(':folder-open.svg'))
@@ -673,7 +678,7 @@ class QDialogModelParams(QDialog):
 
         self.segmentParamsScrollArea = None
         if not self.skipSegmentation:
-            self.segmentParamsScrollArea = widgets.ScrollArea()
+            self.segmentParamsScrollArea = widgets_basic_widgets.ScrollArea()
             segmentParamsScrollAreaLayout = QVBoxLayout()
             self.segmentParamsScrollArea.setVerticalLayout(
                 segmentParamsScrollAreaLayout
@@ -691,8 +696,8 @@ class QDialogModelParams(QDialog):
             ) 
             self.segment_params = segment_params
             self.segmentGroupBox = segmentGroupBox
-            segmentDefaultButton = widgets.reloadPushButton('Restore default')
-            segmentLoadLastSelButton = widgets.OpenFilePushButton(
+            segmentDefaultButton = widgets_push_buttons.reloadPushButton('Restore default')
+            segmentLoadLastSelButton = widgets_push_buttons.OpenFilePushButton(
                 'Load last parameters'
             )
             segmentButtonsLayout = QHBoxLayout()
@@ -723,8 +728,8 @@ class QDialogModelParams(QDialog):
         
         # Buttons layout (spans both columns)
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton(' Cancel ')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton(' Cancel ')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         
         enableLoadingSavingRecipe = (
             not is_tracker and (addPreProcessParams or addPostProcessParams)
@@ -734,10 +739,10 @@ class QDialogModelParams(QDialog):
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         if enableLoadingSavingRecipe:
-            loadEntireRecipeButton = widgets.OpenFilePushButton(
+            loadEntireRecipeButton = widgets_push_buttons.OpenFilePushButton(
                 'Load saved recipe...'
             )
-            saveEntireRecipeButton = widgets.savePushButton(
+            saveEntireRecipeButton = widgets_push_buttons.savePushButton(
                 'Save all parameters to recipe file...'
             )
             buttonsLayout.addWidget(loadEntireRecipeButton)
@@ -759,7 +764,7 @@ class QDialogModelParams(QDialog):
         self.extraArgsWidgets = None
         self.extraParamsScrollArea = None
         if extraParams is not None:
-            self.extraParamsScrollArea = widgets.ScrollArea()
+            self.extraParamsScrollArea = widgets_basic_widgets.ScrollArea()
             extraParamsScrollAreaLayout = QVBoxLayout()
             self.extraParamsScrollArea.setVerticalLayout(
                 extraParamsScrollAreaLayout
@@ -771,8 +776,8 @@ class QDialogModelParams(QDialog):
                 extraParams, extraParamsTitle
             )
 
-            extraDefaultButton = widgets.reloadPushButton('Restore default')
-            extraLoadLastSelButton = widgets.OpenFilePushButton(
+            extraDefaultButton = widgets_push_buttons.reloadPushButton('Restore default')
+            extraLoadLastSelButton = widgets_push_buttons.OpenFilePushButton(
                 'Load last parameters'
             )
             extraButtonsLayout = QHBoxLayout()
@@ -812,8 +817,8 @@ class QDialogModelParams(QDialog):
 
             thirdColumnLayout.addWidget(postProcessGroupbox)
 
-            postProcDefaultButton = widgets.reloadPushButton('Restore default')
-            postProcLoadLastSelButton = widgets.OpenFilePushButton(
+            postProcDefaultButton = widgets_push_buttons.reloadPushButton('Restore default')
+            postProcLoadLastSelButton = widgets_push_buttons.OpenFilePushButton(
                 'Load last parameters'
             )
             postProcButtonsLayout = QHBoxLayout()
@@ -838,7 +843,7 @@ class QDialogModelParams(QDialog):
         # Additional segmentation params in right column
         self.additionalSegmGroupbox = None
         if add_additional_segm_params:
-            thirdColumnLayout.addWidget(widgets.QHLine())
+            thirdColumnLayout.addWidget(widgets_basic_widgets.QHLine())
             additionalSegmGroupbox = self.getAdditionalSegmParams()
             thirdColumnLayout.addWidget(additionalSegmGroupbox)
             self.additionalSegmGroupbox = additionalSegmGroupbox
@@ -881,7 +886,7 @@ class QDialogModelParams(QDialog):
         # self.setModal(True)
     
     def warningNoSegmRecipes(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'No segmentation recipes found!<br><br>'
             'To create a segmentation recipe you need click on '
@@ -906,7 +911,7 @@ class QDialogModelParams(QDialog):
             'Done!<br><br>'
             'Segmentation recipe loaded from:'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(
             self, 'Segmentation recipe loaded!', txt, 
             commands=(recipe_filepath,),
@@ -940,11 +945,11 @@ class QDialogModelParams(QDialog):
             date_created = cp['info']['created_on']
             items.append((recipe_file, date_created))
 
-        browseButton = widgets.browseFileButton(
+        browseButton = widgets_push_buttons.browseFileButton(
             'Select INI file...',
             title='Select INI file to load entire recipe',
             openFolder=False,
-            start_dir=myutils.getMostRecentPath(),
+            start_dir=filesystem.getMostRecentPath(),
             ext={'INI': '.ini'}
         )
         win = dialogs_generic.QTreeDialog(
@@ -981,7 +986,7 @@ class QDialogModelParams(QDialog):
             'Done!<br><br>'
             'Segmentation recipe loaded from:'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(
             self, 'Segmentation recipe laoded!', txt, 
             commands=(recipe_filepath,),
@@ -1065,7 +1070,7 @@ class QDialogModelParams(QDialog):
             'Done!<br><br>'
             'Segmentation recipe saved to:'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(
             self, 'Segmnentation recipe saved!', txt, 
             commands=(ini_filepath,),
@@ -1083,13 +1088,13 @@ class QDialogModelParams(QDialog):
             QLabel(f'{option}:  '), local_row, 0, 
             alignment=Qt.AlignRight
         )
-        self.reduceMemUsageToggle = widgets.Toggle()
+        self.reduceMemUsageToggle = widgets_push_buttons.Toggle()
         additionalSegmLayout.addWidget(
             self.reduceMemUsageToggle, local_row, 1, 1, 2, 
             alignment=Qt.AlignCenter
         )
         self.reduceMemUsageToggle.label = option
-        reduceMemUsageInfoButton = widgets.infoPushButton()
+        reduceMemUsageInfoButton = widgets_push_buttons.infoPushButton()
         additionalSegmLayout.addWidget(reduceMemUsageInfoButton, local_row, 3)
         reduceMemUsageInfoButton.clicked.connect(
             self.showInfoReduceMemUsage
@@ -1107,7 +1112,7 @@ class QDialogModelParams(QDialog):
             This will reduce the memory usage by segmenting timelapse data 
             frame-by-frame instead of all frames at once.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self, 'Reduce memory usage', infoText
         )
@@ -1197,7 +1202,7 @@ class QDialogModelParams(QDialog):
             {action_txt}
             <br><br>Thank you for you patience!
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Segmentation file required', txt)
         raise FileNotFoundError(
             'Model requires segmentation file but none are available.'
@@ -1216,7 +1221,7 @@ class QDialogModelParams(QDialog):
             label, row, 0, alignment=Qt.AlignRight
         )
         items = self.segmFileEndnames
-        self.segmEndnameCombobox = widgets.QCenteredComboBox()
+        self.segmEndnameCombobox = widgets_combo_boxes.QCenteredComboBox()
         self.segmEndnameCombobox.addItems(items)
         groupBoxLayout.addWidget(self.segmEndnameCombobox, row, 1, 1, 2)
         return True
@@ -1234,7 +1239,7 @@ class QDialogModelParams(QDialog):
                 label, start_row, 0, alignment=Qt.AlignRight
             )
             items = ['None', *self.channels]
-            self.channelCombobox = widgets.QCenteredComboBox()
+            self.channelCombobox = widgets_combo_boxes.QCenteredComboBox()
             self.channelCombobox.addItems(items)
             groupBoxLayout.addWidget(self.channelCombobox, start_row, 1, 1, 2)
             if self.currentChannelName is not None:
@@ -1269,7 +1274,7 @@ class QDialogModelParams(QDialog):
         if askSecondChannel:
             label = QLabel('Second channel (optional):  ')
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
-            self.channelsCombobox = widgets.QCenteredComboBox()
+            self.channelsCombobox = widgets_combo_boxes.QCenteredComboBox()
             groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoText = (
                 'Some models can merge two channels (e.g., cyto + '
@@ -1347,38 +1352,38 @@ class QDialogModelParams(QDialog):
                 changeSig = widget.sigValueChanged
                 groupBoxLayout.addWidget(widget, row, 1, 1, 2)
             elif isVectorEntry:
-                vectorLineEdit = widgets.VectorLineEdit()
+                vectorLineEdit = widgets_line_edits.VectorLineEdit()
                 vectorLineEdit.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
-                valueSetter = widgets.VectorLineEdit.setValue
-                valueGetter = widgets.VectorLineEdit.value
+                valueSetter = widgets_line_edits.VectorLineEdit.setValue
+                valueGetter = widgets_line_edits.VectorLineEdit.value
                 changeSig = vectorLineEdit.valueChanged
                 widget = vectorLineEdit
                 groupBoxLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
             elif isFolderPath:
-                folderPathControl = widgets.FolderPathControl()
+                folderPathControl = widgets_line_edits.FolderPathControl()
                 folderPathControl.setText(str(ArgSpec.default))
                 widget = folderPathControl
                 defaultVal = str(ArgSpec.default)
-                valueSetter = widgets.FolderPathControl.setText
-                valueGetter = widgets.FolderPathControl.path
+                valueSetter = widgets_line_edits.FolderPathControl.setText
+                valueGetter = widgets_line_edits.FolderPathControl.path
                 changeSig = widget.sigValueChanged
                 groupBoxLayout.addWidget(folderPathControl, row, 1, 1, 2)
             elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
-                checkBox = widgets.Toggle()
+                checkBox = widgets_push_buttons.Toggle()
                 checkBox.setChecked(ArgSpec.default)
                 defaultVal = ArgSpec.default
-                valueSetter = widgets.Toggle.setChecked
-                valueGetter = widgets.Toggle.isChecked
+                valueSetter = widgets_push_buttons.Toggle.setChecked
+                valueGetter = widgets_push_buttons.Toggle.isChecked
                 changeSig = checkBox.toggled
                 widget = checkBox
                 groupBoxLayout.addWidget(
                     checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
                 )
             elif ArgSpec.type == int:
-                spinBox = widgets.SpinBox()
+                spinBox = widgets_numeric_inputs.SpinBox()
                 if metadata_val is None:
                     spinBox.setValue(ArgSpec.default)
                 else:
@@ -1391,7 +1396,7 @@ class QDialogModelParams(QDialog):
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
-                doubleSpinBox = widgets.FloatLineEdit()
+                doubleSpinBox = widgets_line_edits.FloatLineEdit()
                 if metadata_val is None:
                     doubleSpinBox.setValue(ArgSpec.default)
                 else:
@@ -1399,27 +1404,27 @@ class QDialogModelParams(QDialog):
                     doubleSpinBox.isMetadataValue = True
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
-                valueSetter = widgets.FloatLineEdit.setValue
-                valueGetter = widgets.FloatLineEdit.value
+                valueSetter = widgets_line_edits.FloatLineEdit.setValue
+                valueGetter = widgets_line_edits.FloatLineEdit.value
                 changeSig = doubleSpinBox.valueChanged
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
             elif ArgSpec.type == os.PathLike:
-                filePathControl = widgets.filePathControl()
+                filePathControl = widgets_line_edits.filePathControl()
                 filePathControl.setText(str(ArgSpec.default))
                 widget = filePathControl
                 defaultVal = str(ArgSpec.default)
-                valueSetter = widgets.filePathControl.setText
-                valueGetter = widgets.filePathControl.path
+                valueSetter = widgets_line_edits.filePathControl.setText
+                valueGetter = widgets_line_edits.filePathControl.path
                 changeSig = filePathControl.sigValueChanged
                 groupBoxLayout.addWidget(filePathControl, row, 1, 1, 2)
             elif isCustomListType:
                 items = ArgSpec.type().values
                 defaultVal = str(ArgSpec.default)
-                combobox = widgets.AlphaNumericComboBox()
+                combobox = widgets_combo_boxes.AlphaNumericComboBox()
                 combobox.addItems(items)
                 combobox.setCurrentValue(defaultVal)
-                valueSetter = widgets.AlphaNumericComboBox.setCurrentValue
-                valueGetter = widgets.AlphaNumericComboBox.currentValue
+                valueSetter = widgets_combo_boxes.AlphaNumericComboBox.setCurrentValue
+                valueGetter = widgets_combo_boxes.AlphaNumericComboBox.currentValue
                 changeSig = combobox.currentTextChanged
                 widget = combobox
                 groupBoxLayout.addWidget(combobox, row, 1, 1, 2)
@@ -1490,7 +1495,7 @@ class QDialogModelParams(QDialog):
         return groupBox, ArgsWidgets_list
 
     def getInfoButton(self, param_name, infoText):
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         infoButton.param_name = param_name
         infoButton.setToolTip(
             f'Click to get more info about `{param_name}` parameter...'
@@ -1506,7 +1511,7 @@ class QDialogModelParams(QDialog):
         text = html_utils.rst_to_html(text)
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, f'Info about `{param_name}` parameter', text)
     
     def restoreDefaultInit(self):
@@ -1996,10 +2001,10 @@ class SelectFeaturesRange:
         self.force_postprocess_2D = force_postprocess_2D
         self.sigValueChanged = sigValueChanged
         
-        self.lowRangeWidgets = widgets.CheckableSpinBoxWidgets()
-        self.highRangeWidgets = widgets.CheckableSpinBoxWidgets()        
+        self.lowRangeWidgets = CheckableSpinBoxWidgets()
+        self.highRangeWidgets = CheckableSpinBoxWidgets()        
         
-        self.selectButton = widgets.FeatureSelectorButton(
+        self.selectButton = widgets_push_buttons.FeatureSelectorButton(
             'Click to select feature...'
         )
         self.selectButton.setSizeLongestText(
@@ -2013,12 +2018,12 @@ class SelectFeaturesRange:
         self.widgets = [
             {'pos': (0, 0), 'widget': self.lowRangeWidgets.checkbox}, 
             {'pos': (1, 0), 'widget': self.lowRangeWidgets.spinbox}, 
-            {'pos': (1, 1), 'widget': widgets.LessThanPushButton(flat=True)},
+            {'pos': (1, 1), 'widget': widgets_push_buttons.LessThanPushButton(flat=True)},
             {'pos': (1, 2), 'widget': self.selectButton},
-            {'pos': (1, 3), 'widget': widgets.LessThanPushButton(flat=True)},
+            {'pos': (1, 3), 'widget': widgets_push_buttons.LessThanPushButton(flat=True)},
             {'pos': (0, 4), 'widget': self.highRangeWidgets.checkbox},
             {'pos': (1, 4), 'widget': self.highRangeWidgets.spinbox}, 
-            {'pos': (2, 0), 'widget': widgets.VerticalSpacerEmptyWidget(height=10)}
+            {'pos': (2, 0), 'widget': VerticalSpacerEmptyWidget(height=10)}
         ]
         self.columnsStretches = {0: 0, 1: 0, 2: 1, 3: 0, 4: 0}
     
@@ -2066,7 +2071,7 @@ class SelectFeaturesRangeDialog(dialogs_base.QBaseDialog):
         )
         
         buttonsLayout = QHBoxLayout()
-        okPushButton = widgets.okPushButton(' Ok ')
+        okPushButton = widgets_push_buttons.okPushButton(' Ok ')
         
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(okPushButton)
@@ -2102,7 +2107,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
         firstSelector = SelectFeaturesRange(
             posData, force_postprocess_2D=force_postprocess_2D
         )
-        self.addButton = widgets.addPushButton('  Add feature    ')
+        self.addButton = widgets_push_buttons.addPushButton('  Add feature    ')
         self.addButton.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -2128,7 +2133,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
         selector = SelectFeaturesRange(
             self.posData, force_postprocess_2D=self.force_postprocess_2D
         )
-        delButton = widgets.delPushButton('Remove feature')
+        delButton = widgets_push_buttons.delPushButton('Remove feature')
         delButton.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )

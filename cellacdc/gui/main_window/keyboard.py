@@ -10,7 +10,11 @@ from qtpy.QtGui import QKeySequence, QKeyEvent
 from qtpy.QtWidgets import (
     QAction, QMenu, QAbstractSlider, QWidget, QApplication, QAbstractButton
 )
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    toolbars as widgets_toolbars,
+)
+from ..widgets import edit_toolbars as gui_widgets_edit_toolbars
 from cellacdc.plot import imshow
 
 
@@ -58,15 +62,15 @@ class KeyboardGuiElements:
             return False
 
         delObjKeySequence, delObjQtButton = self.delObjAction
-        keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
+        keySequenceText = widgets_line_edits.QKeyEventToString(event).rstrip('+')
 
         if delObjKeySequence is None:
             return False
 
-        delObjKeySequenceText = widgets.macShortcutToWindows(
+        delObjKeySequenceText = widgets_line_edits.macShortcutToWindows(
             delObjKeySequence.toString()
         )
-        keySequenceText = widgets.macShortcutToWindows(keySequenceText)
+        keySequenceText = widgets_line_edits.macShortcutToWindows(keySequenceText)
 
         if keySequenceText.endswith(delObjKeySequenceText):
             self.delObjToolAction.setChecked(checked)
@@ -80,7 +84,7 @@ class KeyboardGuiElements:
         if isBrushKey or isEraserKey:
             return isBrushKey, isEraserKey
         
-        modifierText = widgets.modifierKeyToText(event.modifiers())
+        modifierText = widgets_line_edits.modifierKeyToText(event.modifiers())
         for widget in self.widgetsWithShortcut.values():
             if not hasattr(widget, 'keyPressShortcut'):
                 continue
@@ -405,7 +409,7 @@ class KeyboardGuiElements:
         for toolbar in getattr(self, 'pointsLayersToolbars', []):
             for action in toolbar.actions():
                 button = toolbar.widgetForAction(action)
-                if isinstance(button, widgets.PointsLayerToolButton):
+                if isinstance(button, widgets_toolbars.PointsLayerToolButton):
                     name = getattr(action, 'layerType', '') or 'Points layer'
                     buttons.append((f'Points layer "{name}"', button))
         return buttons
@@ -588,7 +592,7 @@ class KeyboardGuiElements:
             buttonsToNotUncheck = set()
             
         if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
-            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
             )
             self.highlightHoverIDsKeptObj(0, 0, hoverID=0)

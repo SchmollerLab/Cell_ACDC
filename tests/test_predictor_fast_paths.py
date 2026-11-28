@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 from cellacdc import timepoint_predictors as tp
-from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
+from cellacdc.measurements_viewer.custom_annotation_predictors import CustomAnnotationPredictor
 
 pytestmark = pytest.mark.viewer
 

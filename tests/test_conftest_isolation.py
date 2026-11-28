@@ -27,9 +27,17 @@ import tifffile
 from qtpy.QtWidgets import QApplication, QWidget
 
 import cellacdc
-from cellacdc import gui_custom_annotations, gui_viewer_tools
-from cellacdc import load, measurements_viewer, myutils, prompts, widgets
-from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc.gui.mixins import (
+    custom_annotations as gui_custom_annotations,
+    object_info as gui_object_info,
+    viewer_tools as gui_viewer_tools,
+    window_core as gui_window_core,
+)
+from cellacdc import load, prompts
+from cellacdc.measurements_viewer import viewer_utils
+from cellacdc.myutils import app_info, filesystem, segm_models
+from cellacdc.shared.widgets import style as widgets_style
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.promptable_models import saved_models
 from tests import conftest
 from tests.conftest import flushDeferredDeletes
@@ -88,8 +96,8 @@ def test_settings_paths_point_to_isolated_folder(_isolate_user_settings):
     # Where the code reads them (the gui mixins' own methods: the viewer
     # overrides some of them)
     colorScheme = gui_viewer_tools.ColorSchemeGuiElements
-    hoverInfo = gui_viewer_tools.HoverInfoGuiElements
-    shortcuts = gui_viewer_tools.ShortcutsGuiElements
+    hoverInfo = gui_object_info.HoverInfoGuiElements
+    shortcuts = gui_window_core.ShortcutsGuiElements
     customAnnots = gui_custom_annotations.CustomAnnotationsGuiElements
     for function, name in (
             (MeasurementsViewerWin.loadSettings, 'settings_csv_path'),
@@ -101,12 +109,12 @@ def test_settings_paths_point_to_isolated_folder(_isolate_user_settings):
                 MeasurementsViewerWin.selectConfigurationFilepath,
                 'MEASUREMENTS_CONFIGURATIONS_PATH'
             ),
-            (myutils.addToRecentPaths, 'recentPaths_path'),
+            (filesystem.addToRecentPaths, 'recentPaths_path'),
             (
-                myutils.get_list_of_promptable_models,
+                segm_models.get_list_of_promptable_models,
                 'promptable_models_list_file_path'
             ),
-            (widgets.getCustomGradients, 'custom_cmaps_filepath'),
+            (widgets_style.getCustomGradients, 'custom_cmaps_filepath'),
         ):
         assert _isInside(_readGlobal(function, name), folderpath), (
             function.__qualname__, name
@@ -125,7 +133,7 @@ def test_settings_paths_point_to_isolated_folder(_isolate_user_settings):
     assert not _isInside(REAL_SETTINGS_FOLDERPATH, folderpath)
     # myutils.setupLogger (e.g. creating a utility window) writes a log file
     # into, and deletes week-old logs from, the folder of get_logs_path()
-    assert _isInside(myutils.get_logs_path(), folderpath)
+    assert _isInside(app_info.get_logs_path(), folderpath)
     assert not _isInside(REAL_LOGS_PATH, folderpath)
 
 
@@ -163,7 +171,7 @@ def test_loading_position_does_not_touch_real_settings(
     with open(lastEntriesPath, 'w') as file:
         file.write('Description,values\nchannel_0_name,a,b\n')
 
-    posData = measurements_viewer.load_position(
+    posData = viewer_utils.load_position(
         _makePosition(tmp_path), 'phase'
     )
 

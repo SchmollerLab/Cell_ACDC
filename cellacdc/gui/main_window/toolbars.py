@@ -14,7 +14,17 @@ from qtpy.QtWidgets import (
 )
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+    toolbars as widgets_toolbars,
+)
+from ..widgets import (
+    edit_toolbars as gui_widgets_edit_toolbars,
+    points_layer_widgets as gui_widgets_points_layer_widgets,
+)
 
 
 class RightClickMenuFilter(QObject):
@@ -64,7 +74,7 @@ class ToolbarsGuiElements:
         self.redoAction.setEnabled(False)
 
         # Navigation toolbar
-        navigateToolBar = widgets.ToolBar("Navigation", self)
+        navigateToolBar = widgets_toolbars.ToolBar("Navigation", self)
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
@@ -100,7 +110,7 @@ class ToolbarsGuiElements:
         self.preprocessImageAction.setIcon(QIcon(":filter_image.svg"))
         navigateToolBar.addAction(self.preprocessImageAction)
 
-        self.overlayButton = widgets.rightClickToolButton(parent=self)
+        self.overlayButton = widgets_toolbars.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
 
@@ -121,7 +131,7 @@ class ToolbarsGuiElements:
         self.togglePointsLayerAction.setIcon(QIcon(":pointsLayer.svg"))
         navigateToolBar.addAction(self.togglePointsLayerAction)
 
-        self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
+        self.overlayLabelsButton = widgets_toolbars.rightClickToolButton(parent=self)
         self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
         self.overlayLabelsButton.setCheckable(True)
         # self.overlayLabelsButton.setVisible(False)
@@ -138,7 +148,7 @@ class ToolbarsGuiElements:
         self.leftClickButtons.append(self.rulerButton)
 
         # fluorescence image color widget
-        colorsToolBar = widgets.ToolBar("Colors", self)
+        colorsToolBar = widgets_toolbars.ToolBar("Colors", self)
 
         self.overlayColorButton = pg.ColorButton(self, color=(230,230,230))
         self.overlayColorButton.setDisabled(True)
@@ -153,7 +163,7 @@ class ToolbarsGuiElements:
         self.navigateToolBar = navigateToolBar
 
         # cca toolbar
-        ccaToolBar = widgets.ToolBar("Cell cycle annotations", self)
+        ccaToolBar = widgets_toolbars.ToolBar("Cell cycle annotations", self)
         self.addToolBar(ccaToolBar)
 
         # Assign mother to bud button
@@ -214,7 +224,7 @@ class ToolbarsGuiElements:
         self.functionsNotTested3D.append(self.editCcaToolAction)
 
         # Edit toolbar
-        editToolBar = widgets.ToolBar("Edit", self)
+        editToolBar = widgets_toolbars.ToolBar("Edit", self)
         editToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         
         self.addToolBar(editToolBar)
@@ -309,7 +319,7 @@ class ToolbarsGuiElements:
         )
         self.functionsNotTested3D.append(self.copyLostObjButton)
         
-        self.labelRoiButton = widgets.rightClickToolButton(parent=self)
+        self.labelRoiButton = widgets_toolbars.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
         self.labelRoiButton.setCheckable(True)
         self.labelRoiButton.setShortcut('L')
@@ -565,7 +575,7 @@ class ToolbarsGuiElements:
         self.functionsNotTested3D.append(self.reinitLastSegmFrameAction)
 
 
-        self.editLin_TreeBar = widgets.ToolBar("Lin Tree Edit", self)
+        self.editLin_TreeBar = widgets_toolbars.ToolBar("Lin Tree Edit", self)
         self.editLin_TreeBar.setContextMenuPolicy(Qt.PreventContextMenu)
         
         self.addToolBar(self.editLin_TreeBar)
@@ -742,10 +752,10 @@ class ToolbarsGuiElements:
         self.addToolBarBreak()
         
         # Edit toolbar
-        modeToolBar = widgets.ToolBar("Mode", self)
+        modeToolBar = widgets_toolbars.ToolBar("Mode", self)
         self.addToolBar(modeToolBar)
 
-        self.modeComboBox = widgets.ComboBox()
+        self.modeComboBox = widgets_combo_boxes.ComboBox()
         self.modeComboBox.addItems(self.modeItems)
         self.modeComboBoxLabel = QLabel('    Mode: ')
         self.modeComboBoxLabel.setBuddy(self.modeComboBox)
@@ -755,7 +765,7 @@ class ToolbarsGuiElements:
         
         self.modeToolBar = modeToolBar
         
-        self.overlayToolbar = widgets.OverlayToolbar(parent=self)
+        self.overlayToolbar = widgets_toolbars.OverlayToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
         self.overlayToolbar.setVisible(False)
         self.overlayToolbar.sigSetTranspacency.connect(
@@ -768,7 +778,7 @@ class ToolbarsGuiElements:
         self.restoreOverlayModes()
         self.overlayToolbar.sigModesClicked.connect(self.saveOverlayModes)
 
-        self.autoPilotZoomToObjToolbar = widgets.ToolBar(
+        self.autoPilotZoomToObjToolbar = widgets_toolbars.ToolBar(
             "Auto-zoom to objects", self
         )
         self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
@@ -780,7 +790,7 @@ class ToolbarsGuiElements:
         self.controlToolBars.append(self.autoPilotZoomToObjToolbar)
         
         # Highlighted ID or searched ID toolbar
-        self.highlightIDToolbar = widgets.HighlightedIDToolbar(
+        self.highlightIDToolbar = gui_widgets_edit_toolbars.HighlightedIDToolbar(
             parent=self
         )
         self.addToolBar(Qt.TopToolBarArea, self.highlightIDToolbar)
@@ -793,11 +803,11 @@ class ToolbarsGuiElements:
         )
         
         # Widgets toolbar
-        brushEraserToolBar = widgets.ToolBar("Widgets", self)
+        brushEraserToolBar = widgets_toolbars.ToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
         self.controlToolBars.append(brushEraserToolBar)
 
-        self.editIDspinbox = widgets.SpinBox()
+        self.editIDspinbox = widgets_numeric_inputs.SpinBox()
         # self.editIDspinbox.setMaximum(2**32-1)
         editIDLabel = QLabel('   ID: ')
         self.editIDLabelAction = brushEraserToolBar.addWidget(editIDLabel)
@@ -838,7 +848,7 @@ class ToolbarsGuiElements:
 
         brushEraserToolBar.addSeparator()
 
-        self.brushSizeSpinbox = widgets.SpinBox(
+        self.brushSizeSpinbox = widgets_numeric_inputs.SpinBox(
             disableKeyPress=True,
             allowNegative=False
         )
@@ -875,7 +885,7 @@ class ToolbarsGuiElements:
         brushEraserToolBar.setVisible(False)
         self.brushEraserToolBar = brushEraserToolBar
 
-        self.wandControlsToolbar = widgets.WandControlsToolbar(
+        self.wandControlsToolbar = gui_widgets_edit_toolbars.WandControlsToolbar(
             parent=self
         )
 
@@ -884,14 +894,14 @@ class ToolbarsGuiElements:
         self.controlToolBars.append(self.wandControlsToolbar)
 
         separatorW = 5
-        self.labelRoiToolbar = widgets.ToolBar("Magic labeller controls", self)
+        self.labelRoiToolbar = widgets_toolbars.ToolBar("Magic labeller controls", self)
         self.labelRoiToolbar.addWidget(QLabel('ROI n. of z-slices: '))
-        self.labelRoiZdepthSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.labelRoiZdepthSpinbox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
 
-        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
-        self.labelRoiToolbar.addWidget(widgets.QVLine())
-        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QVLine())
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QHWidgetSpacer(width=separatorW))
 
         self.labelRoiReplaceExistingObjectsCheckbox = QCheckBox(
             'Remove objs. touched by new ones'
@@ -903,9 +913,9 @@ class ToolbarsGuiElements:
         self.labelRoiAutoClearBorderCheckbox.setChecked(True)
         self.labelRoiToolbar.addWidget(self.labelRoiAutoClearBorderCheckbox)
         
-        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
-        self.labelRoiToolbar.addWidget(widgets.QVLine())
-        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QVLine())
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QHWidgetSpacer(width=separatorW))
 
         group = QButtonGroup()
         group.setExclusive(True)
@@ -920,20 +930,20 @@ class ToolbarsGuiElements:
         self.labelRoiToolbar.addWidget(self.labelRoiIsFreeHandRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsCircularRadioButton)
         self.labelRoiToolbar.addWidget(QLabel(' | Radius (pixel): '))
-        self.labelRoiCircularRadiusSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.labelRoiCircularRadiusSpinbox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.labelRoiCircularRadiusSpinbox.setMinimum(1)
         self.labelRoiCircularRadiusSpinbox.setValue(11)
         self.labelRoiCircularRadiusSpinbox.setDisabled(True)
         self.labelRoiToolbar.addWidget(self.labelRoiCircularRadiusSpinbox)
         
-        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
-        self.labelRoiToolbar.addWidget(widgets.QVLine())
-        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QVLine())
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QHWidgetSpacer(width=separatorW))
 
         startFrameLabel = QLabel('Start frame n. ')
         startFrameLabel.setDisabled(True)
         self.labelRoiToolbar.addWidget(startFrameLabel)
-        self.labelRoiStartFrameNoSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.labelRoiStartFrameNoSpinbox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.labelRoiStartFrameNoSpinbox.label = startFrameLabel
         self.labelRoiStartFrameNoSpinbox.setValue(1)
         self.labelRoiStartFrameNoSpinbox.setMinimum(1)
@@ -946,11 +956,11 @@ class ToolbarsGuiElements:
         self.labelRoiToolbar.addAction(self.labelRoiFromCurrentFrameAction)
         self.labelRoiFromCurrentFrameAction.setDisabled(True)
 
-        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=3))
+        self.labelRoiToolbar.addWidget(widgets_basic_widgets.QHWidgetSpacer(width=3))
         stopFrameLabel = QLabel(' Stop frame n. ')
         stopFrameLabel.setDisabled(True)
         self.labelRoiToolbar.addWidget(stopFrameLabel)
-        self.labelRoiStopFrameNoSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.labelRoiStopFrameNoSpinbox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.labelRoiStopFrameNoSpinbox.label = stopFrameLabel
         self.labelRoiStopFrameNoSpinbox.setValue(1)
         self.labelRoiStopFrameNoSpinbox.setMinimum(1)
@@ -1014,7 +1024,7 @@ class ToolbarsGuiElements:
             self.labelRoiViewCurrentModel
         )
 
-        self.keepIDsToolbar = widgets.ToolBar("Keep IDs controls", self)
+        self.keepIDsToolbar = widgets_toolbars.ToolBar("Keep IDs controls", self)
         self.keepIDsConfirmAction = QAction()
         self.keepIDsConfirmAction.setIcon(QIcon(":greenTick.svg"))
         self.keepIDsConfirmAction.setToolTip('Apply "keep IDs" selection')
@@ -1025,7 +1035,7 @@ class ToolbarsGuiElements:
             ' (Separate IDs by comma. Use a dash to denote a range of IDs)'
         )
         instructionsLabel = QLabel(instructionsText)
-        self.keptIDsLineEdit = widgets.KeepIDsLineEdit(
+        self.keptIDsLineEdit = gui_widgets_edit_toolbars.KeepIDsLineEdit(
             instructionsLabel, parent=self
         )
         self.keepIDsToolbar.addWidget(self.keptIDsLineEdit)
@@ -1041,7 +1051,7 @@ class ToolbarsGuiElements:
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
 
-        self.mergeIDsToolbar = widgets.MergeIDsToolbar(
+        self.mergeIDsToolbar = gui_widgets_edit_toolbars.MergeIDsToolbar(
             "Merge multiple IDs controls", self, log_func=self.logger.info
         )
         self.addToolBar(Qt.TopToolBarArea, self.mergeIDsToolbar)
@@ -1054,12 +1064,12 @@ class ToolbarsGuiElements:
         # closeToolbarAction.triggered.connect(self.closeToolbars)
         # self.autoPilotZoomToObjToolbar.addAction(closeToolbarAction)
         
-        self.autoPilotZoomToObjToolbar.addWidget(widgets.QVLine())
+        self.autoPilotZoomToObjToolbar.addWidget(widgets_basic_widgets.QVLine())
         self.autoPilotZoomToObjToolbar.addWidget(
-            widgets.QHWidgetSpacer(width=separatorW)
+            widgets_basic_widgets.QHWidgetSpacer(width=separatorW)
         )
         
-        spinBox = widgets.SpinBox()
+        spinBox = widgets_numeric_inputs.SpinBox()
         spinBox.setMinimum(1)
         spinBox.label = QLabel('  Zoom to ID: ')
         spinBox.labelAction = self.autoPilotZoomToObjToolbar.addWidget(spinBox.label)
@@ -1068,7 +1078,7 @@ class ToolbarsGuiElements:
         spinBox.sigUpClicked.connect(self.autoZoomNextObj)
         spinBox.sigDownClicked.connect(self.autoZoomPrevObj)
         self.autoPilotZoomToObjSpinBox = spinBox
-        toggle = widgets.Toggle()
+        toggle = widgets_push_buttons.Toggle()
         self.autoPilotZoomToObjToggle = toggle
         toggle.toggled.connect(self.autoPilotZoomToObjToggled)
         toggle.label = QLabel('  Auto-pilot: ')
@@ -1085,7 +1095,7 @@ class ToolbarsGuiElements:
         
         self.pointsLayersToolbars = []
         
-        self.pointsLayersToolbar = widgets.PointsLayersToolbar(parent=self)
+        self.pointsLayersToolbar = gui_widgets_points_layer_widgets.PointsLayersToolbar(parent=self)
         self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         
         self.pointsLayersToolbar.sigAddPointsLayer.connect(
@@ -1102,7 +1112,7 @@ class ToolbarsGuiElements:
             self.pointsLayersToolbar
         )
 
-        self.manualTrackingToolbar = widgets.ManualTrackingToolBar(
+        self.manualTrackingToolbar = gui_widgets_edit_toolbars.ManualTrackingToolBar(
             "Manual tracking controls", self
         )
         self.manualTrackingToolbar.sigIDchanged.connect(self.initGhostObject)
@@ -1121,7 +1131,7 @@ class ToolbarsGuiElements:
         self.manualTrackingToolbar.setVisible(False)
         self.controlToolBars.append(self.manualTrackingToolbar)
         
-        self.manualBackgroundToolbar = widgets.ManualBackgroundToolBar(
+        self.manualBackgroundToolbar = gui_widgets_edit_toolbars.ManualBackgroundToolBar(
             "Manual background controls", self
         )
         self.manualBackgroundToolbar.sigIDchanged.connect(
@@ -1132,7 +1142,7 @@ class ToolbarsGuiElements:
         self.controlToolBars.append(self.manualBackgroundToolbar)
         
         # Copy lost object contour toolbar
-        self.copyLostObjToolbar = widgets.CopyLostObjectToolbar(
+        self.copyLostObjToolbar = gui_widgets_edit_toolbars.CopyLostObjectToolbar(
             "Copy lost object controls", self
         )
         for name, action in self.copyLostObjToolbar.widgetsWithShortcut.items():
@@ -1149,7 +1159,7 @@ class ToolbarsGuiElements:
         # self.controlToolBars.append(self.copyLostObjToolbar)
         
         # Copy lost object contour toolbar
-        self.clearFreehandRoiToolbar = widgets.ClearRegionToolbar(
+        self.clearFreehandRoiToolbar = gui_widgets_edit_toolbars.ClearRegionToolbar(
             "Draw freehand region and clear objects controls", self
         )
         
@@ -1162,7 +1172,7 @@ class ToolbarsGuiElements:
         except KeyError:
             addNewIDToggleState = True
         
-        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(
+        self.whitelistIDsToolbar = gui_widgets_edit_toolbars.WhitelistIDsToolbar(
             addNewIDToggleState, self
         )
         for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
@@ -1174,7 +1184,7 @@ class ToolbarsGuiElements:
         self.whitelistIDsToolbar.setVisible(False)
         self.controlToolBars.append(self.whitelistIDsToolbar)
         
-        self.separateBudToolbar = widgets.SeparateBudToolbar(self)
+        self.separateBudToolbar = gui_widgets_edit_toolbars.SeparateBudToolbar(self)
         for name, action in self.separateBudToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
         for name, widget in self.separateBudToolbar.widgetsForActions.items():
@@ -1185,7 +1195,7 @@ class ToolbarsGuiElements:
         self.controlToolBars.append(self.separateBudToolbar)
         self.separateBudButton.toggled.connect(self.separateBudToolbar.setVisible)
         
-        self.magicPromptsToolbar = widgets.MagicPromptsToolbar(self)
+        self.magicPromptsToolbar = gui_widgets_points_layer_widgets.MagicPromptsToolbar(self)
         for name, action in self.magicPromptsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
         for name, widget in self.magicPromptsToolbar.widgetsForActions.items():
@@ -1260,7 +1270,7 @@ class ToolbarsGuiElements:
         # Controls to add cells of the segmentation masks to the brush
         # strokes (shown only while selecting cells)
         self.brushStrokesSelectCellsToolbar = (
-            widgets.BrushStrokesSelectCellsToolbar(
+            gui_widgets_edit_toolbars.BrushStrokesSelectCellsToolbar(
                 'Select cells controls', self
             )
         )
@@ -1281,7 +1291,7 @@ class ToolbarsGuiElements:
         self.controlToolBars.append(self.brushStrokesSelectCellsToolbar)
 
         self.promptSegmentPointsLayerToolbar = (
-            widgets.PromptableModelPointsLayerToolbar(parent=self)
+            gui_widgets_points_layer_widgets.PromptableModelPointsLayerToolbar(parent=self)
         )
         self.promptSegmentPointsLayerToolbar.setContextMenuPolicy(
             Qt.PreventContextMenu
@@ -1295,7 +1305,7 @@ class ToolbarsGuiElements:
         )
         
         # Second level toolbar
-        secondLevelToolbar = widgets.ToolBar("Second level toolbar", self)
+        secondLevelToolbar = widgets_toolbars.ToolBar("Second level toolbar", self)
         self.addToolBar(Qt.TopToolBarArea, secondLevelToolbar)
         self.delObjToolAction = QAction(self)
         self.delObjToolAction.setIcon(QIcon(":del_obj_click.svg"))
@@ -1319,7 +1329,7 @@ When working with 3D segmentation masks:
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
 
-        self.exportCurrentViewToolbar = widgets.ExportCurrentViewToolbar(self)
+        self.exportCurrentViewToolbar = gui_widgets_edit_toolbars.ExportCurrentViewToolbar(self)
         for name, action in self.exportCurrentViewToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
         
@@ -1334,7 +1344,7 @@ When working with 3D segmentation masks:
         )
         self.controlToolBars.append(self.exportCurrentViewToolbar)
 
-        self.editIDToolbar = widgets.EditIDToolbar(self)
+        self.editIDToolbar = gui_widgets_edit_toolbars.EditIDToolbar(self)
         self.addToolBar(Qt.TopToolBarArea, self.editIDToolbar)
         self.editIDToolbar.setVisible(False)
         self.editIDToolbar.keepVisibleWhenActive = True

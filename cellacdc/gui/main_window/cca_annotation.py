@@ -12,9 +12,18 @@ from qtpy.QtWidgets import QMessageBox
 from cellacdc import exception_handler
 from cellacdc import base_cca_dict
 from cellacdc import cca_df_colnames
-from cellacdc import apps, html_utils
-from cellacdc import core, myutils
-from cellacdc import widgets
+from cellacdc import html_utils
+from cellacdc.shared.dialogs import (
+    generic as dialogs_generic,
+    model_params as dialogs_model_params,
+)
+from ..dialogs import editing as gui_dialogs_editing
+from cellacdc import core
+from cellacdc.myutils import model_installs, table_utils
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import _warnings
 from cellacdc import qutils
 from . import constants as gui_main_constants
@@ -695,9 +704,9 @@ class CcaManualAnnotationGuiElements:
                 Saved data is not changed of course.<br><br>
                 Apply assignment or cancel process?
             """)
-            applyButton = widgets.okPushButton(isDefault=False)
+            applyButton = widgets_push_buttons.okPushButton(isDefault=False)
             applyButton.setText('Apply and remove future annotations')
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             _, applyButton = msg.warning(
                self, 'Cell not eligible', err_msg, 
                buttonsTexts=('Cancel', applyButton)
@@ -715,7 +724,7 @@ class CcaManualAnnotationGuiElements:
                 One possible solution is to first go to frame {i+1} and
                 assign the bud of cell {new_mothID} to another cell.
             """)
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                self, 'Cell not eligible', err_msg
             )
@@ -735,7 +744,7 @@ class CcaManualAnnotationGuiElements:
                 of <b>at least 1 frame</b>.<br><br>
                 Thank you for your patience!
             """)
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                self, 'Cell not eligible', err_msg
             )
@@ -750,7 +759,7 @@ class CcaManualAnnotationGuiElements:
             These cells already have history UNKNOWN assigned and the 
             history status <b>cannot be changed.</b>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'First frame cells', txt
         )
@@ -920,7 +929,7 @@ class CcaManualAnnotationGuiElements:
 
     def warnDeadOrExcludedMothers(self, budIDs, mothIDs):
         self.startBlinkingPairingItem(budIDs, mothIDs)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         pairings = [
             f'Mother ID {mID} --> bud ID {bID}' 
             for mID, bID in zip(mothIDs, budIDs)
@@ -1195,8 +1204,8 @@ class CcaManualAnnotationGuiElements:
             'NOTE: To assign a bud <b>start by clicking on the bud</b> '
             'and release on a cell in G1'
         )
-        msg = widgets.myMessageBox()
-        swapMothersButton = widgets.reloadPushButton('Swap mother cells')
+        msg = widgets_message_box.myMessageBox()
+        swapMothersButton = widgets_push_buttons.reloadPushButton('Swap mother cells')
         _, swapMothersButton = msg.warning(
             self, 'Released on a cell NOT in G1', txt,
             buttonsTexts=('Cancel', swapMothersButton)
@@ -1248,7 +1257,7 @@ class CcaManualAnnotationGuiElements:
             {future_division_frame_i} before attempting to {action}.<br><br>
             Thank you for your patience!
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, f'{action} not possible'.title(), txt)
         return
 
@@ -1292,7 +1301,7 @@ class CcaManualAnnotationGuiElements:
             {motherID} on any frame before frame n. {frame_no_G1}.<br><br>
             Thank you for your patience!
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Swap mothers not possible', txt)
         return
 
@@ -1551,7 +1560,7 @@ class CcaManualAnnotationGuiElements:
             return
 
         posData = self.data[self.pos_i]
-        editCcaWidget = apps.editCcaTableWidget(
+        editCcaWidget = gui_dialogs_editing.editCcaTableWidget(
             posData.cca_df, posData.SizeT, current_frame_i=posData.frame_i,
             parent=self
         )
@@ -1606,7 +1615,7 @@ class CcaManualAnnotationGuiElements:
             return
         
         while ccs != 'S':
-            win = apps.QLineEditDialog(
+            win = dialogs_generic.QLineEditDialog(
                 title='Selected ID not in S',
                 msg='The <b>cell cycle stage</b> of the selected ID '
                     '<b>is not "S"</b>.<br><br>'
@@ -1751,7 +1760,7 @@ class CcaManualAnnotationGuiElements:
             self.warnLostCellsAction.setChecked(False)
             hoverID = self.getLastHoveredID()
             if hoverID == 0:
-                win = apps.QLineEditDialog(
+                win = dialogs_generic.QLineEditDialog(
                     title='Not hovering any ID',
                     msg='You are not hovering on any ID.\n'
                         'Enter the ID that you want to lock.',
@@ -1887,7 +1896,7 @@ class CcaManualAnnotationGuiElements:
         _SizeZ = None
         if self.isSegm3D:
             _SizeZ = posData.SizeZ 
-        win = apps.QDialogModelParams(
+        win = dialogs_model_params.QDialogModelParams(
             init_params,
             segment_params,
             model_name, 
@@ -1901,8 +1910,8 @@ class CcaManualAnnotationGuiElements:
             self.titleLabel.setText('Segmentation aborted.')
             return
 
-        use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
-        proceed = myutils.check_gpu_available(
+        use_gpu = model_installs.check_gpu_requested_segm_model(win.init_kwargs)
+        proceed = model_installs.check_gpu_available(
             model_name, use_gpu, qparent=self,
             python_exec=self.getModelExecution(model_name).env_python,
         )
@@ -1943,7 +1952,7 @@ class CcaManualAnnotationGuiElements:
         
         posData = self.data[self.pos_i]
         for frame_i in range(last_tracked_i_to_restore+1, posData.SizeT):
-            data_frame_i = myutils.get_empty_stored_data_dict()
+            data_frame_i = table_utils.get_empty_stored_data_dict()
             
             data_frame_i['manually_edited_lab'] = (
                 posData.allData_li[frame_i]['manually_edited_lab']

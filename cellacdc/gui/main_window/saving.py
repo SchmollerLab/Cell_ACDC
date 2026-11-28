@@ -11,9 +11,22 @@ import pandas as pd
 from qtpy.QtCore import QEventLoop, QTimer, QThread, QMutex, QWaitCondition
 from qtpy.QtWidgets import QCheckBox, QMessageBox
 from cellacdc import exception_handler, disableWindow
-from cellacdc import load, apps, workers, html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc import load, html_utils
+from cellacdc.shared.dialogs import (
+    combine_measurements as dialogs_combine_measurements,
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+    set_measurements as dialogs_set_measurements,
+)
+from cellacdc.shared.workers import saving as workers_saving
+from ..dialogs import data_io as gui_dialogs_data_io
+from ..workers import loading_saving as gui_workers_loading_saving
+from cellacdc.myutils import misc
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import measurements
 from cellacdc import settings_csv_path
 from cellacdc import favourite_func_metrics_csv_path
@@ -44,7 +57,7 @@ class AutoSaveGuiElements:
         self.autoSaveWaitCond = QWaitCondition()
 
         savedSegmData = posData.segm_data.copy()
-        autoSaveWorker = workers.AutoSaveWorker(
+        autoSaveWorker = gui_workers_loading_saving.AutoSaveWorker(
             self.autoSaveMutex, self.autoSaveWaitCond, savedSegmData
         )
         autoSaveWorker.isAutoSaveON = self.autoSaveToggle.isChecked()
@@ -339,7 +352,7 @@ class SaveDataGuiElements:
 
         segmFilename = os.path.basename(posData.segm_npz_path)
         segmFilename = f"{segmFilename[:-4]}_not_whitelisted"
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=posData.basename,
             hintText=txt,
             defaultEntry=segmFilename,
@@ -394,7 +407,7 @@ class SaveDataGuiElements:
             Enter <b>up to which frame number</b> you want to save the 
             cell cycle annotations:
         """)
-        lastFrameDialog = apps.QLineEditDialog(
+        lastFrameDialog = dialogs_generic.QLineEditDialog(
             title='Last annoated frame number to save', 
             defaultTxt=str(last_cca_frame_i+1),
             msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
@@ -442,7 +455,7 @@ class SaveDataGuiElements:
             until frame number {frame_i+1}.<br><br>
             Enter <b>up to which frame number</b> you want to save data:
         """)
-        lastFrameDialog = apps.QLineEditDialog(
+        lastFrameDialog = dialogs_generic.QLineEditDialog(
             title='Last frame number to save', defaultTxt=str(frame_i+1),
             msg=txt, parent=self, allowedValues=(1, posData.SizeT),
             warnLastFrame=True, isInteger=True, stretchEntry=False,
@@ -489,10 +502,10 @@ class SaveDataGuiElements:
             NOTE: Saving metrics might be <b>slow</b>,
             we recommend doing it <b>only when you need it</b>.<br>
         """)
-        msg = widgets.myMessageBox(
+        msg = widgets_message_box.myMessageBox(
             parent=self, resizeButtons=False, wrapText=False
         )
-        setMeasurementsButton = widgets.setPushButton('Set measurements...')
+        setMeasurementsButton = widgets_push_buttons.setPushButton('Set measurements...')
         _, yesButton, noButton, _ = msg.question(
             self, 'Save measurements?', txt, 
             buttonsTexts=('Cancel', 'Yes', 'No', setMeasurementsButton),
@@ -520,7 +533,7 @@ class SaveDataGuiElements:
             last_pos = len(self.data)
 
         items = [posData.pos_foldername for posData in self.data]
-        selectPosWin = widgets.QDialogListbox(
+        selectPosWin = widgets_item_views.QDialogListbox(
             f'Select Positions {action}', f'Select Positions {action}:\n',
             items, multiSelection=True, parent=self,
             preSelectedItems=items[:last_pos]
@@ -541,7 +554,7 @@ class SaveDataGuiElements:
         self.logger.info('Warning: calculating metrics failed see above...')
         print('------------------------------')
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         err_msg = html_utils.paragraph(f"""
             Error <b>while saving metrics</b>.<br><br>
             More details below or in the terminal/console.<br><br>
@@ -580,7 +593,7 @@ class SaveDataGuiElements:
             basename = f'{posData.basename}segm'
         else:
             basename = f'{posData.basename}_segm'
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             hintText='Insert a <b>filename</b> for the segmentation file:<br>',
             existingNames=existingFilenames
@@ -654,7 +667,7 @@ class SaveDataGuiElements:
             self.saveWin.QPbar.setValue(self.saveWin.QPbar.value()+step)
             steps_left = self.saveWin.QPbar.maximum()-self.saveWin.QPbar.value()
             seconds = round(exec_time*steps_left)
-            ETA = myutils.seconds_to_ETA(seconds)
+            ETA = misc.seconds_to_ETA(seconds)
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
 
     def quickSave(self):
@@ -673,7 +686,7 @@ class SaveDataGuiElements:
             <code>_{segmEndName}.npz</code> <b>will be OVERWRITTEN</b>.<br><br>
             Are you sure you want to proceed?
         """)
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.warning(
             self, 'WARNING: Potential for data loss', txt,
             buttonsTexts=('Cancel', 'Yes')
@@ -797,7 +810,7 @@ class SaveDataGuiElements:
             f'Saving {self.exp_path}...<br>', font_size='14px'
         )
 
-        self.saveWin = apps.QDialogPbar(
+        self.saveWin = gui_dialogs_data_io.QDialogPbar(
             parent=self, title='Saving data', infoTxt=infoTxt
         )
         self.saveWin.setFont(gui_main_constants._font)
@@ -810,7 +823,7 @@ class SaveDataGuiElements:
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
         self._saveDataThread = QThread()
-        self._saveDataWorker = workers.saveDataWorker(self)
+        self._saveDataWorker = workers_saving.saveDataWorker(self)
         self._saveDataWorker.mode = mode
         self._saveDataWorker.isQuickSave = isQuickSave
         self._saveDataWorker.append_name_og_whitelist = append_name_og_whitelist
@@ -863,21 +876,21 @@ class SaveDataGuiElements:
         # self.worker.waitCond.wakeAll()
 
     def warnErrorsCustomMetrics(self):
-        win = apps.ComputeMetricsErrorsDialog(
+        win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
             self._saveDataWorker.customMetricsErrors, self.logs_path, 
             log_type='custom_metrics', parent=self
         )
         win.exec_()
 
     def warnErrorsAddMetrics(self):
-        win = apps.ComputeMetricsErrorsDialog(
+        win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
             self._saveDataWorker.addMetricsErrors, self.logs_path, 
             log_type='standard_metrics', parent=self
         )
         win.exec_()
 
     def warnErrorsRegionProps(self):
-        win = apps.ComputeMetricsErrorsDialog(
+        win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
             self._saveDataWorker.regionPropsErrors, self.logs_path, 
             log_type='region_props', parent=self
         )
@@ -904,7 +917,7 @@ class SaveDataGuiElements:
             multiple Positions into <b>one single CSV file</b>?<br>
         """)
         doNotShowAgainCheckbox = QCheckBox('Do not show again')
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         noButton, yesButton = msg.question(
             self, 'Concatenate tables?', txt, 
             buttonsTexts=('No', 'Yes'),
@@ -927,7 +940,7 @@ class SaveDataGuiElements:
             launch the concatenation utility from the top menubar of the Cell-ACDC main launcher:<br><br>
             <code>Utilities --> Concatenate --> Concatenate acdc output tables from multiple Positions and experiments...</code>.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'How to concatenate tables', txt)
 
     def saveDataFinished(self):
@@ -959,8 +972,8 @@ class SaveDataGuiElements:
         self.askConcatenate()
         
         if self.closeGUI:
-            salute_string = myutils.get_salute_string()
-            msg = widgets.myMessageBox()
+            salute_string = misc.get_salute_string()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'Data <b>saved!</b>. The GUI will now close.<br><br>'
                 f'{salute_string}'
@@ -983,7 +996,7 @@ class SaveDataGuiElements:
         if not self.isDataLoaded:
             return True
         
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph('Do you want to <b>save before closing?</b>')
         _, noButton, yesButton = msg.question(
             self, 'Save?', txt,
@@ -1056,7 +1069,7 @@ class SetMeasurementsGuiElements:
             c for c in self.getAllPosChNames() if c not in loadedChNames
         ]
         self.notLoadedChNames = notLoadedChNames
-        self.measurementsWin = apps.SetMeasurementsDialog(
+        self.measurementsWin = dialogs_set_measurements.SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1, self.isSegm3D,
             favourite_funcs=favourite_funcs, 
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
@@ -1126,7 +1139,7 @@ class SetMeasurementsGuiElements:
     def addCustomMetric(self, checked=False):
         txt = measurements.add_metrics_instructions()
         metrics_path = measurements.metrics_path
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.addShowInFileManagerButton(metrics_path, 'Show example...')
         title = 'Add custom metrics instructions'
         msg.information(self, title, txt, buttonsTexts=('Ok',))
@@ -1134,7 +1147,7 @@ class SetMeasurementsGuiElements:
     def addCombineMetric(self):
         posData = self.data[self.pos_i]
         isZstack = posData.SizeZ > 1
-        win = apps.CombineMetricsEquationDialog(
+        win = dialogs_combine_measurements.CombineMetricsEquationDialog(
             self.getAllPosChNames(), isZstack, self.isSegm3D, parent=self,
             acdc_df=posData.acdc_df
         )

@@ -13,17 +13,28 @@ from functools import partial
 from qtpy.QtWidgets import QFileDialog, QApplication
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import cellacdc_path
 from cellacdc import settings_folderpath
-from cellacdc import apps
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
 from cellacdc import html_utils
-from cellacdc.apps_measurements_viewer import ChannelPlaceholderMappingDialog
+from ..dialogs.premade_setup import ChannelPlaceholderMappingDialog
 from cellacdc.timepoint_predictors import TimepointIdentifier
-from cellacdc.measurements_viewer_utils import (
-    VISITED_COLUMN, get_images_paths, get_channels_and_segm_endnames,
-    analysis_last_frame, blank_unanalyzed_outputs, flag_column_conflicts,
-    flag_column_conflicts_text, load_display_positions
+from ..annotation_data import (
+    VISITED_COLUMN,
+    flag_column_conflicts,
+    flag_column_conflicts_text,
+)
+from ..position_data import analysis_last_frame
+from ..viewer_utils import (
+    blank_unanalyzed_outputs,
+    get_channels_and_segm_endnames,
+    get_images_paths,
+    load_display_positions,
 )
 
 
@@ -45,7 +56,7 @@ class ViewerConfigurationGuiElements:
     """
 
     def selectConfigurationFilepath(self):
-        from cellacdc.apps import QTreeDialog
+        from cellacdc.shared.dialogs.generic import QTreeDialog
 
         paths = {}
         types = {}
@@ -60,13 +71,13 @@ class ViewerConfigurationGuiElements:
                     paths[f'{prefix}{filename}'] = filepath
                     types[f'{prefix}{filename}'] = kind
 
-        browseButton = widgets.browseFileButton(
+        browseButton = widgets_push_buttons.browseFileButton(
             'Browse configuration...', self,
             ext={'JSON': ['.json']},
             title='Load measurements viewer configuration',
             start_dir=MEASUREMENTS_CONFIGURATIONS_PATH,
         )
-        skipButton = widgets.SkipPushButton('Skip/New configuration', self)
+        skipButton = widgets_push_buttons.SkipPushButton('Skip/New configuration', self)
         dialog = QTreeDialog(
             [
                 (name, datetime.fromtimestamp(os.path.getmtime(path)).strftime(
@@ -184,7 +195,7 @@ class ViewerConfigurationGuiElements:
 
     def configurationError(self, operation, error):
         self.logger.error('Could not %s configuration: %s', operation, error)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Configuration failed',
             f'Could not {operation} configuration:\n\n{error}'
@@ -210,7 +221,7 @@ class ViewerConfigurationGuiElements:
                 Which allows you to later reload it, preserving displayed measurements.'''
                 )
             date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            msg = apps.filenameDialog(
+            msg = dialogs_file_selection.filenameDialog(
                 ext='json', title='Save measurements viewer configuration as',
                 parent=self, helpText=helpText,existingNames=current_files,
                 allowEmpty=False, addDoNotSaveButton=True, defaultEntry=date
@@ -341,7 +352,7 @@ class ViewerConfigurationGuiElements:
             'The premade configuration with your channels is saved as a new '
             'configuration, which you can later load and modify.'
         )
-        msg = apps.filenameDialog(
+        msg = dialogs_file_selection.filenameDialog(
             ext='json', title='Save configuration from premade template',
             parent=self, helpText=helpText, existingNames=current_files,
             allowEmpty=False, defaultEntry=defaultName
@@ -565,7 +576,7 @@ class ViewerConfigurationGuiElements:
         overlays = [c for c in configured if c in channels and c != channel]
         missing = [c for c in configured if c not in channels]
         if missing:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             cancel, _ = msg.warning(
                 self, 'Overlay channels missing',
                 html_utils.paragraph(
@@ -642,7 +653,7 @@ class ViewerConfigurationGuiElements:
     def selectConfigurationOverlayChannels(self, channels, text=None):
         if not channels:
             return []
-        dialog = widgets.QDialogListbox(
+        dialog = widgets_item_views.QDialogListbox(
             'Select overlay channels',
             text or 'Select optional overlay channels (or leave the selection empty):',
             channels, multiSelection=True, parent=self, preSelectedItems=()
@@ -687,7 +698,7 @@ class ViewerConfigurationGuiElements:
         details = 'Output columns:\n' + '\n'.join(outputs)
         if incomplete:
             details += '\n\nPositions with missing columns:\n' + '\n'.join(incomplete)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         cancel, existingButton, recalculate = msg.question(
             self, 'Calculate measurements?', txt, detailsText=details,
             buttonsTexts=('Cancel', 'Use existing values', 'Calculate')

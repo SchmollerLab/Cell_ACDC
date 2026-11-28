@@ -13,7 +13,11 @@ from qtpy.QtCore import QObject, QSize, Signal
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication, QGroupBox, QPushButton, QWidget
 
-from cellacdc import _main, dataStruct, measurements_viewer, myutils
+from cellacdc.data_structure import data_struct
+from cellacdc.launcher import main_window as launcher_window
+from cellacdc.measurements_viewer.main_window import window as viewer_window
+from cellacdc.myutils import app_info
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import cellacdc_path
 
 pytestmark = pytest.mark.gui
@@ -53,17 +57,17 @@ def buildLauncher(app, monkeypatch, tmp_path):
             log_filename
         )
 
-    monkeypatch.setattr(myutils, 'setupLogger', setupLogger)
-    monkeypatch.setattr(_main.mainWin, 'checkConfigFiles', lambda self: None)
+    monkeypatch.setattr(app_info, 'setupLogger', setupLogger)
+    monkeypatch.setattr(launcher_window.mainWin, 'checkConfigFiles', lambda self: None)
     windows = []
 
     def build(spotmaxInstalled=False):
         if spotmaxInstalled:
-            monkeypatch.setattr(_main, 'SPOTMAX_INSTALLED', True)
+            monkeypatch.setattr(launcher_window, 'SPOTMAX_INSTALLED', True)
             monkeypatch.setattr(
-                _main, 'spotmax_logo_path', ':logo.svg', raising=False
+                launcher_window, 'spotmax_logo_path', ':logo.svg', raising=False
             )
-        win = _main.mainWin(app)
+        win = launcher_window.mainWin(app)
         windows.append(win)
         return win
 
@@ -177,7 +181,7 @@ def test_measurements_viewer_button_launches_viewer(
     ):
     calls = []
     monkeypatch.setattr(
-        _main.mainWin, 'launchMeasurementsViewer',
+        launcher_window.mainWin, 'launchMeasurementsViewer',
         lambda self, checked=False: calls.append(self)
     )
     win = buildLauncher()
@@ -192,7 +196,7 @@ def test_measurements_viewer_button_opens_and_tracks_window(
     ):
     _FakeViewerWin.instances = []
     monkeypatch.setattr(
-        measurements_viewer, 'MeasurementsViewerWin', _FakeViewerWin
+        viewer_window, 'MeasurementsViewerWin', _FakeViewerWin
     )
     win = buildLauncher()
     win.setColorsAndText()
@@ -215,7 +219,7 @@ def test_data_structure_button_texts_have_no_module_number(
     ):
     # The other module buttons show no numbers either
     monkeypatch.setattr(
-        _main.mainWin, '_showDataStructWin', lambda self: None
+        launcher_window.mainWin, '_showDataStructWin', lambda self: None
     )
     win = buildLauncher()
     win.setColorsAndText()
@@ -249,8 +253,8 @@ def test_python_bioformats_data_structure_button_has_no_module_number(
         def main(self):
             pass
 
-    monkeypatch.setattr(_main.widgets.myMessageBox, 'question', question)
-    monkeypatch.setattr(dataStruct, 'createDataStructWin', FakeDataStructWin)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'question', question)
+    monkeypatch.setattr(data_struct, 'createDataStructWin', FakeDataStructWin)
     win = buildLauncher()
     win.setColorsAndText()
 

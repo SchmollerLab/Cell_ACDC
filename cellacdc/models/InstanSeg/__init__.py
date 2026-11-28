@@ -1,6 +1,6 @@
-from cellacdc import myutils
+from cellacdc.myutils import model_installs
 
-myutils.check_install_instanseg()
+model_installs.check_install_instanseg()
 
 INSTANSEG_MODELS = (
     'fluorescence_nuclei_and_cells',

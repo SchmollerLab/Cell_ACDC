@@ -41,9 +41,10 @@ def torch_requirement(torch_version: Optional[str], quoted: bool = False) -> str
 
 
 def _warn_dll_torch(qparent=None):
-    from cellacdc import html_utils, widgets
+    from cellacdc import html_utils
+    from cellacdc.shared.widgets import message_box as widgets_message_box
 
-    msg = widgets.myMessageBox()
+    msg = widgets_message_box.myMessageBox()
     txt = html_utils.paragraph("""
     <b>An error message will occur after you close this message.</b><br>
     <b>Please save your data and restart Cell-ACDC.</b><br>
@@ -62,8 +63,9 @@ def _warn_dll_torch(qparent=None):
 
 def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, python_exec=None,
                         platform=None, found_cuda_version=None, possible_links=None):
-    from cellacdc import _warnings, myutils
-    from . import is_gui_running, is_server_mode
+    from cellacdc import _warnings
+    from . import installs
+    from .installs import is_gui_running, is_server_mode
 
     if is_server_mode() and python_exec in (None, sys.executable):
         try:
@@ -116,9 +118,9 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, pyt
         _install_pytorch_cli(caller_name=caller_name)
         return
 
-    from cellacdc import apps
+    from cellacdc.shared.dialogs import model_selection as dialogs_model_selection
 
-    win = apps.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)
+    win = dialogs_model_selection.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)
     win.exec_()
     if win.cancel:
         _warnings.log_pytorch_not_installed()
@@ -126,7 +128,7 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, pyt
 
     command = win.command
     print(f'Running command: "{command}"')
-    myutils._run_command(command)
+    installs._run_command(command)
 
     try:
         import torch
@@ -135,7 +137,7 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, pyt
             _warn_dll_torch(qparent=qparent)
         raise e
 
-    myutils.purge_module('torch')
+    installs.purge_module('torch')
 
 
 def get_driver_cuda_version():
@@ -318,7 +320,7 @@ def get_pytorch_command(**options_kwargs):
     Conda commands are therefore no longer generated.
     """
 
-    from . import get_pip_conda_prefix
+    from .installs import get_pip_conda_prefix
 
     _, pip_prefix = get_pip_conda_prefix(exec_path=options_kwargs.get('exec_path'))
     options, _ = _safe_torch_options(options_kwargs)
@@ -359,7 +361,7 @@ def _install_pytorch_cli(
         caller_name='Cell-ACDC', action='install', logger_func=print,
         python_exec=None
     ):
-    from . import get_cli_multi_choice_question
+    from .installs import get_cli_multi_choice_question
 
     separator = '-'*60
     txt = (

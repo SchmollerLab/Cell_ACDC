@@ -11,8 +11,9 @@ from qtpy.QtWidgets import QApplication
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from cellacdc import exception_handler, disableWindow
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import image_utils
+from ..mixins import widgets as gui_mixin_widgets
+from ..widgets import points_layer_widgets as gui_widgets_points_layer_widgets
 from cellacdc import _warnings
 from cellacdc.promptable_models import utils as prompt_utils
 
@@ -292,7 +293,7 @@ class BoxPromptsGuiElements:
         for box in boxes:
             if z is not None and box['z'] != z:
                 continue
-            roi = widgets.PromptBoxROI(
+            roi = gui_widgets_points_layer_widgets.PromptBoxROI(
                 (box['xmin'], box['ymin']),
                 (box['xmax']-box['xmin'], box['ymax']-box['ymin']),
                 box['id'], self.magicPromptsBoxColor(box['id']),
@@ -422,7 +423,7 @@ class BoxPromptsGuiElements:
 
         xdata, ydata = int(x), int(y)
         pen = pg.mkPen((255, 255, 0), width=2, style=Qt.DashLine)
-        roi = widgets.ROI(
+        roi = gui_mixin_widgets.ROI(
             (xdata, ydata), (0, 0), pen=pen, hoverPen=pen,
             movable=False, rotatable=False, resizable=False
         )
@@ -767,7 +768,7 @@ class BrushStrokesPromptsGuiElements:
 
         x, y = event.pos().x(), event.pos().y()
         Y, X = annot2D.shape
-        if not myutils.is_in_bounds(int(x), int(y), X, Y):
+        if not image_utils.is_in_bounds(int(x), int(y), X, Y):
             return
 
         otherSource = self.getBrushStrokesImageSourceMismatch(annot2D)
@@ -990,7 +991,7 @@ class BrushStrokesPromptsGuiElements:
         xdata, ydata = int(x), int(y)
         lab2D = self.currentLab2D
         Y, X = lab2D.shape[-2:]
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         ID = int(lab2D[ydata, xdata])

@@ -7,8 +7,11 @@ from typing import Tuple
 from qtpy.QtCore import Qt, QObject, PYQT6
 from qtpy.QtGui import QKeySequence
 from cellacdc import exception_handler
-from cellacdc import apps
-from cellacdc import widgets
+from . import dialogs as gui_mixin_dialogs
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    toolbars as widgets_toolbars,
+)
 from . import navigation as gui_navigation, overlay as gui_overlay
 from cellacdc import QtScoped
 from cellacdc import is_mac
@@ -199,7 +202,7 @@ class ShortcutsGuiElements:
             if not delObjKeySequenceText:
                 delObjKeySequence = None
             else:
-                delObjKeySequence = widgets.KeySequenceFromText(
+                delObjKeySequence = widgets_line_edits.KeySequenceFromText(
                     delObjKeySequenceText
                 )
             self.delObjToolAction.setChecked(True)
@@ -219,7 +222,7 @@ class ShortcutsGuiElements:
                 else:
                     if hasattr(widget, 'keyPressShortcut'):
                         key = widget.keyPressShortcut
-                        shortcut = widgets.KeySequenceFromText(key)
+                        shortcut = widgets_line_edits.KeySequenceFromText(key)
                     else:
                         shortcut = widget.shortcut()
                     shortcut_text = shortcut.toString()
@@ -235,7 +238,7 @@ class ShortcutsGuiElements:
                     self.mouseBindings[name] = button
                     shortcut = button
                 else:
-                    shortcut = widgets.KeySequenceFromText(shortcut_text)
+                    shortcut = widgets_line_edits.KeySequenceFromText(shortcut_text)
             
             shortcuts[name] = (shortcut_text, shortcut)
         self.setShortcuts(shortcuts, save=False)
@@ -256,7 +259,7 @@ class ShortcutsGuiElements:
             widget.setToolTip(toolTip)
 
         # Buttons hidden by an overflowing toolbar use a copy of their key
-        widgets.updateToolbarsOverflowShortcuts(self)
+        widgets_toolbars.updateToolbarsOverflowShortcuts(self)
 
         if not save:
             return
@@ -338,7 +341,7 @@ class ShortcutsGuiElements:
 
         hard_shortcuts = self.getHardcodedShortcuts()
             
-        win = apps.ShortcutEditorDialog(
+        win = gui_mixin_dialogs.ShortcutEditorDialog(
             self.widgetsWithShortcut, 
             delObjectKey=delObjKeySequenceText,
             delObjectButton=delObjButtonText,

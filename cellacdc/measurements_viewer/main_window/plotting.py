@@ -12,7 +12,7 @@ import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from cellacdc import qutils
 from cellacdc import timepoint_predictors
-from cellacdc.apps_measurements_viewer import formatting_color
+from ..dialogs.conditional_formatting import formatting_color
 
 
 # Tool tip of the columns list in Time course mode

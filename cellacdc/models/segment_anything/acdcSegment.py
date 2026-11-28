@@ -15,7 +15,8 @@ from . import model_types, sam_models_path
 from segment_anything import (
     sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 )
-from cellacdc import myutils, printl, _types, sam_embeddings
+from cellacdc import printl, _types, sam_embeddings
+from cellacdc.myutils import image_utils
 
 
 class _EmbeddingPredictor(sam_embeddings.EmbeddingPredictorMixin, SamPredictor):
@@ -430,7 +431,7 @@ class Model:
     def _init_embeddings(self, img_rgb):
         """Prepare image input; the predictor decides whether to encode or reuse."""
         if img_rgb.ndim == 2:
-            img_rgb = myutils.to_uint8(img_rgb)
+            img_rgb = image_utils.to_uint8(img_rgb)
             img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
         predictor = getattr(self.model, 'predictor', self.model)
         predictor.set_image(img_rgb)
@@ -443,7 +444,7 @@ class Model:
             automatic_removal_of_background: bool=False
         ) -> np.ndarray:
 
-        img = myutils.to_uint8(image)
+        img = image_utils.to_uint8(image)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         labels = np.zeros(image.shape[:2], dtype=np.uint32)
 

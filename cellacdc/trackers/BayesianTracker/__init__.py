@@ -2,7 +2,7 @@ UPGRADE_BTRACK = False
 
 try:
     import btrack
-    from cellacdc.myutils import get_package_version 
+    from cellacdc.myutils.installs import get_package_version 
     version = get_package_version('btrack')  
     minor = version.split('.')[1]
     if int(minor) < 5:
@@ -10,9 +10,9 @@ try:
 except Exception as e:
     pass
 
-from cellacdc import myutils
+from cellacdc.myutils import installs
 
-myutils.check_install_package(
+installs.check_install_package(
     'Bayesian Tracker',
     import_pkg_name='btrack',
     pypi_name='btrack', 

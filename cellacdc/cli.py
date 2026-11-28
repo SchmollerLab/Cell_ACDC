@@ -18,7 +18,7 @@ from . import printl
 from . import load
 from . import error_up_str
 from . import issues_url
-from . import myutils
+from cellacdc.myutils import filesystem, misc, segm_models, table_utils
 from . import config
 from . import core
 from . import features
@@ -268,7 +268,7 @@ class _WorkflowKernel:
     def _get_any_ch_filepaths(self, images_paths):
         ch_filepaths = []
         for images_path in images_paths:
-            _, chNames = myutils.getBasenameAndChNames(
+            _, chNames = filesystem.getBasenameAndChNames(
                 images_path, useExt=('.tif', '.h5')
             )
             if not chNames:
@@ -277,7 +277,7 @@ class _WorkflowKernel:
                     f'"{images_path}".'
                 )
             ch_filepaths.append(
-                myutils.getChannelFilePath(images_path, chNames[0])
+                filesystem.getChannelFilePath(images_path, chNames[0])
             )
         return ch_filepaths
 
@@ -311,7 +311,7 @@ class _WorkflowKernel:
         else:
             self.logger.info(
                 'Cell-ACDC command-line interface closed. '
-                f'{myutils.get_salute_string()}'
+                f'{misc.get_salute_string()}'
             )
         self.logger.info('='*50)
         exit()
@@ -493,18 +493,18 @@ class SegmKernel(_WorkflowKernel):
                 )
             else:
                 init_argspecs, segment_argspecs, _ = (
-                    myutils.getModelArgSpecFromEnv(
+                    segm_models.getModelArgSpecFromEnv(
                         self.model_name, self.env_python or sys.executable
                     )
                 )
         else:
-            acdcSegment = myutils.import_segment_module(self.model_name)
-            init_argspecs, segment_argspecs = myutils.getModelArgSpec(
+            acdcSegment = segm_models.import_segment_module(self.model_name)
+            init_argspecs, segment_argspecs = segm_models.getModelArgSpec(
                 acdcSegment
             )
 
         raw_init_kwargs = self.init_model_kwargs or {}
-        self.init_model_kwargs = myutils.parse_model_params(
+        self.init_model_kwargs = segm_models.parse_model_params(
             init_argspecs, raw_init_kwargs
         )
         for key in (
@@ -512,7 +512,7 @@ class SegmKernel(_WorkflowKernel):
         ):
             if key in raw_init_kwargs:
                 self.init_model_kwargs[key] = raw_init_kwargs[key]
-        self.model_kwargs = myutils.parse_model_params(
+        self.model_kwargs = segm_models.parse_model_params(
             segment_argspecs, self.model_kwargs or {}
         )
 
@@ -521,7 +521,7 @@ class SegmKernel(_WorkflowKernel):
         # loaded segmentation/points instead of their file names.
         if self.uses_worker_backend() and posData is not None and backend_kwargs:
             backend_kwargs = dict(backend_kwargs)
-            segm_data = myutils.resolve_segm_model_init_data(
+            segm_data = segm_models.resolve_segm_model_init_data(
                 posData, backend_kwargs
             )
             if segm_data is not None:
@@ -543,7 +543,7 @@ class SegmKernel(_WorkflowKernel):
         self.signals.progress.emit(
             f'\nInitializing {self.model_name} segmentation model...'
         )
-        self.model = myutils.init_segm_model(
+        self.model = segm_models.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )
         if self.model is None:
@@ -564,17 +564,17 @@ class SegmKernel(_WorkflowKernel):
         
         if tracker is None:
             self.signals.progress.emit(f'Initializing {tracker_name} tracker...')
-            tracker_module = myutils.import_tracker_module(tracker_name)
-            init_argspecs, track_argspecs = myutils.getTrackerArgSpec(
+            tracker_module = segm_models.import_tracker_module(tracker_name)
+            init_argspecs, track_argspecs = segm_models.getTrackerArgSpec(
                 tracker_module, realTime=False
             )
-            self.init_tracker_kwargs = myutils.parse_model_params(
+            self.init_tracker_kwargs = segm_models.parse_model_params(
                 init_argspecs, self.init_tracker_kwargs
             )
-            self.init_tracker_kwargs = myutils.parse_model_params(
+            self.init_tracker_kwargs = segm_models.parse_model_params(
                 init_argspecs, self.init_tracker_kwargs
             )
-            track_params = myutils.parse_model_params(
+            track_params = segm_models.parse_model_params(
                 track_argspecs, track_params
             )
             tracker = tracker_module.tracker(**self.init_tracker_kwargs)
@@ -1712,7 +1712,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         exp_foldername = os.path.basename(
             os.path.dirname(os.path.dirname(images_path))
         )
-        basename, channel_names = myutils.getBasenameAndChNames(
+        basename, channel_names = filesystem.getBasenameAndChNames(
             images_path, useExt=('.tif', '.h5')
         )
         posData = load.loadData(img_path, channel_names[0])
@@ -1910,12 +1910,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             if acdc_df is None:
                 if posData.acdc_df is None:
-                    acdc_df = myutils.getBaseAcdcDf(rp)
+                    acdc_df = table_utils.getBaseAcdcDf(rp)
                 else:
                     try:
                         acdc_df = posData.acdc_df.loc[frame_i].copy()
                     except:
-                        acdc_df = myutils.getBaseAcdcDf(rp)
+                        acdc_df = table_utils.getBaseAcdcDf(rp)
             
             key = (frame_i, posData.TimeIncrement*frame_i)
             acdc_df = load.pd_bool_and_float_to_int_to_str(
@@ -2455,10 +2455,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         
         exp_path = posData.exp_path
-        posFoldernames = myutils.get_pos_foldernames(exp_path)
+        posFoldernames = filesystem.get_pos_foldernames(exp_path)
         for pos in posFoldernames:
             images_path = os.path.join(exp_path, pos, 'Images')
-            for file in myutils.listdir(images_path):
+            for file in filesystem.listdir(images_path):
                 if not file.endswith('custom_combine_metrics.ini'):
                     continue
                 filePath = os.path.join(images_path, file)

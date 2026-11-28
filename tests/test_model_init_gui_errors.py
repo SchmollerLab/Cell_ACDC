@@ -21,7 +21,9 @@ def test_model_initialization_error_does_not_escape_qt_callback(entry_point):
         from qtpy.QtWidgets import QApplication, QDialog
 
         import cellacdc
-        from cellacdc import gui, segm
+        from cellacdc.gui.main_window import window as gui_window
+        from cellacdc.segmentation_module import main_window as segm_window
+        from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
         from cellacdc.service.client import LocalBackend
         from cellacdc.service.model_execution import run_in_background
 
@@ -49,9 +51,9 @@ def test_model_initialization_error_does_not_escape_qt_callback(entry_point):
 
         if sys.argv[1] == "segmentation":
             selector = SimpleNamespace(exec_=initialize)
-            segm.apps.SelectFoldersToAnalyse = Mock(return_value=selector)
+            dialogs_file_selection.SelectFoldersToAnalyse = Mock(return_value=selector)
             window = SimpleNamespace()
-            callback = lambda: segm.segmWin.main(window)
+            callback = lambda: segm_window.segmWin.main(window)
             expected_name = "main"
         else:
             class Window:
@@ -60,7 +62,7 @@ def test_model_initialization_error_does_not_escape_qt_callback(entry_point):
                     return initialize()
 
             window = Window()
-            callback = lambda: gui.guiWin.autoAssignBud_YeastMate(window)
+            callback = lambda: gui_window.guiWin.autoAssignBud_YeastMate(window)
             expected_name = "autoAssignBud_YeastMate"
 
         def verify_alive():

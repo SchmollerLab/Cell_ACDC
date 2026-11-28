@@ -21,7 +21,7 @@ from cellacdc import user_profile_path
 from cellacdc import _warnings
 from cellacdc import urls
 if GUI_INSTALLED:
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc.myutils import installs
 from cellacdc.myutils import downloads
 
@@ -35,7 +35,7 @@ def check_git_installed(parent=None):
         traceback.print_exc()
         print('='*20)
         git_url = 'https://git-scm.com/book/en/v2/Getting-Started-Installing-Git'
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             In order to install <code>javabridge</code> you first need to <b>install
             Git</b> (it was not found).<br><br>
@@ -55,8 +55,8 @@ def install_java():
         subprocess.check_call(['javac', '-version'], shell=True)
         return False
     except Exception as e:
-        from cellacdc import widgets
-        win = widgets.installJavaDialog()
+        from .dialogs import metadata as data_structure_dialogs_metadata
+        win = data_structure_dialogs_metadata.installJavaDialog()
         win.exec_()
         return win.clickedButton == win.cancelButton
 
@@ -408,7 +408,7 @@ def install_javabridge_instructions_text():
         return _java_instructions_linux()
 
 def install_javabridge_help(parent=None):
-    msg = widgets.myMessageBox()
+    msg = widgets_message_box.myMessageBox()
     txt = html_utils.paragraph(f"""
         Cell-ACDC is going to <b>download and install</b>
         <code>javabridge</code>.<br><br>

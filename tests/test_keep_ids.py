@@ -28,10 +28,24 @@ from qtpy.QtWidgets import (
     QStyleOptionSpinBox, QWidget
 )
 
-from cellacdc import gui, widgets
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.gui.widgets import edit_toolbars as gui_widgets_edit_toolbars
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    toolbars as widgets_toolbars,
+)
+from qtpy.QtWidgets import QAction
 from cellacdc.regionprops import acdcRegionprops
 
 INSTRUCTIONS = ' (Separate IDs by comma)'
+# The widget classes of the tests parametrized by class name
+WIDGET_CLASSES = {
+    'KeepIDsLineEdit': gui_widgets_edit_toolbars.KeepIDsLineEdit,
+    'IDsLineEdit': gui_widgets_edit_toolbars.IDsLineEdit,
+    'SpinBox': widgets_numeric_inputs.SpinBox,
+    'DoubleSpinBox': widgets_numeric_inputs.DoubleSpinBox,
+}
 WARNING = '  Some of the IDs are not existing --> they will be IGNORED'
 
 
@@ -56,7 +70,7 @@ class _FakeGui(SimpleNamespace):
 
 def _bind(window, *names):
     for name in names:
-        func = getattr(gui.guiWin, name)
+        func = getattr(gui_window.guiWin, name)
         func = getattr(func, '__wrapped__', func)
         setattr(window, name, MethodType(func, window))
 
@@ -98,8 +112,8 @@ def _make_window(segm_data=None):
         frameData['labels'] = posData.lab.copy()
 
     instructionsLabel = QLabel(INSTRUCTIONS)
-    lineEdit = widgets.KeepIDsLineEdit(instructionsLabel)
-    confirmAction = gui.QAction()
+    lineEdit = gui_widgets_edit_toolbars.KeepIDsLineEdit(instructionsLabel)
+    confirmAction = QAction()
     window = _FakeGui(
         data=[posData],
         pos_i=0,
@@ -129,7 +143,7 @@ def _make_window(segm_data=None):
         logger=Mock(),
     )
     # As in `guiWin.__init__` and `guiWin.gui_createActions`
-    window.keptObjectsIDs = widgets.KeptObjectIDsList(
+    window.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
         lineEdit, confirmAction
     )
     _bind(
@@ -160,7 +174,7 @@ def _edit(window, posData, func):
 def _activate_keep_IDs(window):
     # What `keepIDs_cb(True)` does with the existing IDs and the selection
     window.setAllIDs()
-    window.keptObjectsIDs = widgets.KeptObjectIDsList(
+    window.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
         window.keptIDsLineEdit, window.keepIDsConfirmAction
     )
 
@@ -200,7 +214,7 @@ def test_undo_apply_keep_ids_restores_selection(app, slot_errors):
     # objects and resets the selection
     window.addCurrentState()
     posData.lab[np.isin(posData.lab, [3, 4])] = 0
-    window.keptObjectsIDs = widgets.KeptObjectIDsList(
+    window.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
         window.keptIDsLineEdit, window.keepIDsConfirmAction
     )
 
@@ -208,7 +222,7 @@ def test_undo_apply_keep_ids_restores_selection(app, slot_errors):
 
     assert (posData.lab == _lab()).all()
     kept = window.keptObjectsIDs
-    assert isinstance(kept, widgets.KeptObjectIDsList)
+    assert isinstance(kept, gui_widgets_edit_toolbars.KeptObjectIDsList)
     assert list(kept) == [1, 2]
     assert window.keptIDsLineEdit.text() == '1-2'
     assert window.keepIDsConfirmAction.isEnabled()
@@ -229,7 +243,7 @@ def test_undo_apply_keep_ids_restores_selection(app, slot_errors):
 
     # Redo restores the (empty) selection after applying "Keep IDs"
     window.redo()
-    assert isinstance(window.keptObjectsIDs, widgets.KeptObjectIDsList)
+    assert isinstance(window.keptObjectsIDs, gui_widgets_edit_toolbars.KeptObjectIDsList)
     assert list(window.keptObjectsIDs) == []
     assert window.keptIDsLineEdit.text() == ''
     assert not window.keepIDsConfirmAction.isEnabled()
@@ -248,7 +262,7 @@ def test_undo_resets_keep_ids_line_edit_and_confirm_action(
 
     # The line edit and the confirm action must not keep the previous
     # selection (applying it would delete all the objects)
-    assert isinstance(window.keptObjectsIDs, widgets.KeptObjectIDsList)
+    assert isinstance(window.keptObjectsIDs, gui_widgets_edit_toolbars.KeptObjectIDsList)
     assert list(window.keptObjectsIDs) == []
     assert window.keptIDsLineEdit.text() == ''
     assert not window.keepIDsConfirmAction.isEnabled()
@@ -612,7 +626,7 @@ def test_IDs_of_frames_past_segm_data_can_be_kept(app, slot_errors, how):
 NO_IDS_WARNING = '  No existing IDs selected --> nothing to apply'
 
 
-class _Qt5LikeAction(gui.QAction):
+class _Qt5LikeAction(QAction):
     """QAction emitting `triggered` also when disabled (as in Qt5)"""
     def trigger(self):
         self.triggered.emit(False)
@@ -638,7 +652,7 @@ def _make_apply_window(segm_data=None, isSnapshot=True, qt5Action=False):
     posData.SizeT = len(posData.segm_data)
     if qt5Action:
         window.keepIDsConfirmAction = _Qt5LikeAction()
-        window.keptObjectsIDs = widgets.KeptObjectIDsList(
+        window.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
             window.keptIDsLineEdit, window.keepIDsConfirmAction
         )
     # Time-lapse path of `applyKeepObjects`
@@ -678,7 +692,7 @@ def _make_apply_window(segm_data=None, isSnapshot=True, qt5Action=False):
     # Line edit in the "Keep IDs" toolbar of the main window (the key
     # presses not accepted by the line edit go to `guiWin.keyPressEvent`)
     host = _Host(window)
-    toolbar = widgets.ToolBar('Keep IDs controls', host)
+    toolbar = widgets_toolbars.ToolBar('Keep IDs controls', host)
     toolbar.addAction(window.keepIDsConfirmAction)
     toolbar.addWidget(window.keptIDsLineEdit)
     host.addToolBar(toolbar)
@@ -881,7 +895,7 @@ def test_apply_keep_ids_none_in_frame_asks_confirmation(
     ):
     monkeypatch.setattr(_FakeMessageBox, 'asked', [])
     monkeypatch.setattr(_FakeMessageBox, 'answer', answer)
-    monkeypatch.setattr(widgets, 'myMessageBox', _FakeMessageBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', _FakeMessageBox)
     window, posData = _make_apply_window(
         _frames_with_ID_7_in_frame_1(), isSnapshot=False
     )
@@ -910,7 +924,7 @@ def test_apply_keep_ids_does_not_ask_if_not_deleting_all(
         app, slot_errors, monkeypatch, emptyFrame
     ):
     monkeypatch.setattr(_FakeMessageBox, 'asked', [])
-    monkeypatch.setattr(widgets, 'myMessageBox', _FakeMessageBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', _FakeMessageBox)
     window, posData = _make_apply_window(
         _frames_with_ID_7_in_frame_1(), isSnapshot=False
     )
@@ -942,10 +956,10 @@ def test_ids_line_edit_accepts_enter(app, cls):
             pressed.append(event.key())
 
     host = Host()
-    lineEdit = getattr(widgets, cls)(QLabel(INSTRUCTIONS))
+    lineEdit = WIDGET_CLASSES[cls](QLabel(INSTRUCTIONS))
     enterPressed = Mock()
     lineEdit.sigEnterPressed.connect(lambda: enterPressed())
-    toolbar = widgets.ToolBar('IDs', host)
+    toolbar = widgets_toolbars.ToolBar('IDs', host)
     toolbar.addWidget(lineEdit)
     host.addToolBar(toolbar)
     host.show()
@@ -969,10 +983,10 @@ INPUT_BOXES = ['frame number spin box', 'spin box', 'line edit']
 def _add_input_box(window, kind):
     if kind == 'frame number spin box':
         # As the frame and z-slice numbers (and the toolbar spin boxes)
-        box = widgets.SpinBox(disableKeyPress=True)
+        box = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
     elif kind == 'spin box':
         # E.g., the "Zoom to ID" spin box
-        box = widgets.SpinBox()
+        box = widgets_numeric_inputs.SpinBox()
     else:
         box = QLineEdit()
     _add_toolbar(window._host, box)
@@ -994,7 +1008,7 @@ def _add_toolbar(host, widget):
     which has the focus, in its extension menu, and Qt moves the focus to
     the next widget
     """
-    toolbar = widgets.ToolBar('Input', host)
+    toolbar = widgets_toolbars.ToolBar('Input', host)
     toolbar.addWidget(widget)
     host.addToolBar(toolbar)
     QApplication.processEvents()
@@ -1159,7 +1173,7 @@ class _KeyHost(QMainWindow):
 
 
 def _show_spin_boxes(host, *spinBoxes):
-    toolbar = widgets.ToolBar('Spin boxes', host)
+    toolbar = widgets_toolbars.ToolBar('Spin boxes', host)
     for spinBox in spinBoxes:
         toolbar.addWidget(spinBox)
     host.addToolBar(toolbar)
@@ -1177,7 +1191,7 @@ def test_spin_box_with_disable_key_press_enter(
         app, slot_errors, cls, keyboardTracking, key, typed
     ):
     host = _KeyHost()
-    spinBox = getattr(widgets, cls)(disableKeyPress=True)
+    spinBox = WIDGET_CLASSES[cls](disableKeyPress=True)
     spinBox.setKeyboardTracking(keyboardTracking)
     spinBox.setValue(3)
     editingFinished = Mock()
@@ -1221,9 +1235,9 @@ def test_spin_box_with_disable_key_press_enter(
 @pytest.mark.parametrize('cls', ['SpinBox', 'DoubleSpinBox'])
 def test_spin_box_keys_passed_on(app, slot_errors, cls):
     host = _KeyHost()
-    spinBox = getattr(widgets, cls)(disableKeyPress=True)
+    spinBox = WIDGET_CLASSES[cls](disableKeyPress=True)
     # Spin box without `disableKeyPress` (e.g., in a dialog)
-    otherSpinBox = getattr(widgets, cls)()
+    otherSpinBox = WIDGET_CLASSES[cls]()
     _show_spin_boxes(host, spinBox, otherSpinBox)
 
     # The keys that the spin boxes with `disableKeyPress` do not handle are
@@ -1334,7 +1348,7 @@ def test_spin_box_typed_value_when_focus_returns(
         app, slot_errors, cls, how, isStillTyped
     ):
     host = _KeyHost()
-    spinBox = getattr(widgets, cls)(disableKeyPress=True)
+    spinBox = WIDGET_CLASSES[cls](disableKeyPress=True)
     _show_spin_boxes(host, spinBox)
     spinBox.selectAll()
     QTest.keyClicks(spinBox, '7')

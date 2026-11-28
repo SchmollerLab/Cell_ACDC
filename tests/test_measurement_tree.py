@@ -7,7 +7,17 @@ from qtpy.QtCore import QItemSelectionModel, QModelIndex, Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QTreeView
 
-from cellacdc import apps, apps_measurements_viewer, measurements, measurements_viewer, widgets
+from cellacdc import measurements
+from cellacdc.measurements_viewer import widgets as viewer_widgets
+from cellacdc.measurements_viewer.dialogs import processing_recipe as viewer_dialogs_processing_recipe
+from cellacdc.measurements_viewer.main_window import window as viewer_window
+from cellacdc.shared.dialogs import preprocessing as dialogs_preprocessing
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    search_widgets as widgets_search_widgets,
+)
+from qtpy.QtGui import QStandardItem, QStandardItemModel
 
 pytestmark = pytest.mark.viewer
 
@@ -52,7 +62,7 @@ def item_path(item):
 
 
 def test_model_uses_same_groups_as_combined_equations(app, dataframe):
-    model = widgets.MeasurementTreeModel()
+    model = viewer_widgets.MeasurementTreeModel()
     model.populate(dataframe, ['GFP', 'RFP'], checkable=True)
     actual = {item_path(item) for item in model.measurementItems()}
     expected = {
@@ -74,17 +84,17 @@ def test_model_uses_same_groups_as_combined_equations(app, dataframe):
 
 
 def test_recursive_search_matches_flat_fuzzy_search_across_branches(app, dataframe):
-    model = widgets.MeasurementTreeModel()
+    model = viewer_widgets.MeasurementTreeModel()
     model.populate(dataframe, ['GFP', 'RFP'])
-    proxy = widgets.MeasurementTreeSearchProxy()
+    proxy = widgets_search_widgets.MeasurementTreeSearchProxy()
     proxy.setSourceModel(model)
-    flat = widgets.QStandardItemModel()
+    flat = QStandardItemModel()
     for name in dataframe:
-        item = widgets.QStandardItem(name)
-        item.setData(name, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE)
+        item = QStandardItem(name)
+        item.setData(name, widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE)
         flat.appendRow(item)
-    reference = widgets.ButtonSearchCompleter(
-        searchRoles=(widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
+    reference = widgets_search_widgets.ButtonSearchCompleter(
+        searchRoles=(widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
         tooltipRole=None
     )
     reference.setSourceModel(flat)
@@ -100,7 +110,7 @@ def test_recursive_search_matches_flat_fuzzy_search_across_branches(app, datafra
 
 
 def test_recipe_selects_only_measurement_leaves_across_groups(app, dataframe):
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(
         dataframe.columns, acdc_df=dataframe, allChNames=['GFP', 'RFP']
     )
     assert isinstance(dialog.listSelector, QTreeView)
@@ -129,7 +139,7 @@ def test_recipe_selects_only_measurement_leaves_across_groups(app, dataframe):
 
 
 def test_recipe_search_expands_ancestors_and_clears(app, dataframe):
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(
         dataframe.columns, acdc_df=dataframe, allChNames=['GFP', 'RFP']
     )
     dialog.listSelector.collapseAll()
@@ -148,7 +158,7 @@ def test_recipe_search_expands_ancestors_and_clears(app, dataframe):
 
 
 def test_recipe_group_heading_cannot_be_processed(app, dataframe, monkeypatch):
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(
         dataframe.columns, acdc_df=dataframe, allChNames=['GFP', 'RFP']
     )
     dialog.listSelector.clearSelection()
@@ -162,7 +172,7 @@ def test_recipe_group_heading_cannot_be_processed(app, dataframe, monkeypatch):
     # A noncolliding suffix so only the empty selection can block accepting.
     dialog.append_new_colname.setText('processed')
     warning = Mock()
-    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'warning', warning)
     dialog.ok_cb()
     assert dialog.cancel
     warning.assert_called_once()
@@ -170,7 +180,7 @@ def test_recipe_group_heading_cannot_be_processed(app, dataframe, monkeypatch):
 
 
 def test_recipe_name_only_api_and_image_channel_selector_remain_supported(app):
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(['area', 'volume', 'intensity'])
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(['area', 'volume', 'intensity'])
     assert {item.text() for item in dialog.measurementsModel.measurementItems()} == {
         'area', 'volume', 'intensity'
     }
@@ -183,16 +193,16 @@ def test_recipe_name_only_api_and_image_channel_selector_remain_supported(app):
     assert dialog.selectedChannels == [selected.data()]
     assert dialog.saveNames == [f'{selected.data()}_smooth']
     dialog.deleteLater()
-    image = apps.PreProcessRecipeDialogUtil(['phase', 'GFP'])
-    assert isinstance(image.listSelector, widgets.listWidget)
+    image = dialogs_preprocessing.PreProcessRecipeDialogUtil(['phase', 'GFP'])
+    assert isinstance(image.listSelector, widgets_item_views.listWidget)
     assert image.listSelector.selectedItemsText() == ['phase']
     image.deleteLater()
 
 
 @pytest.fixture
 def viewer(app, dataframe, monkeypatch):
-    monkeypatch.setattr(measurements_viewer.MeasurementsViewerWin, 'loadConfiguration', Mock())
-    window = measurements_viewer.MeasurementsViewerWin()
+    monkeypatch.setattr(viewer_window.MeasurementsViewerWin, 'loadConfiguration', Mock())
+    window = viewer_window.MeasurementsViewerWin()
     window.acdc_df = dataframe
     window.data = [SimpleNamespace(acdc_df=dataframe, chNames=['GFP', 'RFP'], SizeT=2)]
     window.centralWidget().setEnabled(True)
@@ -242,7 +252,7 @@ def test_viewer_passes_table_and_channels_to_processing_tree(viewer, monkeypatch
                 'GFP_mean') in paths
         dialog.cancel = True
 
-    monkeypatch.setattr(apps_measurements_viewer.MeasurementProcessingRecipeDialog, 'exec_', cancel)
+    monkeypatch.setattr(viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog, 'exec_', cancel)
     viewer.processMeasurements()
 
 

@@ -37,18 +37,20 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from cellacdc import apps, background_values, fonts, html_utils, myutils
+from cellacdc import background_values, fonts, html_utils
 from .. import phase_translator
 from cellacdc import (
-    qutils, settings_folderpath, timepoint_predictors, urls, widgets
+    qutils, settings_folderpath, timepoint_predictors, urls
+)
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+    search_widgets as widgets_search_widgets,
 )
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX, debug_trace as timepoint_debug_trace
-from cellacdc.apps import (
-    PreProcessParamsWidget,
-    PreProcessRecipeDialogUtil,
-    QBaseDialog,
-    _CombineMetricsDialog,
-)
+from cellacdc.shared.dialogs.base import QBaseDialog
+from cellacdc.shared.dialogs.combine_measurements import _CombineMetricsDialog
 
 
 @contextmanager
@@ -97,7 +99,7 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         self.mainCellFilter = predictor.get('main_cell_filter')
         
         layout = QFormLayout(self)
-        self.autoApplyCheckBox = widgets.Toggle(
+        self.autoApplyCheckBox = widgets_push_buttons.Toggle(
             label_text='Auto apply on unvisited cells', parent=self
         )
         self.autoApplyCheckBox.setToolTip(
@@ -140,7 +142,7 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         self.equationLineEdit = QLineEdit(self.equation)
         self.equationLineEdit.setReadOnly(True)
         self.equationLineEdit.setPlaceholderText('No equation set')
-        self.editEquationButton = widgets.calcPushButton('Edit equation...')
+        self.editEquationButton = widgets_push_buttons.calcPushButton('Edit equation...')
         equationLayout.addWidget(self.equationLineEdit)
         equationLayout.addWidget(self.editEquationButton)
         layout.addRow('', self.equationWidget)
@@ -150,11 +152,11 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         fileLayout.setContentsMargins(0, 0, 0, 0)
         self.fileLineEdit = QLineEdit(predictor.get('filepath', ''))
         self.fileLineEdit.setPlaceholderText('Python file with predictor(df)')
-        self.browseFileButton = widgets.browseFileButton(
+        self.browseFileButton = widgets_push_buttons.browseFileButton(
             'Browse...', ext={'Python': '.py'}, 
             title='Select Python file with predictor(df)'
         )
-        self.saveTemplateButton = widgets.savePushButton('Save template...')
+        self.saveTemplateButton = widgets_push_buttons.savePushButton('Save template...')
         fileInfo = QLabel(html_utils.paragraph(
             'The file must define <code>predictor(df)</code>. '
             '<code>df</code> is the table of <b>one cell</b> (one row per '
@@ -176,7 +178,7 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         testLayout = QHBoxLayout()
         self.statusLabel = QLabel()
         self.statusLabel.setWordWrap(True)
-        self.testButton = widgets.calcPushButton('Test predictor')
+        self.testButton = widgets_push_buttons.calcPushButton('Test predictor')
         testLayout.addWidget(self.statusLabel, stretch=1)
         testLayout.addWidget(self.testButton)
         layout.addRow(testLayout)
@@ -417,7 +419,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
                 timepoint_predictors.CELL_FUNCTIONS.items()):
             if funcName in ('any', 'all', 'ANY', 'ALL'):
                 continue
-            button = widgets.PushButton(funcName)
+            button = widgets_push_buttons.PushButton(funcName)
             button.setToolTip(qutils.wrap_tooltip(description))
             button.clicked.connect(
                 partial(self.insertEquationText, f'{funcName}(')
@@ -503,7 +505,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         )
         self.mainCellConditionEdit.setToolTip(filterTooltip)
         self.formulaEditWidget._edit.setToolTip(filterTooltip)
-        self.mainCellConditionButton = widgets.editPushButton('Edit filter...')
+        self.mainCellConditionButton = widgets_push_buttons.editPushButton('Edit filter...')
         self.mainCellMatchCombobox = QComboBox()
         for key in ('any', 'all'):
             self.mainCellMatchCombobox.addItem(
@@ -584,7 +586,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             'inputs refer to the enquiring\ncell at frame t, even when '
             'candidates come from another frame.'
         )
-        self.otherCellsConditionButton = widgets.editPushButton('Edit filter...')
+        self.otherCellsConditionButton = widgets_push_buttons.editPushButton('Edit filter...')
         self.otherCellsMatchCombobox = QComboBox()
         for key, label in timepoint_predictors.FILTER_FRAME_MODES.items():
             self.otherCellsMatchCombobox.addItem(label, key)
@@ -995,7 +997,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             try:
                 validator(predictor)
             except ValueError as err:
-                msg = widgets.myMessageBox(wrapText=False)
+                msg = widgets_message_box.myMessageBox(wrapText=False)
                 msg.warning(
                     self, 'Invalid predictor',
                     html_utils.paragraph(html.escape(str(err)))
@@ -1079,7 +1081,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             <code>== 1</code> for a boolean result. Prerequisite predictors
             run first; circular equation dependencies cannot be accepted.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Time point predictor help', txt)
 
 
@@ -1186,7 +1188,7 @@ class CustomAnnotationPredictorEquationDialog(TimepointPredictorEquationDialog):
             <br><br>
             Double-click an input to add it to the equation.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Custom annotation predictor help', txt)
 
 
@@ -1248,7 +1250,7 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
         for name, (_, description) in timepoint_predictors.CELL_FUNCTIONS.items():
             if name in ('any', 'all', 'ANY', 'ALL'):
                 continue
-            button = widgets.PushButton(name)
+            button = widgets_push_buttons.PushButton(name)
             button.setToolTip(qutils.wrap_tooltip(description))
             button.clicked.connect(
                 partial(self.insertEquationText, f'{name}(')
@@ -1291,7 +1293,7 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
             name = item.text(0)
             item.variableName = f'this_{name}' if index == 1 else name
             item.setData(
-                0, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
+                0, widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
                 item.variableName
             )
             self.variableNames[self.variableNames.index(oldName)] = (
@@ -1423,7 +1425,7 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
             'a cell. To select candidates in the previous video frame, set '
             'both frame-window bounds to <code>t - 1</code>.'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Cell filter equation', txt)
 
 
@@ -1468,11 +1470,11 @@ class TimepointIdentifierDialog(QBaseDialog):
         self.nameLineEdit = QLineEdit(name)
         formLayout.addRow('Name:', self.nameLineEdit)
         
-        self.colorButton = widgets.myColorButton(parent=parent, color=color)
+        self.colorButton = widgets_push_buttons.myColorButton(parent=parent, color=color)
         self.colorButton.setToolTip('Color of the time point lines')
         formLayout.addRow('Color:', self.colorButton)
         
-        self.shortcutLineEdit = widgets.ShortcutLineEdit(allowModifiers=True)
+        self.shortcutLineEdit = widgets_line_edits.ShortcutLineEdit(allowModifiers=True)
         self.shortcutLineEdit.setText(shortcut)
         self.shortcutLineEdit.setToolTip(
             'Click and press a key (combination). Press Backspace to clear.\n\n'
@@ -1482,7 +1484,7 @@ class TimepointIdentifierDialog(QBaseDialog):
         formLayout.addRow('Shortcut:', self.shortcutLineEdit)
         
         # auto apply on new cells 
-        self.autoApplyCheckBox = widgets.Toggle(label_text='Auto apply on unvisited cells',
+        self.autoApplyCheckBox = widgets_push_buttons.Toggle(label_text='Auto apply on unvisited cells',
                                                 parent=self)
         self.autoApplyCheckBox.setToolTip(
             'Evaluate the predictor on each cell when it is displayed for '
@@ -1519,7 +1521,7 @@ class TimepointIdentifierDialog(QBaseDialog):
         self.equationLineEdit.setReadOnly(True)
         self.equationLineEdit.setPlaceholderText('No equation set')
         self.equationModeLabel = QLabel()
-        self.editEquationButton = widgets.calcPushButton('Edit equation...')
+        self.editEquationButton = widgets_push_buttons.calcPushButton('Edit equation...')
         equationLayout.addWidget(self.equationLineEdit, 0, 0)
         equationLayout.addWidget(self.editEquationButton, 0, 1)
         equationLayout.addWidget(self.equationModeLabel, 1, 0, 1, 2)
@@ -1530,11 +1532,11 @@ class TimepointIdentifierDialog(QBaseDialog):
         fileLayout.setContentsMargins(0, 0, 0, 0)
         self.fileLineEdit = QLineEdit(predictor.get('filepath', ''))
         self.fileLineEdit.setPlaceholderText('Python file with predictor(df)')
-        self.browseFileButton = widgets.browseFileButton(
+        self.browseFileButton = widgets_push_buttons.browseFileButton(
             'Browse...', ext={'Python': '.py'}, 
             title='Select Python file with predictor(df)'
         )
-        self.saveTemplateButton = widgets.savePushButton('Save template...')
+        self.saveTemplateButton = widgets_push_buttons.savePushButton('Save template...')
         fileInfo = QLabel(html_utils.paragraph(
             'The file must define <code>predictor(df)</code>. '
             '<code>df</code> is the table of <b>one cell</b> (one row per '
@@ -1556,9 +1558,9 @@ class TimepointIdentifierDialog(QBaseDialog):
         self.statusLabel.setWordWrap(True)
         
         buttonsLayout = QHBoxLayout()
-        self.testButton = widgets.calcPushButton('Test predictor')
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        self.testButton = widgets_push_buttons.calcPushButton('Test predictor')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(self.testButton)
         buttonsLayout.addWidget(cancelButton)
@@ -1696,7 +1698,7 @@ class TimepointIdentifierDialog(QBaseDialog):
         return True
     
     def warn(self, title, text):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, title, html_utils.paragraph(text))
 
     def existingNames(self):
@@ -1749,11 +1751,3 @@ class TimepointIdentifierDialog(QBaseDialog):
         }
         self.cancel = False
         self.close()
-
-
-# cellacdc-refactor: intermediate compat block (removed in C12)
-# Names that moved out of this module stay reachable here with a
-# DeprecationWarning (cellacdc/_compat.py, see CODEMAP.md).
-from cellacdc import _compat as _acdc_compat  # noqa: E402
-
-__getattr__, __dir__ = _acdc_compat.moved_module(__name__)

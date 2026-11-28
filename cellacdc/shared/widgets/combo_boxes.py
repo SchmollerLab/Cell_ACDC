@@ -11,8 +11,12 @@ from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QIntValidator
 from qtpy.QtWidgets import QApplication, QComboBox, QWidgetAction, QMenu
 import qtpy.compat
-from cellacdc import myutils, html_utils
-from cellacdc import apps
+from cellacdc import html_utils
+from cellacdc.myutils import filesystem, segm_models
+from ..dialogs import (
+    generic as dialogs_generic,
+    preprocessing as dialogs_preprocessing,
+)
 from cellacdc import plot
 from cellacdc import urls
 from cellacdc import QtScoped
@@ -182,7 +186,7 @@ class PreProcessingSelector(QComboBox):
     def askSetParams(self, df_metadata=None, addApplyButton=False):
         method = self.currentText()
         function = self.preprocessMapper[method]['function']
-        params_argspecs = myutils.get_function_argspec(
+        params_argspecs = segm_models.get_function_argspec(
             function, 
             args_to_skip={
                 'logger_func', 
@@ -212,7 +216,7 @@ class PreProcessingSelector(QComboBox):
             self.setParamsWindow.activateWindow()
             return
         
-        self.setParamsWindow = apps.FunctionParamsDialog(
+        self.setParamsWindow = dialogs_preprocessing.FunctionParamsDialog(
             params_argspecs, 
             df_metadata=df_metadata,
             function_name=method,
@@ -265,7 +269,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
         if text != self._csi_text:
             return
         
-        start_dir = myutils.getMostRecentPath()
+        start_dir = filesystem.getMostRecentPath()
         model_filepath = qtpy.compat.getopenfilename(
             parent=self, 
             caption='Select YeaZ weights file', 
@@ -280,7 +284,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
         Insert a <b>name</b> for the following YeaZ model:<br><br>
         <code>{model_filepath}</code><br>
         """)
-        modelNameWindow = apps.QLineEditDialog(
+        modelNameWindow = dialogs_generic.QLineEditDialog(
             title='Insert a name for the model',
             msg=msg,
             allowEmpty=False,

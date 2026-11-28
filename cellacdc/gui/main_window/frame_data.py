@@ -13,9 +13,12 @@ import pandas as pd
 from functools import wraps
 from qtpy.QtCore import QThread, QMutex, QWaitCondition
 from cellacdc import exception_handler
-from cellacdc import workers, html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc import html_utils
+from ..workers import loading_saving as gui_workers_loading_saving
+from cellacdc.myutils import table_utils
+from .. import helpers as gui_helpers
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from ..widgets import edit_toolbars as gui_widgets_edit_toolbars
 from cellacdc import printl
 from cellacdc import transformation
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
@@ -48,7 +51,7 @@ def get_data_exception_handler(func):
             segm_filename = os.path.basename(posData.segm_npz_path)
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
             msg.setDetailedText(traceback_str)
             err_msg = html_utils.paragraph(f"""
@@ -89,7 +92,7 @@ class UndoRedoGuiElements:
         self.autoSaveMutex = QMutex()
         self.autoSaveWaitCond = QWaitCondition()
 
-        self.storeStateWorker = workers.StoreGuiStateWorker(
+        self.storeStateWorker = gui_workers_loading_saving.StoreGuiStateWorker(
             self.autoSaveMutex, self.autoSaveWaitCond
         )
 
@@ -206,7 +209,7 @@ class UndoRedoGuiElements:
         # bound to its line edit and confirm action
         self.keptIDsLineEdit.blockSignals(True)
         try:
-            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
             )
             for ID in state['keptObejctsIDs']:
@@ -432,7 +435,7 @@ class FrameDataGuiElements:
         mapper = dict(zip(oldIDs, newIDs))
         posData.ripIDs = set([mapper[ripID] for ripID in posData.ripIDs])
         posData.binnedIDs = set([mapper[binID] for binID in posData.binnedIDs])
-        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+        self.keptObjectsIDs = gui_widgets_edit_toolbars.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
 
@@ -694,7 +697,7 @@ class FrameDataGuiElements:
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
-        posData.allData_li[posData.frame_i] = myutils.get_empty_stored_data_dict()
+        posData.allData_li[posData.frame_i] = table_utils.get_empty_stored_data_dict()
 
     def getStoredSegmData(self):
         posData = self.data[self.pos_i]
@@ -844,7 +847,7 @@ class FrameDataGuiElements:
         return min_dist, nearest_point
 
     def warnFrameNeverVisitedSegmMode(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         warn_cca = msg.critical(
             self, 'Next frame NEVER visited',
             'Next frame was never visited in "Segmentation and Tracking"'
@@ -1005,7 +1008,7 @@ class FrameDataGuiElements:
         if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
             # Warn that we are visiting a frame that was never segm-checked
             # on cell cycle analysis mode
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'Segmentation and Tracking was <b>never checked from '
                 f'frame {posData.frame_i+1} onwards</b>.<br><br>'
@@ -1022,7 +1025,7 @@ class FrameDataGuiElements:
         elif str(self.modeComboBox.currentText()) == 'Normal division: Lineage tree':
             # Warn that we are visiting a frame that was never segm-checked
             # on Normal division: Lineage tree mode
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 'Segmentation and Tracking was <b>never checked from '
                 f'frame {posData.frame_i+1} onwards</b>.<br><br>'
@@ -1098,7 +1101,7 @@ class FrameDataGuiElements:
             try:
                 binnedIDs_df = df[df['is_cell_excluded']>0]
             except Exception as err:
-                df = myutils.fix_acdc_df_dtypes(df)
+                df = gui_helpers.fix_acdc_df_dtypes(df)
                 binnedIDs_df = df[df['is_cell_excluded']>0]
             posData.binnedIDs = set(binnedIDs_df.index)
             ripIDs_df = df[df['is_cell_dead']>0]

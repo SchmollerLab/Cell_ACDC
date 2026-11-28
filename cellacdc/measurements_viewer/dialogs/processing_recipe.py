@@ -8,9 +8,20 @@ import html
 import os
 import pandas as pd
 from qtpy.QtWidgets import QAbstractItemView, QLabel, QLineEdit
-from cellacdc import html_utils, myutils
-from cellacdc import settings_folderpath, widgets
-from cellacdc.apps import PreProcessParamsWidget, PreProcessRecipeDialogUtil
+from cellacdc import html_utils
+from cellacdc.myutils import segm_models
+from cellacdc import settings_folderpath
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    search_widgets as widgets_search_widgets,
+)
+from qtpy.QtWidgets import QTreeView
+from .. import widgets as viewer_widgets
+from cellacdc.shared.dialogs.preprocessing import (
+    PreProcessParamsWidget,
+    PreProcessRecipeDialogUtil,
+)
 
 
 class SignalProcessingSelector(widgets_combo_boxes.PreProcessingSelector):
@@ -22,7 +33,7 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
     recipePrefix = 'measurement_processing_recipe'
 
     def createSelector(self):
-        return widgets.SignalProcessingSelector()
+        return SignalProcessingSelector()
 
     @staticmethod
     def castRecipeValue(param, value):
@@ -59,7 +70,7 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
                 param.name: self.castRecipeValue(
                     param, saved.get(param.name, param.default)
                 )
-                for param in myutils.get_function_argspec(function)
+                for param in segm_models.get_function_argspec(function)
             }
             kwargs.update(step.get('step_kwargs', {}))
             recipe.append({'method': method, 'kwargs': kwargs})
@@ -70,7 +81,7 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
 
         methods = [section.get('method') for section in configPars.values()]
         if any(method not in MEASUREMENT_PROCESSING_MAPPER for method in methods):
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Invalid measurement recipe',
                 'This recipe contains unsupported measurement-processing steps.'
@@ -86,7 +97,7 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
                 function = MEASUREMENT_PROCESSING_MAPPER[method]['function']
                 params = {
                     param.name: param
-                    for param in myutils.get_function_argspec(function)
+                    for param in segm_models.get_function_argspec(function)
                 }
                 typedItems = {}
                 for option, value in section_items.items():
@@ -96,7 +107,7 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
                     typedItems[option] = value
                 typedConfigPars[section] = typedItems
         except (TypeError, ValueError) as err:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Invalid measurement recipe',
                 'This recipe contains invalid parameter values:<br><br>'
@@ -134,7 +145,7 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
         self.preProcessParamsWidget.groupbox.setTitle('Measurement processing')
         self.keepInputDataTypeToggle.setChecked(False)
 
-        self.append_new_colname = widgets.alphaNumericLineEdit(parent=self)
+        self.append_new_colname = widgets_line_edits.alphaNumericLineEdit(parent=self)
         self.append_new_colname.setPlaceholderText('Append to column for saving...')
         self.mainLayout.insertWidget(
             self.mainLayout.indexOf(self.keepInputDataTypeLayout),
@@ -213,17 +224,17 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
         dataframe = self._measurementDataframe
         if dataframe is None:
             dataframe = pd.DataFrame(columns=names, dtype=float)
-        self.measurementsModel = widgets.MeasurementTreeModel(self)
+        self.measurementsModel = viewer_widgets.MeasurementTreeModel(self)
         self.measurementsModel.populate(dataframe[names], self._measurementChannels)
-        self.measurementsSearchProxy = widgets.MeasurementTreeSearchProxy(self)
+        self.measurementsSearchProxy = widgets_search_widgets.MeasurementTreeSearchProxy(self)
         self.measurementsSearchProxy.setSourceModel(self.measurementsModel)
-        selector = widgets.QTreeView()
+        selector = QTreeView()
         selector.setHeaderHidden(True)
         selector.setUniformRowHeights(True)
         selector.setModel(self.measurementsSearchProxy)
         selector.setEditTriggers(QAbstractItemView.NoEditTriggers)
         selector.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.measurementsHighlightDelegate = widgets._ButtonSearchHighlightDelegate(
+        self.measurementsHighlightDelegate = widgets_search_widgets._ButtonSearchHighlightDelegate(
             selector
         )
         selector.setItemDelegate(self.measurementsHighlightDelegate)
@@ -244,7 +255,7 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
         self.listSelector.viewport().update()
 
     def warnChannelSelectionEmpty(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'No measurement selected', html_utils.paragraph(
                 'You did <b>not select any measurement</b>.<br><br>'
@@ -255,7 +266,7 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
     def ok_cb(self):
         warn, display, full_list = self.get_new_colnames()
         if warn:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(self, 'Invalid output column name', display)
             return
         self.saveNames = full_list

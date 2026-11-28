@@ -1,6 +1,8 @@
 import os
 
-from .. import apps, myutils, workers, widgets, html_utils, printl
+from .. import html_utils, printl
+from cellacdc.myutils import filesystem, image_utils
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 from . import base as utils_base
@@ -20,7 +22,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -28,7 +30,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.CreateTrackastraInputDataWorker(self)
+        self.worker = CreateTrackastraInputDataWorker(self)
         self.worker.sigAskSetup.connect(self.askSetupParams)
         self.worker.sigCancelled.connect(self.workerCancelled)
         self.worker.sigWarnPartialDstPosFolderFound.connect(
@@ -40,7 +42,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
         super().runWorker(self.worker)
     
     def warnPartialDstPosFolderFound(self, dstFolderPath, pos_num_str):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             The position folder <code>{pos_num_str}</code> already exists but 
             <b>only partially</b>!<br><br>
@@ -60,7 +62,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
 
     def askDstFolderExist(self, videoDstFolderPath):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             The position folder below already exists!<br><br>
             If you continue, the content will be removed before 
@@ -86,8 +88,8 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
         video_filepath = None
         for pos_folder in pos_foldernames:
             images_path = os.path.join(exp_path, pos_folder, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
-            for file in myutils.listdir(images_path):
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
+            for file in filesystem.listdir(images_path):
                 if file == f'{basename}{video_endname}':
                     video_filepath = os.path.join(images_path, file)
                     break
@@ -95,7 +97,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
             if video_filepath is not None:
                 break
         
-        win = apps.SetupCreateTrackastraInputDataDialog(
+        win = SetupCreateTrackastraInputDataDialog(
             video_filepath, parent=self
         )
         win.exec_()
@@ -149,7 +151,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
             )
             path_to_browse = self.worker.dstFolderPath
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if cancelled:
             msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         else:
@@ -311,8 +313,8 @@ class CreateTrackastraInputDataWorker(utils_base.BaseWorkerUtil):
                 )
 
                 images_path = os.path.join(pos_path, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(images_path)
-                ls = myutils.listdir(images_path)
+                basename, chNames = filesystem.getBasenameAndChNames(images_path)
+                ls = filesystem.listdir(images_path)
                 imageFilepath = [
                     os.path.join(images_path, f) for f in ls 
                     if f == f'{basename}{selectedVideoEndname}'
@@ -403,7 +405,7 @@ class CreateTrackastraInputDataWorker(utils_base.BaseWorkerUtil):
                 t_digits = max(3, len(str(numFrames)))
                 self.signals.sigInitInnerPbar.emit(numFrames*2)
                 for frame_i in range(numFrames):
-                    img = myutils.convert_to_dtype(image_data[frame_i], dtype)
+                    img = image_utils.convert_to_dtype(image_data[frame_i], dtype)
                     t_str = str(frame_i).zfill(t_digits)
                     frame_filename = f'{prefix}{t_str}.tif'
                     frame_filepath = os.path.join(

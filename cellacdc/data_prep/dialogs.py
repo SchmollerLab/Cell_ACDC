@@ -12,7 +12,13 @@ from qtpy.QtWidgets import (
 )
 from cellacdc import _window_stacking
 from cellacdc import html_utils
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc.shared.dialogs import base as dialogs_base
 
 
@@ -35,7 +41,7 @@ class DataPrepSubCropsPathsDialog(dialogs_base.QBaseDialog):
             gridLayout.addWidget(
                 QLabel('Same folder for all crops:'), row, 0
             )
-            self.sameFolderPathToggle = widgets.Toggle()
+            self.sameFolderPathToggle = widgets_push_buttons.Toggle()
             gridLayout.addWidget(
                 self.sameFolderPathToggle, row, 1, alignment=Qt.AlignCenter
             )
@@ -57,11 +63,11 @@ class DataPrepSubCropsPathsDialog(dialogs_base.QBaseDialog):
             for i in range(numCrops):
                 label = QLabel(f'<b>Crop {i+1}</b> folder path:')
                 scrollAreaLayout.addWidget(label, i, 0)
-                folderPathLineEdit = widgets.ElidingLineEdit()
+                folderPathLineEdit = widgets_line_edits.ElidingLineEdit()
                 folderPathLineEdit.label = label
                 folderPathLineEdit.setText(path)
                 scrollAreaLayout.addWidget(folderPathLineEdit, i, 1)
-                browseButton = widgets.browseFileButton(
+                browseButton = widgets_push_buttons.browseFileButton(
                     start_dir=path, openFolder=True
                 )
                 scrollAreaLayout.addWidget(browseButton, i, 2)
@@ -88,14 +94,14 @@ class DataPrepSubCropsPathsDialog(dialogs_base.QBaseDialog):
                 self.windowMinWidth = noHorizontalScrollbarWidth
 
             row += 1
-            gridLayout.addWidget(widgets.QHLine(), row, 0, 1, 2)
+            gridLayout.addWidget(widgets_basic_widgets.QHLine(), row, 0, 1, 2)
             
             row += 1
             gridLayout.addItem(QSpacerItem(10, 10), row, 0, 1, 2)
             
             row += 1
             
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -130,7 +136,7 @@ class DataPrepSubCropsPathsDialog(dialogs_base.QBaseDialog):
             f'The following folder path for crop number {cropNum} '
             'is <b>not a valid folder or does not exist</b>:'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Not a valid folder', text, commands=(folderPath,))
     
     def askOverwritingPaths(self, overwritingPaths):
@@ -139,7 +145,7 @@ class DataPrepSubCropsPathsDialog(dialogs_base.QBaseDialog):
             'cropped data.</b><br><br>'
             'Are you sure you want to continue?'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, yesButton = msg.warning(
             self, 'Not a valid folder', text, commands=overwritingPaths, 
             buttonsTexts=('No, let me edit paths', 'Yes, overwrite')
@@ -216,14 +222,14 @@ class QCropTrangeTool(dialogs_base.QBaseDialog):
         layout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.startFrameScrollbar = widgets.sliderWithSpinBox(
+        self.startFrameScrollbar = widgets_numeric_inputs.sliderWithSpinBox(
             spinbox_loc='left', 
             maximum_on_label=SizeT
         )
         self.startFrameScrollbar.setMaximum(SizeT, including_spinbox=True)
         self.startFrameScrollbar.setMinimum(1, including_spinbox=True)
 
-        self.endFrameScrollbar = widgets.sliderWithSpinBox(
+        self.endFrameScrollbar = widgets_numeric_inputs.sliderWithSpinBox(
             spinbox_loc='left', 
             maximum_on_label=SizeT
         )
@@ -231,8 +237,8 @@ class QCropTrangeTool(dialogs_base.QBaseDialog):
         self.endFrameScrollbar.setMinimum(1, including_spinbox=True)
         self.endFrameScrollbar.setValue(SizeT)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        cropButton = widgets.okPushButton(cropButtonText)
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        cropButton = widgets_push_buttons.okPushButton(cropButtonText)
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
 

@@ -23,7 +23,10 @@ from cellacdc import _warnings
 from .torch_utils import check_install_torch
 from cellacdc.models._cellpose_base import min_target_versions_cp
 if GUI_INSTALLED:
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
 from . import installs
 
 
@@ -333,7 +336,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None, python_exec=None):
         '--index-url https://download.pytorch.org/whl/cu128',
     )
 
-    msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+    msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
         In order to use <code>{model_name}</code> with the GPU you need 
         to install a <b>PyTorch version which can use it</b>.<br>
@@ -392,9 +395,9 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None, python_exec=None):
         How do you want to proceed?
     """)
 
-    stopButton = widgets.cancelPushButton('Stop the process')
-    directMLButton = widgets.okPushButton('Install DirectML')
-    proceedButton = widgets.okPushButton('Proceed without GPU')
+    stopButton = widgets_push_buttons.cancelPushButton('Stop the process')
+    directMLButton = widgets_push_buttons.okPushButton('Install DirectML')
+    proceedButton = widgets_push_buttons.okPushButton('Proceed without GPU')
 
     buttons = [stopButton]
 
@@ -439,7 +442,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None, python_exec=None):
                 installs.purge_module('torch')
             return success, True
         else:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                 qparent, 'DirectML not supported', 
                 'DirectML is only supported on Python 3.8-3.12 and Windows 10/11',

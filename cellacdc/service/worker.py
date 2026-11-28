@@ -304,13 +304,13 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     from contextlib import ExitStack
     import inspect
     import weakref
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service.payload import ModelFile
 
     init_kwargs = dict(init_kwargs)
-    init_params, _ = myutils_models.getModelArgSpec(acdcSegment)
+    init_params, _ = model_modules.getModelArgSpec(acdcSegment)
     path_params = {
-        param.name: myutils_models._serialize_model_param_type(param.type)['kind']
+        param.name: model_modules._serialize_model_param_type(param.type)['kind']
         for param in init_params
     }
     uploaded = {
@@ -353,7 +353,7 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
         init_kwargs.pop('is_rgb', None)
     with ExitStack() as files:
         init_kwargs = _materialize_files(init_kwargs, files)
-        if myutils_models.model_init_requires_segm_data(acdcSegment):
+        if model_modules.model_init_requires_segm_data(acdcSegment):
             if segm_data is None:
                 raise ValueError(
                     'This model requires an auxiliary segmentation (segm_data), '
@@ -392,12 +392,12 @@ def create_app(
         kwargs (possibly including arrays or model files) with `POST /init`.
     """
     with startup_timer(f"{model_name}: worker runtime imports"):
-        from cellacdc import myutils_models
+        from cellacdc.myutils import model_modules
         from cellacdc.service import payload
 
     importer = (
-        myutils_models.import_promptable_segment_module
-        if model_kind == 'promptable' else myutils_models.import_segment_module
+        model_modules.import_promptable_segment_module
+        if model_kind == 'promptable' else model_modules.import_segment_module
     )
     with startup_timer(f"{model_name}: worker model module import"):
         acdcSegment = importer(model_name)
@@ -414,14 +414,14 @@ def create_app(
         initialize_model(init_kwargs or {})
 
     with startup_timer(f"{model_name}: worker model argument inspection"):
-        init_params, segment_params = myutils_models.getModelArgSpec(acdcSegment)
+        init_params, segment_params = model_modules.getModelArgSpec(acdcSegment)
 
     def serialize_params(params):
         return [
             [
                 param.name,
                 json.loads(json.dumps(param.default, default=str)),
-                myutils_models._serialize_model_param_type(param.type),
+                model_modules._serialize_model_param_type(param.type),
                 param.desc,
                 param.docstring,
             ]

@@ -12,9 +12,21 @@ import pytest
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import gui_custom_annotations, load, measurements_viewer, phase_translator
-from cellacdc import measurements_viewer_utils
-from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc import load
+from cellacdc.gui.mixins import (
+    custom_annotations as gui_custom_annotations,
+    dialogs as gui_mixin_dialogs,
+)
+from cellacdc.measurements_viewer import phase_translator
+from cellacdc.measurements_viewer.dialogs import phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs
+from cellacdc.measurements_viewer.main_window import (
+    configuration as viewer_configuration,
+    data_io as viewer_data_io,
+    image_panel as viewer_image_panel,
+)
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from cellacdc.measurements_viewer import viewer_utils
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 
 pytestmark = pytest.mark.viewer
@@ -140,7 +152,7 @@ def modify_annotation(viewer, monkeypatch, name, state):
         sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
-        gui_custom_annotations.apps, 'customAnnotationDialog',
+        gui_mixin_dialogs, 'customAnnotationDialog',
         Mock(return_value=dialog)
     )
     viewer.customAnnotModify(viewer.customAnnotButtonByName(name))
@@ -306,7 +318,7 @@ def test_removing_overriding_annotation_restores_rule_phases(
             return buttons
 
     monkeypatch.setattr(
-        gui_custom_annotations.widgets, 'myMessageBox', FakeMessageBox
+        widgets_message_box, 'myMessageBox', FakeMessageBox
     )
     apply = spy(viewer, monkeypatch, 'applyPhaseTranslator')
     viewer.removeCustomAnnotButton(viewer.customAnnotButtonByName('Arrested'))
@@ -450,7 +462,7 @@ def test_without_rules_last_override_gone_clears_its_phase(
                 return buttons
 
         monkeypatch.setattr(
-            gui_custom_annotations.widgets, 'myMessageBox', FakeMessageBox
+            widgets_message_box, 'myMessageBox', FakeMessageBox
         )
         viewer.removeCustomAnnotButton(
             viewer.customAnnotButtonByName('Arrested')
@@ -573,7 +585,7 @@ def test_saving_includes_positions_changed_only_by_pending_phases(
 
         monkeypatch.setattr(viewer, 'hasUnsavedConfiguration', lambda: False)
         monkeypatch.setattr(
-            measurements_viewer.widgets, 'myMessageBox', FakeSaveBox
+            widgets_message_box, 'myMessageBox', FakeSaveBox
         )
         assert viewer.askSaveBeforeClosing()
     assert len(saved) == 1
@@ -612,7 +624,7 @@ def test_translator_dialog_gets_and_applies_overriding_annotations(
             pass
 
     monkeypatch.setattr(
-        measurements_viewer.apps_measurements_viewer,
+        viewer_dialogs_phase_translator_dialogs,
         'PhaseTranslatorDialog', FakeDialog
     )
     capsys.readouterr()
@@ -673,7 +685,7 @@ def test_adding_overriding_annotation_with_annotated_cells(
         sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
-        gui_custom_annotations.apps, 'customAnnotationDialog',
+        gui_mixin_dialogs, 'customAnnotationDialog',
         Mock(return_value=dialog)
     )
     monkeypatch.setattr(viewer, 'checkNameExists', lambda name: True)
@@ -763,12 +775,21 @@ def test_loading_configuration_keeps_saved_phases(
     filepath = tmp_path / 'state.json'
     filepath.write_text(json.dumps(configuration))
     posData = viewer.posData()
+    # moved: get_channels_and_segm_endnames is read in each of these modules
     monkeypatch.setattr(
-        measurements_viewer, 'get_channels_and_segm_endnames',
+        viewer_configuration, 'get_channels_and_segm_endnames',
         Mock(return_value=(['GFP'], ['segm']))
     )
     monkeypatch.setattr(
-        measurements_viewer_utils, 'load_position', Mock(return_value=posData)
+        viewer_data_io, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_image_panel, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_utils, 'load_position', Mock(return_value=posData)
     )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())

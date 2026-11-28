@@ -7,11 +7,11 @@ from functools import partial
 import numpy as np
 import pandas as pd
 from qtpy.QtCore import QThread, QMutex, QWaitCondition
-from cellacdc import widgets
-from cellacdc import apps
-from cellacdc import workers
-from cellacdc import apps_measurements_viewer
-from cellacdc.measurements_viewer_utils import float_if_bool
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from cellacdc.shared.dialogs import combine_measurements as dialogs_combine_measurements
+from .. import workers as viewer_workers
+from ..dialogs import processing_recipe as viewer_dialogs_processing_recipe
+from ..viewer_utils import float_if_bool
 from .. import viewer_utils
 
 
@@ -29,7 +29,7 @@ class ViewerProcessingGuiElements:
             self.logger.warning('%s: %s\n%s', title, text, details)
         else:
             self.logger.warning('%s: %s', title, text)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         if details:
             msg.setDetailedText(details, wrap=False)
         msg.warning(self if parent is None else parent, title, text)
@@ -49,7 +49,7 @@ class ViewerProcessingGuiElements:
         # Equations (and the dialog's test) see only the analyzed frames;
         # `source` stays the full table (identity check when applying)
         self.logger.info('Opening "Combine measurements" dialog...')
-        dialog = apps.CombineMetricsEquationDialog(
+        dialog = dialogs_combine_measurements.CombineMetricsEquationDialog(
             posData.chNames, posData.SizeZ > 1, self.isSegm3D,
             parent=self, closeOnOk=False,
             acdc_df=self.analysisDf(source, posData).copy(),
@@ -178,7 +178,7 @@ class ViewerProcessingGuiElements:
                 'No measurements', 'The table has no numeric measurements to process.'
             )
             return
-        dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+        dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(
             columns, parent=self, acdc_df=self.acdc_df,
             allChNames=self.posData().chNames
         )
@@ -269,7 +269,7 @@ class ViewerProcessingGuiElements:
             self.acdc_df[list(columns)].copy(), list(saveNames), lastFrame
         )
         self.measurementProcessingThread = QThread(self)
-        self.measurementProcessingWorker = workers.MeasurementProcessingWorkerGUI(
+        self.measurementProcessingWorker = viewer_workers.MeasurementProcessingWorkerGUI(
             QMutex(), QWaitCondition()
         )
         worker = self.measurementProcessingWorker

@@ -3,7 +3,6 @@ import datetime
 from typing import Iterable
 from uuid import uuid4
 
-from cellacdc import myutils
 
 from .. import acdc_fiji_path
 import shlex
@@ -63,12 +62,12 @@ def init_macro(
     return macro_filepath
 
 def command_run_macro(macro_filepath):
-    exec_path = myutils.get_fiji_exec_folderpath()
+    exec_path = get_fiji_exec_folderpath()
     command = f'{exec_path} -macro {macro_filepath}'
     return command
 
 def run_macro(macro_command):
-    success = myutils.run_fiji_command(command=macro_command)
+    success = run_fiji_command(command=macro_command)
     return success
 
 

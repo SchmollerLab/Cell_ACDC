@@ -16,14 +16,29 @@ from qtpy.QtWidgets import (
     QMainWindow, QPushButton, QScrollBar, QStyle, QStyleOptionSlider, QWidget
 )
 
-from cellacdc import apps, gui, widgets
-from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc.gui_custom_annotations import CustomAnnotationsGuiElements
-from cellacdc.gui_overlay import OverlayChannelsGuiElements
-from cellacdc.gui_viewer_tools import (
-    CcaTableGuiElements, DefaultSettingsGuiElements, SearchIDGuiElements
+from cellacdc.gui.main_window import (
+    constants as gui_main_constants,
+    window as gui_window,
 )
-from cellacdc.gui_navigation import LutGuiElements
+from cellacdc.gui.mixins import (
+    dialogs as gui_mixin_dialogs,
+    widgets as gui_mixin_widgets,
+)
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    toolbars as widgets_toolbars,
+)
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
+from cellacdc.gui.mixins.custom_annotations import CustomAnnotationsGuiElements
+from cellacdc.gui.mixins.overlay import OverlayChannelsGuiElements
+from cellacdc.gui.mixins.object_info import (
+    CcaTableGuiElements,
+    SearchIDGuiElements,
+)
+from cellacdc.gui.mixins.window_core import DefaultSettingsGuiElements
+from cellacdc.gui.mixins.navigation import LutGuiElements
 
 pytestmark = pytest.mark.gui
 
@@ -55,9 +70,9 @@ def _sliders_host():
 
 def test_alpha_scrollbar_label_follows_bottom_layout_zoom(app, monkeypatch):
     # resizeSlidersArea reassigns gui.py's module-level font: restore it
-    monkeypatch.setattr(gui, '_font', gui._font)
+    monkeypatch.setattr(gui_main_constants, '_font', gui_main_constants._font)
     host = _sliders_host()
-    gui.guiWin.resizeSlidersArea(host, fontSizeFactor=1.5, heightFactor=1.5)
+    gui_window.guiWin.resizeSlidersArea(host, fontSizeFactor=1.5, heightFactor=1.5)
     alphaScrollBar = OverlayChannelsGuiElements.addAlphaScrollbar(
         host, 'GFP', pg.ImageItem()
     )
@@ -90,12 +105,12 @@ def _overlay_z_label_host(tmp_path, z, SizeZ=10):
         )]
     )
     host.overlay_z_label.isVisible.return_value = True
-    host.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
+    host.zSliceSpinbox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
     host.zSliceSpinbox.setMinimum(1)
     host.zSliceSpinbox.setMaximum(SizeZ)
     host.zSliceSpinbox.setValue(z+1)
     for name in ('zSliceScrollBar', 'zSliceOverlay_SB'):
-        scrollbar = widgets.ScrollBar(Qt.Horizontal)
+        scrollbar = widgets_numeric_inputs.ScrollBar(Qt.Horizontal)
         scrollbar.setMaximum(SizeZ-1)
         scrollbar.setSliderPosition(z)
         setattr(host, name, scrollbar)
@@ -110,7 +125,7 @@ def _overlay_z_label_host(tmp_path, z, SizeZ=10):
 @pytest.mark.parametrize('checked', [True, False])
 def test_overlay_z_label_matches_z_slice_spinbox(app, tmp_path, z, checked):
     host = _overlay_z_label_host(tmp_path, z)
-    gui.guiWin.showZsliceIndexToggled(host, checked)
+    gui_window.guiWin.showZsliceIndexToggled(host, checked)
     shown = host.zSliceSpinbox.text()
     expected = f'Overlay z-slice {int(shown):02}/{10 - int(checked)}'
     # Label set when toggling "Show z-slice index"...
@@ -121,9 +136,9 @@ def test_overlay_z_label_matches_z_slice_spinbox(app, tmp_path, z, checked):
 
 
 class _ZSliceScrollBarHost:
-    isZsliceScrollBarActive = gui.guiWin.isZsliceScrollBarActive
-    zSliceScrollBarActionTriggered = gui.guiWin.zSliceScrollBarActionTriggered
-    zSliceScrollBarReleased = gui.guiWin.zSliceScrollBarReleased
+    isZsliceScrollBarActive = gui_window.guiWin.isZsliceScrollBarActive
+    zSliceScrollBarActionTriggered = gui_window.guiWin.zSliceScrollBarActionTriggered
+    zSliceScrollBarReleased = gui_window.guiWin.zSliceScrollBarReleased
 
     def __init__(self, SizeZ):
         self.data = [SimpleNamespace(SizeZ=SizeZ, segmInfo_df=None)]
@@ -158,7 +173,7 @@ class _Qt5LikeAction(QAction):
         self.triggered.emit(False)
 
 
-class _PersistentShortcutsHost(gui.guiWin):
+class _PersistentShortcutsHost(gui_window.guiWin):
     # The real `guiWin.eventFilter` without building the GUI: its fall-through
     # calls the zero-argument `super().eventFilter`, so the host must be a
     # `guiWin`. Never shown (`guiWin.showEvent` needs the launcher).
@@ -282,7 +297,7 @@ def test_gui_key_press_event_skips_disabled_persistent_shortcuts(app):
     # needs the whole GUI)
     host.checkSetDelObjActionActive = stop
     # Without `exception_handler` (it would show the error)
-    keyPressEvent = gui.guiWin.keyPressEvent.__wrapped__
+    keyPressEvent = gui_window.guiWin.keyPressEvent.__wrapped__
 
     def press(key=Qt.Key.Key_Right):
         host.triggered.clear()
@@ -373,7 +388,7 @@ def test_gui_frames_scroll_bar_click_needs_an_enabled_scroll_bar(app):
     # through `actionTriggered`). The filter also sees the clicks that Qt
     # ignores for a disabled scroll bar (GUI busy, lost cells prompt open)
     host = _PersistentShortcutsHost()
-    scrollBar = widgets.navigateQScrollBar(Qt.Orientation.Horizontal, host)
+    scrollBar = gui_mixin_widgets.navigateQScrollBar(Qt.Orientation.Horizontal, host)
     scrollBar.setRange(1, 1)
     scrollBar.resize(200, 20)
     host.navigateScrollBar = scrollBar
@@ -398,7 +413,7 @@ def test_gui_frames_scroll_bar_click_needs_an_enabled_scroll_bar(app):
 
     try:
         # `actionTriggered` emits an int
-        assert click() == [gui.SliderSingleStepAdd]
+        assert click() == [gui_main_constants.SliderSingleStepAdd]
         scrollBar.setEnabled(False)
         assert click() == []
         scrollBar.setEnabled(True)
@@ -412,7 +427,7 @@ def test_gui_frames_scroll_bar_click_needs_an_enabled_scroll_bar(app):
 def test_view_cca_table_without_annotations_warns(app, monkeypatch):
     warnings = []
     monkeypatch.setattr(
-        widgets.myMessageBox, 'warning',
+        widgets_message_box.myMessageBox, 'warning',
         lambda self, *args, **kwargs: warnings.append(args)
     )
     posData = SimpleNamespace(
@@ -517,7 +532,7 @@ def test_annotate_obj_track_settings_dialog_3d_toggle(app):
         'against_prev_contour_color': (245, 184, 0),
         'against_prev_contour_width': 2, '3D_show_only_visible': False
     }
-    win = apps.AnnotateObjTrackSettingsDialog(settings=settings)
+    win = gui_mixin_dialogs.AnnotateObjTrackSettingsDialog(settings=settings)
     emitted = []
     win.sigValuesChanged.connect(emitted.append)
 
@@ -553,7 +568,7 @@ class _CustomAnnotHost(QWidget):
 def test_saved_custom_annotation_delete_button_follows_host(
         app, monkeypatch, canDelete
     ):
-    monkeypatch.setattr(widgets.QDialogListbox, 'exec_', lambda self: None)
+    monkeypatch.setattr(widgets_item_views.QDialogListbox, 'exec_', lambda self: None)
     host = _CustomAnnotHost(canDelete)
     CustomAnnotationsGuiElements.loadCustomAnnotations(host)
     hasDeleteButton = bool(
@@ -561,7 +576,7 @@ def test_saved_custom_annotation_delete_button_follows_host(
     )
     assert hasDeleteButton is canDelete
 
-    dialog = apps.customAnnotationDialog(
+    dialog = gui_mixin_dialogs.customAnnotationDialog(
         {'Big': {}}, allowDeleteSaved=canDelete
     )
     dialog.loadSavedAnnot()
@@ -575,7 +590,7 @@ def test_saved_custom_annotation_delete_button_follows_host(
 
 def test_measurements_viewer_cannot_delete_saved_custom_annotations():
     # The viewer's saveCustomAnnot does not write the global file
-    from cellacdc.measurements_viewer import MeasurementsViewerWin
+    from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
     assert MeasurementsViewerWin.canDeleteSavedCustomAnnot(None) is False
     assert CustomAnnotationsGuiElements.canDeleteSavedCustomAnnot(None)
 
@@ -596,7 +611,7 @@ def test_modify_dialog_hide_option_updates_drawn_symbols(
     host.data = []
     host.savedCustomAnnot = {}
     host.logger = MagicMock()
-    host.annotateToolbar = widgets.ToolBar('Custom annotations', host)
+    host.annotateToolbar = widgets_toolbars.ToolBar('Custom annotations', host)
     host.viewAllCustomAnnotAction = QAction(host)
     host.viewAllCustomAnnotAction.setCheckable(True)
     host.ax1 = pg.PlotItem()
@@ -630,7 +645,7 @@ def test_modify_dialog_hide_option_updates_drawn_symbols(
         deleteLater=lambda: None
     )
     monkeypatch.setattr(
-        apps, 'customAnnotationDialog', lambda *args, **kwargs: dialog
+        gui_mixin_dialogs, 'customAnnotationDialog', lambda *args, **kwargs: dialog
     )
     try:
         host.customAnnotModify(button)

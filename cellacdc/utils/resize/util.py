@@ -1,5 +1,10 @@
-from ... import myutils, workers, widgets, html_utils
-from ... import apps
+from ... import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 
 from ..base import NewThreadMultipleExpBaseUtil
 from qtpy.QtCore import Qt
@@ -15,7 +20,7 @@ class ResizePositionsUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -24,12 +29,12 @@ class ResizePositionsUtil(NewThreadMultipleExpBaseUtil):
         self._parent = parent
     
     def runWorker(self):
-        self.worker = workers.ResizeUtilWorker(self)
+        self.worker = ResizeUtilWorker(self)
         self.worker.sigSetResizeProps.connect(self.setResizeProps)
         super().runWorker(self.worker)
     
     def setResizeProps(self, input_path):
-        win = apps.ResizeUtilProps(input_path=input_path, parent=self._parent)
+        win = ResizeUtilProps(input_path=input_path, parent=self._parent)
         win.exec_()
         self.worker.abort = win.cancel
         if win.cancel:
@@ -48,7 +53,7 @@ class ResizePositionsUtil(NewThreadMultipleExpBaseUtil):
         super().workerFinished(worker)
         txt = 'Resizing data process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, 'Process completed', html_utils.paragraph(txt))
         self.close()
 
@@ -68,7 +73,7 @@ class ResizeUtilProps(dialogs_base.QBaseDialog):
         
         row = 0
         paramsLayout.addWidget(QLabel('Overwrite raw data: '), row, 0)
-        self.overwriteToggle = widgets.Toggle()
+        self.overwriteToggle = widgets_push_buttons.Toggle()
         self.overwriteToggle.setChecked(True)
         paramsLayout.addWidget(
             self.overwriteToggle, row, 1, 1, 2, alignment=Qt.AlignCenter
@@ -78,18 +83,18 @@ class ResizeUtilProps(dialogs_base.QBaseDialog):
         paramsLayout.addWidget(
             QLabel('Folder path for resized images: '), row, 0
         )
-        self.folderPathOutControl = widgets.filePathControl(
+        self.folderPathOutControl = widgets_line_edits.filePathControl(
             browseFolder=True, 
             fileManagerTitle='Select folder where to save resized data', 
             elide=True, 
-            startFolder=myutils.getMostRecentPath()
+            startFolder=filesystem.getMostRecentPath()
         )
         self.folderPathOutControl.setDisabled(True)
         paramsLayout.addWidget(self.folderPathOutControl, row, 1, 1, 2)
         
         row += 1
         paramsLayout.addWidget(QLabel('Text to append to files: '), row, 0)
-        self.textToAppendLineEdit = widgets.alphaNumericLineEdit()
+        self.textToAppendLineEdit = widgets_line_edits.alphaNumericLineEdit()
         self.textToAppendLineEdit.setAlignment(Qt.AlignCenter)
         self.textToAppendLineEdit.setDisabled(True)
         paramsLayout.addWidget(self.textToAppendLineEdit, row, 1, 1, 2)
@@ -108,7 +113,7 @@ class ResizeUtilProps(dialogs_base.QBaseDialog):
         
         row += 1
         paramsLayout.addWidget(QLabel('Resize factor: '), row, 0)
-        self.factorSpinbox = widgets.FloatLineEdit(allowNegative=False)
+        self.factorSpinbox = widgets_line_edits.FloatLineEdit(allowNegative=False)
         self.factorSpinbox.setMinimum(1.0)
         self.factorSpinbox.setValue(2.0)
         paramsLayout.addWidget(self.factorSpinbox, row, 1, 1, 2)
@@ -118,7 +123,7 @@ class ResizeUtilProps(dialogs_base.QBaseDialog):
         
         self.overwriteToggle.toggled.connect(self.overwriteToggled)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -152,7 +157,7 @@ class ResizeUtilProps(dialogs_base.QBaseDialog):
             To prevent overwriting raw data the <code>Folder path for 
             resized images</code> <b>cannot be empty</b>.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty folder path', txt)
     
     def warnTextToAppendEmpty(self):
@@ -160,7 +165,7 @@ class ResizeUtilProps(dialogs_base.QBaseDialog):
             To prevent overwriting raw data the <b>text to append 
             cannot be empty</b>.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty text to append', txt)
     
     def ok_cb(self):
@@ -207,7 +212,7 @@ class ResizeUtilWorker(utils_base.BaseWorkerUtil):
         if path is None:
             return
         
-        images_path = myutils.validate_images_path(path, create_dirs_tree=True)
+        images_path = resize.validate_images_path(path, create_dirs_tree=True)
         return images_path
     
     @workers_base.worker_exception_handler

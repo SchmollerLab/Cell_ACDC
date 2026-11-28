@@ -20,7 +20,13 @@ from qtpy.QtWidgets import (
 )
 from cellacdc import _window_stacking
 from cellacdc import load, html_utils
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import fonts
 from cellacdc.shared.dialogs import base as dialogs_base
 from cellacdc.shared.dialogs import image_tools as dialogs_image_tools
@@ -78,7 +84,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
 
         mainLayout = QVBoxLayout()
 
-        scrollArea = widgets.ScrollArea()
+        scrollArea = widgets_basic_widgets.ScrollArea()
         typeGroupbox = QGroupBox('Points to draw')
         typeLayout = QGridLayout()
         typeGroupbox.setLayout(typeLayout)
@@ -123,7 +129,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         self.appearanceGroupbox = dialogs_image_tools._PointsLayerAppearanceGroupbox()
         self.appearanceGroupbox.sizeSpinBox.setValue(3)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -169,7 +175,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         layout.addWidget(label, row, 1)
         sectionWidgets.append(label)
         
-        self.channelNameForWeightedCentr = widgets.QCenteredComboBox()
+        self.channelNameForWeightedCentr = widgets_combo_boxes.QCenteredComboBox()
         if channelNames:
             self.channelNameForWeightedCentr.addItems(channelNames)
         self.channelNameForWeightedCentr.setDisabled(True)
@@ -194,7 +200,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         self.fromTableRadiobutton.widgets = []
         
         row += 1
-        self.tablePath = widgets.ElidingLineEdit()
+        self.tablePath = widgets_line_edits.ElidingLineEdit()
         self.tablePath.label = QLabel('Table file path: ')
         layout.addWidget(self.tablePath.label, row, 1)
         layout.addWidget(self.tablePath, row, 2)
@@ -202,7 +208,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.tablePath.label)
         sectionWidgets.append(self.tablePath)
 
-        browseButton = widgets.browseFileButton(
+        browseButton = widgets_push_buttons.browseFileButton(
             start_dir=imagesPath, ext={'Table': ['.csv', '.h5']}
         )
         layout.addWidget(browseButton, row, 3)
@@ -212,7 +218,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(browseButton)
 
         row += 1
-        self.xColName = widgets.QCenteredComboBox()
+        self.xColName = widgets_combo_boxes.QCenteredComboBox()
         self.xColName.addItem('None')
         self.xColName.label = QLabel('X coord. column: ')
         layout.addWidget(self.xColName.label, row, 1)
@@ -223,7 +229,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.xColName)
 
         row += 1
-        self.yColName = widgets.QCenteredComboBox()
+        self.yColName = widgets_combo_boxes.QCenteredComboBox()
         self.yColName.addItem('None')
         self.yColName.label = QLabel('Y coord. column: ')
         layout.addWidget(self.yColName.label, row, 1)
@@ -234,7 +240,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.yColName)
 
         row += 1
-        self.zColName = widgets.QCenteredComboBox()
+        self.zColName = widgets_combo_boxes.QCenteredComboBox()
         self.zColName.addItem('None')
         self.zColName.label = QLabel('Z coord. column: ')
         layout.addWidget(self.zColName.label, row, 1)
@@ -245,7 +251,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.zColName)
 
         row += 1
-        self.tColName = widgets.QCenteredComboBox()
+        self.tColName = widgets_combo_boxes.QCenteredComboBox()
         self.tColName.addItem('None')
         self.tColName.label = QLabel('Frame index column: ')
         self.tColRequiresGroupingCheckbox = QCheckBox('Group by unique values')
@@ -298,7 +304,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.manualEntryRadiobutton)
         
         row += 1
-        self.manualXspinbox = widgets.NumericCommaLineEdit()
+        self.manualXspinbox = NumericCommaLineEdit()
         self.manualXspinbox.label = QLabel('X coords: ')
         layout.addWidget(self.manualXspinbox.label, row, 1)
         layout.addWidget(self.manualXspinbox, row, 2)
@@ -307,7 +313,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.manualXspinbox)
 
         row += 1
-        self.manualYspinbox = widgets.NumericCommaLineEdit()
+        self.manualYspinbox = NumericCommaLineEdit()
         self.manualYspinbox.label = QLabel('Y coords: ')
         layout.addWidget(self.manualYspinbox.label, row, 1)
         layout.addWidget(self.manualYspinbox, row, 2)
@@ -316,7 +322,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.manualYspinbox)
 
         row += 1
-        self.manualZspinbox = widgets.NumericCommaLineEdit()
+        self.manualZspinbox = NumericCommaLineEdit()
         self.manualZspinbox.label = QLabel('Z coords: ')
         layout.addWidget(self.manualZspinbox.label, row, 1)
         layout.addWidget(self.manualZspinbox, row, 2)
@@ -325,7 +331,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.manualZspinbox)
 
         row += 1
-        self.manualTspinbox = widgets.NumericCommaLineEdit()
+        self.manualTspinbox = NumericCommaLineEdit()
         self.manualTspinbox.label = QLabel('Frame numbers: ')
         layout.addWidget(self.manualTspinbox.label, row, 1)
         layout.addWidget(self.manualTspinbox, row, 2)
@@ -353,7 +359,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.clickEntryRadiobutton)
         
         row += 1
-        self.snapToMaxToggle = widgets.Toggle()
+        self.snapToMaxToggle = widgets_push_buttons.Toggle()
         self.snapToMaxToggle.label = QLabel('Snap to closest maximum: ')
         layout.addWidget(self.snapToMaxToggle.label, row, 1)
         layout.addWidget(
@@ -362,7 +368,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         sectionWidgets.append(self.snapToMaxToggle.label)
         sectionWidgets.append(self.snapToMaxToggle)
         
-        self.snapToMaxInfoButton = widgets.infoPushButton()
+        self.snapToMaxInfoButton = widgets_push_buttons.infoPushButton()
         layout.addWidget(self.snapToMaxInfoButton, row, 3)
         sectionWidgets.append(self.snapToMaxInfoButton)
         
@@ -371,7 +377,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         self.clickEntryRadiobutton.widgets.append(self.snapToMaxInfoButton)
         
         row += 1
-        self.autoPilotToggle = widgets.Toggle()
+        self.autoPilotToggle = widgets_push_buttons.Toggle()
         self.autoPilotToggle.label = QLabel('Use auto-pilot: ')
         layout.addWidget(self.autoPilotToggle.label, row, 1)
         layout.addWidget(
@@ -379,7 +385,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         )
         sectionWidgets.append(self.autoPilotToggle.label)
         sectionWidgets.append(self.autoPilotToggle)
-        self.autoPilotInfoButton = widgets.infoPushButton()
+        self.autoPilotInfoButton = widgets_push_buttons.infoPushButton()
         layout.addWidget(self.autoPilotInfoButton, row, 3)
         sectionWidgets.append(self.autoPilotInfoButton)
         
@@ -388,11 +394,11 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         self.clickEntryRadiobutton.widgets.append(self.autoPilotInfoButton)
         
         row += 1
-        self.clickEntryTableEndname = widgets.alphaNumericLineEdit()
+        self.clickEntryTableEndname = widgets_line_edits.alphaNumericLineEdit()
         self.clickEntryTableEndname.setText('points_added_by_clicking')
         self.clickEntryTableEndname.setAlignment(Qt.AlignCenter)
         self.clickEntryTableEndname.label = QLabel('Table endname: ')
-        loadButton = widgets.browseFileButton(
+        loadButton = widgets_push_buttons.browseFileButton(
             start_dir=imagesPath, ext={'CSV': '.csv'}
         )
         layout.addWidget(loadButton, row, 3)
@@ -461,7 +467,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         )
         
     def showAutoPilotInfo(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             With <b>Auto-pilot</b> mode active, Cell-ACDC will <b>automatically zoom</b> on 
             to an object<br>
@@ -473,7 +479,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         msg.information(self, 'Auto-pilot info', txt)
     
     def showSnapToMaxButton(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             With <bSnap to closest maximum</b> mode active, Cell-ACDC will 
             <b>automatically add the point</b><br>
@@ -533,14 +539,14 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         txt = html_utils.paragraph(f"""
             X coords and Y coords must have the <b>same length</b>.
         """)
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.critical(self, f'X and Y have different length', txt)
         
     def criticalColNameIsNone(self, axis):        
         txt = html_utils.paragraph(f"""
             The "{axis.upper()} coord. column" <b>cannot be "None"</b>
         """)
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.critical(self, f'{axis.upper()} coord. is None', txt)
     
     def criticalReadTable(self, path, traceback_format):
@@ -550,7 +556,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
             <code>{path}</code><br><br>
             See the <b>error message below</b>.
         """)
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         detailsText = traceback_format
         msg.critical(
             self, 'Error when reading table', txt, detailsText=detailsText)
@@ -559,7 +565,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         txt = html_utils.paragraph(f"""
             The table file path <b>cannot be empty</b>.
         """)
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.critical(self, 'Table file path is empty', txt)   
 
     def state(self):
@@ -580,7 +586,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
             the letter <code>{labelToCheck}<code>?
         """)
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, noButton, yesButton = msg.warning(
             self, 'Check column name', txt, 
             buttonsTexts=('Cancel', 'No, let me correct it', 'Yes, I am')
@@ -608,7 +614,7 @@ class AddPointsLayerDialog(dialogs_base.QBaseDialog):
         self.zColName.setCurrentText('None')
 
     def warnShortcutAlreadyUsed(self, shortcut, usedBy):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Shortcut already used', html_utils.paragraph(
                 f'The shortcut "{html.escape(shortcut)}" is already used by '

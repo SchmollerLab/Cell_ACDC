@@ -2,18 +2,22 @@ import os
 from functools import partial
 import re
 
-from cellacdc import html_utils, myutils
+from cellacdc import html_utils
+from cellacdc.myutils import installs
 
 from . import issues_url
 from . import urls
 from . import error_below, error_close
 
 def warnTooManyItems(mainWin, numItems, qparent):
-    from . import widgets
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
     mainWin.logger.info(
         '[WARNING]: asking user what to do with too many graphical items...'
     )
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     txt = html_utils.paragraph(f"""
         You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
         Creating <b>high resolution</b> text annotations 
@@ -27,17 +31,20 @@ def warnTooManyItems(mainWin, numItems, qparent):
         qparent, 'Too many objects', txt,
         buttonsTexts=(
             'Cancel', 'Stay on high resolution', 
-            widgets.reloadPushButton(' Switch to low resolution ')              
+            widgets_push_buttons.reloadPushButton(' Switch to low resolution ')              
         )
     )
     return msg.cancel, msg.clickedButton==switchToLowResButton
 
 def warnTooManyNewItems(mainWin, numItems, qparent):
-    from . import widgets
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
     mainWin.logger.info(
         '[WARNING]: asking user what to do with too many objects...'
     )
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     txt = html_utils.paragraph(f"""
         WARNING: The resulting segmentation mask has <b>{numItems} objects</b>.<br><br>
         Creating text annotations for these many objects could take a 
@@ -51,7 +58,7 @@ def warnTooManyNewItems(mainWin, numItems, qparent):
         qparent, 'Too many objects', txt,
         buttonsTexts=(
             'Cancel', 
-            widgets.noPushButton(' Deactivate text annotations ')              
+            widgets_push_buttons.noPushButton(' Deactivate text annotations ')              
         )
     )
     deactivateAnnot = msg.clickedButton==deactivateAnnotButton
@@ -61,8 +68,8 @@ def warnTooManyNewItems(mainWin, numItems, qparent):
 def warnRestartCellACDCcolorModeToggled(
         scheme, app_name='Cell-ACDC', parent=None
     ):
-    from . import widgets
-    msg = widgets.myMessageBox(wrapText=False)
+    from cellacdc.shared.widgets import message_box as widgets_message_box
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     txt = (
         'In order for the change to take effect, '
         f'<b>please restart {app_name}</b>'
@@ -97,7 +104,10 @@ def warn_image_overflow_dtype(input_dtype, max_value, inferred_dtype):
     )
 
 def warn_cca_integrity(txt, category, qparent, go_to_frame_callback=None):
-    from . import widgets
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
     from qtpy.QtWidgets import QCheckBox
     
     preamble = html_utils.paragraph(
@@ -123,10 +133,10 @@ def warn_cca_integrity(txt, category, qparent, go_to_frame_callback=None):
         disableAllWarningsCheckbox
     )
     
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     if go_to_frame_callback is not None and txt.find('At frame n.') != -1:
         frame_n = re.findall(r'At frame n. (\d+)', txt)[0]
-        goToFrameButton = widgets.NavigatePushButton(f'Go to frame n. {frame_n}')
+        goToFrameButton = widgets_push_buttons.NavigatePushButton(f'Go to frame n. {frame_n}')
         goToFrameButton = msg.addButton(goToFrameButton)
         goToFrameButton.disconnect()
         goToFrameButton.clicked.connect(
@@ -152,8 +162,8 @@ def warn_cca_integrity(txt, category, qparent, go_to_frame_callback=None):
 def warn_installing_different_cellpose_version(
         requested_version, installed_version
     ):
-    from cellacdc import widgets
-    if not myutils.is_gui_running():
+    from cellacdc.shared.widgets import message_box as widgets_message_box
+    if not installs.is_gui_running():
         print(
             f'[WARNING]: You requested to install `Cellpose {requested_version}` '
             f'but you already have `Cellpose {installed_version}`.\n\n'
@@ -178,7 +188,7 @@ def warn_installing_different_cellpose_version(
         Thank you for your patience!<br>
         {html_utils.to_note(note_text)}
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         None, 'Cellpose already installed', txt, 
         buttonsTexts=('Cancel', 'Ok')
@@ -186,7 +196,7 @@ def warn_installing_different_cellpose_version(
     return msg.cancel
 
 def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     href = html_utils.href_tag('here', urls.bioformats_download_page)
     txt = html_utils.paragraph(f"""
         [WARNING]: <b>Download of <code>bioformats_package.jar</code> failed.
@@ -194,7 +204,7 @@ def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
         
         Please, download it from {href}, and place the jar file here:
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Download of bioformats failed', txt, 
         commands=(jar_dst_filepath,), 
@@ -203,61 +213,61 @@ def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
     return msg.cancel
 
 def warn_segment_for_lost_IDs_first_frame(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         The segmentation for lost IDs is not available on the first frame.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Not available on first frame', txt, 
     )
     return msg.cancel
 
 def warnPromptSegmentPointsLayerNotInit(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         The points layer was not initialized!<br><br>
         To initialize it, please, deactivate and reactivate the 
         <code>Magic prompts</code> button in the top toolbar.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Points layer not initialized', txt, 
     )
     return msg.cancel
 
 def warnNoIDsInS(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         <b>None</b> of the IDs present at this frame 
         <b>are in 'S' phase</b>.<br><br>
         This tool can be used only for mother-bud pairs.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'No cells in "S" phase', txt, 
     )
     return msg.cancel
 
 def warnSelectedIDisNotInS(ID, qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         The selected ID {ID} <b>cell cycle stage is not 'S'</b>!<br><br>
         Make sure you are hovering a cell ID in 'S' (mother of bud), 
         when activating this mode.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Selected ID not in S', txt, 
     )
     return msg.cancel
 
 def warnPromptSegmentModelNotInit(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Promptable model was not initialized!<br><br>
         To initialize it, please, click on the <code>Select the promptable
@@ -265,14 +275,14 @@ def warnPromptSegmentModelNotInit(qparent=None):
         toolbar.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Promptable model not initialized', txt, 
     )
     return msg.cancel
 
 def warnBrushStrokesMissing(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         There are <b>no brush strokes</b> to train the model on!<br><br>
         Please, paint <b>foreground</b> strokes (left-click and drag) and
@@ -280,7 +290,7 @@ def warnBrushStrokesMissing(qparent=None):
         first.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Brush strokes missing', txt,
     )
@@ -289,7 +299,7 @@ def warnBrushStrokesMissing(qparent=None):
 def warnBrushStrokesMissingClass(
         hasForeground, hasBackground, qparent=None
     ):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     missing = []
     if not hasForeground:
         missing.append(
@@ -306,14 +316,14 @@ def warnBrushStrokesMissingClass(
         Please, paint {missing_txt} on at least one image.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Foreground or background brush strokes missing', txt,
     )
     return msg.cancel
 
 def warnNotEnoughG1Cells(numCellsG1, frame_i, numNewCells, qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     if numCellsG1 == 0:
         G1_text = 'no cells'
     else:
@@ -340,7 +350,7 @@ def warnNotEnoughG1Cells(numCellsG1, frame_i, numNewCells, qparent=None):
         'Do you want to continue?<br>'
     )
     
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     _, yesButton = msg.warning(
         qparent, 'No cells in G1!', text, 
         buttonsTexts=('Cancel', 'Continue anyway (new cells will start in G1)')
@@ -357,14 +367,14 @@ def log_pytorch_not_installed():
     print(error_close)
 
 def warnExportToVideo(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Exporting to video will start now.<br><br>
         During this process, the GUI will <b>automatically update the images</b> 
         to save the video frames.<br><br>
         Please, <b>do not close the window during this process</b>, thanks!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Export to video is starting', txt, 
         buttonsTexts=('Cancel', 'Ok')
@@ -372,7 +382,7 @@ def warnExportToVideo(qparent=None):
     return msg.cancel
 
 def warnDivisionAnnotationCannotBeUndone(ID, relID, issue_frame_i, qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Cell division annotation <b>cannot be undone</b> because Cell ID {relID} 
         is in 'S' phase at frame n. {issue_frame_i+1}.<br><br>
@@ -382,14 +392,14 @@ def warnDivisionAnnotationCannotBeUndone(ID, relID, issue_frame_i, qparent=None)
         annotations there.<br><br>
         Thank you for your patience! 
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Division annotation cannot be undone', txt
     )
     return msg.cancel
 
 def warnCannotAddRemoveBoxesProjection(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Box prompts <b>cannot be drawn in a projection</b>!<br><br>
         Each box belongs to the z-slice where it is drawn. Please, switch to
@@ -397,33 +407,33 @@ def warnCannotAddRemoveBoxesProjection(qparent=None):
         z-slice scrollbar).<br><br>
         Thank you for your patience.
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(qparent, 'WARNING: Drawing boxes in projection', txt)
 
 def warnNoBoxPrompts(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         There are <b>no box prompts</b> on the current frame!<br><br>
         Draw a box around an object by left-clicking and dragging on the
         image.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(qparent, 'No box prompts', txt)
 
 def warnCannotAddRemovePointsProjection(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Points <b>cannot be added or removed in a projection</b>!<br><br>
         Please, switch to "single z-slice" mode (bottom of the image on 
         the right of the z-slice scrollbar).<br><br>
         Thank you for your patience.
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(qparent, 'WARNING: Editing points in projection', txt)
 
 def warnRestartAcdcIconsUpdated(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = (
         'Cell-ACDC had to update the GUI icons. '
         'Please re-start the application.\n\n'
@@ -433,11 +443,15 @@ def warnRestartAcdcIconsUpdated(qparent=None):
     print(txt)
     print('^'*100)
     html_txt = html_utils.paragraph(txt.replace('\n', '<br>'))
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.information(qparent, 'GUI icons updated', txt)
 
 def warnMissingCca(missing_cca_items, qparent=None):
-    from cellacdc import widgets, printl
+    from cellacdc import printl
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
     mainText = html_utils.paragraph(f"""
         Some objects have <b>missing cell cycle annotations</b>!<br><br>
         Please, fix them before saving again, thanks!<br><br>
@@ -464,9 +478,9 @@ def warnMissingCca(missing_cca_items, qparent=None):
         details_txt_list.append(txt)
     
     detailsText = '<br>'.join(details_txt_list)
-    msg = widgets.myMessageBox(wrapText=False)
-    ignoreButton = widgets.WarningButton('Ignore and continue saving')
-    stopButton = widgets.stopPushButton('Stop saving process')
+    msg = widgets_message_box.myMessageBox(wrapText=False)
+    ignoreButton = widgets_push_buttons.WarningButton('Ignore and continue saving')
+    stopButton = widgets_push_buttons.stopPushButton('Stop saving process')
     msg.warning(
         qparent, 'Missing cell cycle annotations', mainText, 
         detailsText,
@@ -482,12 +496,12 @@ def warnAskTransparencyModeNeededForExport(
     if qparent is None:
         qparent = mainWin
         
-    from . import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     mainWin.logger.info(
         '[WARNING]: prompting user to activate transparency mode for exporting '
         'multichannel (overlay) image...'
     )
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     txt = html_utils.paragraph(f"""
         In order to export a multichannel (overlay) view to {output}, 
         you need to activate 
@@ -505,11 +519,11 @@ def warnAskTransparencyModeNeededForExport(
     return msg.cancel, msg.clickedButton==yesButton
 
 def warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Cell cycle annotations <b>cannot be edited</b> when <code>Annotate one mother-bud pair at the time</code> mode is active.<br><br>Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Cannot edit cell cycle annotations', txt, 
     )
@@ -521,12 +535,15 @@ def warnAskAboutSaveSingleMotherBudPairsCcaDf(
     if qparent is None:
         qparent = mainWin
         
-    from . import widgets
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
     mainWin.logger.info(
         '[WARNING]: asking user what to do with cell cycle annotations from the '
         '"Annotate one mother-bud pair at the time" tool...'
     )
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     txt = html_utils.paragraph(f"""
         Cell-ACDC detected <b>partial cell cycle annotations</b> generated with the 
         "Annotate one mother-bud pair at the time" tool.<br><br>
@@ -544,8 +561,8 @@ def warnAskAboutSaveSingleMotherBudPairsCcaDf(
     _, savePartiallyAnnotatedButton = msg.warning(
         qparent, 'Partial cell cycle annotations', txt,
         buttonsTexts=(
-            widgets.noPushButton('Save only fully annotated frames'),
-            widgets.savePushButton('Save also partially annotated frames')
+            widgets_push_buttons.noPushButton('Save only fully annotated frames'),
+            widgets_push_buttons.savePushButton('Save also partially annotated frames')
         ),
         detailsText=detailsText,
         details_expanded=False
@@ -554,14 +571,14 @@ def warnAskAboutSaveSingleMotherBudPairsCcaDf(
     return msg.cancel, msg.clickedButton==savePartiallyAnnotatedButton
 
 def warnCannotInterpolateZVolume(qparent, ID):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Interpolation of missing z-slices cannot be done with ID = {ID}.<br><br>
         Please, make sure the ID you are drawing is greater than zero and that 
         you drew on at least 2 different z-slices.<br><br>
         Thank you for your patience!
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Cannot interpolate missing z-slices', txt, 
     )
@@ -570,18 +587,18 @@ def warnCannotInterpolateZVolume(qparent, ID):
 def warnExportCurrentViewDstFolderPathInvalid(
         dst_folderpath, qparent=None
     ):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         The destination folder path is invalid or it does not exist.<br><br>
         Selected folder path: 
         <copiable>{dst_folderpath}</copiable>
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Destination folder path not valid', txt, 
     )
 def warnSegmentImageRequiresZslice(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         With 3D segmentation masks, "<b>Segment image</b>" segments only the
         <b>displayed z-slice</b>, but the current view is not a single
@@ -590,14 +607,14 @@ def warnSegmentImageRequiresZslice(qparent=None):
         controls, or click on "<b>Segment z-stack</b>" to segment all the
         z-slices of the current frame.
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Select a z-slice', txt,
     )
     return msg.cancel
 
 def warnSegmentZstackRequires3DMasks(qparent=None):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     txt = html_utils.paragraph(f"""
         Segmenting the <b>entire z-stack</b> requires <b>3D segmentation
         masks</b>, but the loaded segmentation masks are 2D (one mask per
@@ -608,7 +625,7 @@ def warnSegmentZstackRequires3DMasks(qparent=None):
         "<code>Work with 3D segmentation masks (z-stack)</code>" (e.g.,
         with "Create a new segmentation file").
     """)
-    msg = widgets.myMessageBox(wrapText=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False)
     msg.warning(
         qparent, '3D segmentation masks required', txt,
     )

@@ -6,7 +6,7 @@ import skimage.measure
 from baby import modelsets
 from baby import BabyCrawler
 
-from cellacdc import myutils
+from cellacdc.myutils import image_utils
 from cellacdc.trackers import BABY
 
 from ..CellACDC import CellACDC_tracker
@@ -27,7 +27,7 @@ class tracker:
             image = image[np.newaxis]
 
         
-        image = myutils.to_uint16(image)
+        image = image_utils.to_uint16(image)
         
         # BABY requires z-slices as last dimension while Cell-ACDC takes 
         # Z, Y, X input

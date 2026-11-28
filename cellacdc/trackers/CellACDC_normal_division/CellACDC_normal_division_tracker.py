@@ -12,7 +12,10 @@ import scipy.optimize
 from cellacdc._types import NotGUIParam
 from cellacdc import printl, lineage_tree_cols, base_cca_dict
 from cellacdc.core import lab_replace_values, getBaseCca_df
-from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
+from cellacdc.myutils.table_utils import (
+    checked_reset_index,
+    checked_reset_index_Cell_ID,
+)
 import cellacdc.debugutils as debugutils
 
 def reorg_sister_cells_for_export(lineage_tree_frame):

@@ -168,7 +168,7 @@ def get_model_arg_spec(base_url: str, timeout: float = 10.0):
 
 def get_model_spec(base_url: str, timeout: float = 10.0):
     """Fetch model argument specs and help URL, including before initialization."""
-    from cellacdc import myutils
+    from cellacdc.myutils import segm_models
 
     res = requests.get(
         f"{base_url.rstrip('/')}/spec", headers=_protocol_headers(),
@@ -179,10 +179,10 @@ def get_model_spec(base_url: str, timeout: float = 10.0):
 
     def decode_params(params):
         return [
-            myutils.ArgSpec(
+            segm_models.ArgSpec(
                 name=name,
                 default=default,
-                type=myutils._deserialize_model_param_type(param_type),
+                type=segm_models._deserialize_model_param_type(param_type),
                 desc=desc,
                 docstring=docstring,
             )

@@ -1,4 +1,12 @@
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from . import segm_workers
 
 from .base import NewThreadMultipleExpBaseUtil
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QFormLayout
@@ -10,7 +18,7 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -18,7 +26,7 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.FilterObjsFromCoordsTable(self)
+        self.worker = segm_workers.FilterObjsFromCoordsTable(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigSetColumnsNames.connect(self.setColumnsNames)
         self.worker.sigAborted.connect(self.workerAborted)
@@ -34,7 +42,7 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
             or overwrite the existing one.
             """
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             hintText='Insert a name for the <b>filtered segmentation</b> file:',
             existingNames=existingEndnames, 
@@ -52,7 +60,7 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
     
     def setColumnsNames(self, columns, categories, optionalCategories):
-        win = apps.SetColumnNamesDialog(
+        win = SetColumnNamesDialog(
             columns, categories, optionalCategories=optionalCategories, 
             parent=self
         )
@@ -74,7 +82,7 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
         else:
             txt = 'Filter segmented objects from coordinates table process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -104,7 +112,7 @@ class SetColumnNamesDialog(dialogs_base.QBaseDialog):
         self.categoriesWidgets = {}
         formLayout = QFormLayout()
         for row, category in enumerate(categories):
-            combobox = widgets.ComboBox()
+            combobox = widgets_combo_boxes.ComboBox()
             combobox.addItems(columnNames)
             if optionalCategories is not None:
                 text = f'* {category}'
@@ -116,7 +124,7 @@ class SetColumnNamesDialog(dialogs_base.QBaseDialog):
         if optionalCategories is not None:
             optionalItems = ['None', *columnNames]
             for row, category in enumerate(optionalCategories):
-                combobox = widgets.ComboBox()
+                combobox = widgets_combo_boxes.ComboBox()
                 combobox.addItems(optionalItems)
                 formLayout.addRow(category, combobox)
                 self.categoriesWidgets[category] = combobox
@@ -128,7 +136,7 @@ class SetColumnNamesDialog(dialogs_base.QBaseDialog):
                 '* mandatory', font_size='11px'
             )))
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -148,7 +156,7 @@ class SetColumnNamesDialog(dialogs_base.QBaseDialog):
             Categories with the same column:
             {html_utils.to_list((category_1, category_2))}
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Non-unique columns', txt)
     
     def _checkUniqueNames(self):

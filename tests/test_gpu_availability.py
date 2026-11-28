@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from cellacdc import myutils
+from cellacdc.myutils import installs, model_installs
 
 pytestmark = pytest.mark.models
 
@@ -15,8 +15,8 @@ pytestmark = pytest.mark.models
 @pytest.mark.parametrize("return_types", [False, True])
 def test_cpu_does_not_probe_environment(monkeypatch, return_types):
     probe = Mock(side_effect=AssertionError("CPU must not probe GPU"))
-    monkeypatch.setattr(myutils, "_available_gpu_frameworks_from_env", probe)
-    result = myutils.check_gpu_available(
+    monkeypatch.setattr(model_installs, "_available_gpu_frameworks_from_env", probe)
+    result = model_installs.check_gpu_available(
         "cellpose_v3", False, python_exec="model-python",
         return_available_gpu_type=return_types,
     )
@@ -30,12 +30,12 @@ def test_cpu_does_not_probe_environment(monkeypatch, return_types):
 )
 def test_gpu_uses_selected_environment(monkeypatch, available, expected):
     probe = Mock(return_value=available)
-    monkeypatch.setattr(myutils, "_available_gpu_frameworks_from_env", probe)
+    monkeypatch.setattr(model_installs, "_available_gpu_frameworks_from_env", probe)
     monkeypatch.setattr(
-        myutils, "_available_gpu_frameworks",
+        model_installs, "_available_gpu_frameworks",
         Mock(side_effect=AssertionError("Must not inspect main environment")),
     )
-    assert myutils.check_gpu_available(
+    assert model_installs.check_gpu_available(
         "cellpose_v3", True, do_not_warn=True,
         return_available_gpu_type=True, python_exec="model-python",
     ) == expected
@@ -45,8 +45,8 @@ def test_gpu_uses_selected_environment(monkeypatch, available, expected):
 @pytest.mark.parametrize("python_exec", [None, sys.executable])
 def test_in_process_gpu_check(monkeypatch, python_exec):
     probe = Mock(return_value=["cuda"])
-    monkeypatch.setattr(myutils, "_available_gpu_frameworks", probe)
-    assert myutils.check_gpu_available(
+    monkeypatch.setattr(model_installs, "_available_gpu_frameworks", probe)
+    assert model_installs.check_gpu_available(
         "cellpose_v3", True, python_exec=python_exec, do_not_warn=True
     )
     probe.assert_called_once_with(True, True)
@@ -58,15 +58,15 @@ def test_cuda_requires_available_device(monkeypatch, count, available):
         is_available=lambda: available, device_count=lambda: count,
     ))
     monkeypatch.setitem(sys.modules, "torch", torch)
-    monkeypatch.setattr(myutils, "is_mac_arm64", False)
-    assert myutils._available_gpu_frameworks(True, False) == (
+    monkeypatch.setattr(model_installs, "is_mac_arm64", False)
+    assert model_installs._available_gpu_frameworks(True, False) == (
         ["cuda"] if count and available else []
     )
 
 
 def test_missing_torch_is_unavailable(monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", None)
-    assert myutils._available_gpu_frameworks(True, False) == []
+    assert model_installs._available_gpu_frameworks(True, False) == []
 
 
 def test_mps_requires_available_backend(monkeypatch):
@@ -75,31 +75,31 @@ def test_mps_requires_available_backend(monkeypatch):
         cuda=SimpleNamespace(is_available=lambda: False),
         backends=SimpleNamespace(mps=SimpleNamespace(is_available=available)),
     ))
-    monkeypatch.setattr(myutils, "is_mac_arm64", True)
-    assert myutils._available_gpu_frameworks(True, False) == []
+    monkeypatch.setattr(model_installs, "is_mac_arm64", True)
+    assert model_installs._available_gpu_frameworks(True, False) == []
     available.return_value = True
-    assert myutils._available_gpu_frameworks(True, False) == ["mps"]
+    assert model_installs._available_gpu_frameworks(True, False) == ["mps"]
 
 
 @pytest.mark.parametrize("directml_available", [False, True])
 def test_directml_detection(monkeypatch, directml_available):
-    monkeypatch.setattr(myutils, "is_win", True)
+    monkeypatch.setattr(model_installs, "is_win", True)
     monkeypatch.setitem(sys.modules, "torch_directml", SimpleNamespace(
         is_available=lambda: directml_available,
     ))
-    assert myutils._available_gpu_frameworks(False, True) == (
+    assert model_installs._available_gpu_frameworks(False, True) == (
         ["directML"] if directml_available else []
     )
 
 
 @pytest.mark.parametrize("backend", ["cuda", "directML"])
 def test_explicit_backend_is_required(monkeypatch, backend):
-    monkeypatch.setattr(myutils, "is_win", True)
+    monkeypatch.setattr(model_installs, "is_win", True)
     monkeypatch.setattr(
-        myutils, "_available_gpu_frameworks",
+        model_installs, "_available_gpu_frameworks",
         lambda *args: ["directML" if backend == "cuda" else "cuda"],
     )
-    assert myutils.check_gpu_available(
+    assert model_installs.check_gpu_available(
         "cellpose_v3", True, cuda=backend == "cuda",
         directML=backend == "directML", do_not_warn=True,
     ) is False
@@ -109,8 +109,8 @@ def test_environment_probe_parses_marked_output(monkeypatch):
     run = Mock(return_value=subprocess.CompletedProcess(
         [], 0, "library output\n__ACDC_GPU__" + json.dumps(["cuda"]) + "\n", "",
     ))
-    monkeypatch.setattr(myutils.subprocess, "run", run)
-    assert myutils._available_gpu_frameworks_from_env(
+    monkeypatch.setattr(subprocess, "run", run)
+    assert model_installs._available_gpu_frameworks_from_env(
         "model-python", True, False
     ) == ["cuda"]
     command = run.call_args.args[0]
@@ -127,22 +127,22 @@ def test_environment_probe_parses_marked_output(monkeypatch):
 def test_environment_probe_errors_are_explicit(
     monkeypatch, returncode, stdout, stderr, match,
 ):
-    monkeypatch.setattr(myutils.subprocess, "run", Mock(
+    monkeypatch.setattr(subprocess, "run", Mock(
         return_value=subprocess.CompletedProcess([], returncode, stdout, stderr)
     ))
     with pytest.raises(RuntimeError, match=match):
-        myutils._available_gpu_frameworks_from_env("model-python", True, False)
+        model_installs._available_gpu_frameworks_from_env("model-python", True, False)
 
 
 def test_gpu_warning_targets_model_environment(monkeypatch):
     monkeypatch.setattr(
-        myutils, "_available_gpu_frameworks_from_env", lambda *a: [],
+        model_installs, "_available_gpu_frameworks_from_env", lambda *a: [],
     )
-    monkeypatch.setattr(myutils, "is_server_mode", lambda: False)
+    monkeypatch.setattr(installs, "is_server_mode", lambda: False)
     warn = Mock(return_value=(True, True))
-    monkeypatch.setattr(myutils, "_warn_install_gpu", warn)
+    monkeypatch.setattr(model_installs, "_warn_install_gpu", warn)
     parent = object()
-    assert myutils.check_gpu_available(
+    assert model_installs.check_gpu_available(
         "cellpose_v3", True, qparent=parent, python_exec="model-python",
         return_available_gpu_type=True,
     ) == (True, ["directML"])
@@ -152,12 +152,12 @@ def test_gpu_warning_targets_model_environment(monkeypatch):
 
 
 def test_worker_gpu_check_never_opens_dialog(monkeypatch, caplog):
-    monkeypatch.setattr(myutils, "_available_gpu_frameworks", lambda *a: [])
-    monkeypatch.setattr(myutils, "is_server_mode", lambda: True)
-    monkeypatch.setattr(myutils, "_warn_install_gpu", Mock(
+    monkeypatch.setattr(model_installs, "_available_gpu_frameworks", lambda *a: [])
+    monkeypatch.setattr(installs, "is_server_mode", lambda: True)
+    monkeypatch.setattr(model_installs, "_warn_install_gpu", Mock(
         side_effect=AssertionError("Workers must not open Qt dialogs")
     ))
-    assert myutils.check_gpu_available(
+    assert model_installs.check_gpu_available(
         "cellpose_v3", True, return_available_gpu_type=True,
     ) == (True, [])
     assert "GPU unavailable" in caplog.text
@@ -172,23 +172,27 @@ def test_directml_install_uses_target_python_and_version(
     message = SimpleNamespace(
         cancel=False, clickedButton=directml, warning=Mock(),
     )
-    monkeypatch.setattr(myutils, "widgets", SimpleNamespace(
+    # _warn_install_gpu reads the widget modules as globals of
+    # model_installs (bound only when Qt is installed)
+    monkeypatch.setattr(model_installs, "widgets_message_box", SimpleNamespace(
         myMessageBox=lambda **kwargs: message,
+    ), raising=False)
+    monkeypatch.setattr(model_installs, "widgets_push_buttons", SimpleNamespace(
         cancelPushButton=lambda text: stop,
         okPushButton=Mock(side_effect=[directml, proceed]),
     ), raising=False)
-    monkeypatch.setattr(myutils, "is_win", True)
+    monkeypatch.setattr(model_installs, "is_win", True)
     run = Mock(return_value=subprocess.CompletedProcess(
         [], 0, version + "\n", "",
     ))
-    monkeypatch.setattr(myutils.subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "run", run)
     install = Mock(return_value=True)
-    monkeypatch.setattr(myutils, "check_install_package", install)
-    monkeypatch.setattr(myutils, "purge_module", Mock(
+    monkeypatch.setattr(installs, "check_install_package", install)
+    monkeypatch.setattr(installs, "purge_module", Mock(
         side_effect=AssertionError("Do not purge main-environment torch")
     ))
     python = r"C:\model env\python.exe"
-    assert myutils._warn_install_gpu(
+    assert model_installs._warn_install_gpu(
         "cellpose_v3", {"cuda", "directML"} if ask_cuda else {"directML"},
         python_exec=python,
     ) == ((True, True) if supported else (False, False))
@@ -213,7 +217,7 @@ def test_directml_install_uses_target_python_and_version(
 
 def test_lost_ids_gpu_cache_is_environment_specific(monkeypatch):
     pytest.importorskip("qtpy")
-    from cellacdc.gui import guiWin
+    from cellacdc.gui.main_window.window import guiWin
 
     execution = SimpleNamespace(env_python="model-python")
     window = SimpleNamespace(
@@ -223,7 +227,7 @@ def test_lost_ids_gpu_cache_is_environment_specific(monkeypatch):
         logger=Mock(),
     )
     check = Mock(return_value=True)
-    monkeypatch.setattr(myutils, "check_gpu_available", check)
+    monkeypatch.setattr(model_installs, "check_gpu_available", check)
     for _ in range(2):
         guiWin.SegForLostIDsWorkerAskInstallGPU(window, "cellpose_v3", True)
     assert check.call_count == 2
@@ -240,7 +244,7 @@ def test_lost_ids_gpu_cache_is_environment_specific(monkeypatch):
 
 def test_lost_ids_gpu_failure_releases_worker(monkeypatch, caplog):
     pytest.importorskip("qtpy")
-    from cellacdc.gui import guiWin
+    from cellacdc.gui.main_window.window import guiWin
 
     window = SimpleNamespace(
         SegForLostIDsWorker=SimpleNamespace(),
@@ -250,7 +254,7 @@ def test_lost_ids_gpu_failure_releases_worker(monkeypatch, caplog):
         _ackSegForLostIDsWorker=Mock(),
         logger=logging.getLogger(__name__),
     )
-    monkeypatch.setattr(myutils, "check_gpu_available", Mock(
+    monkeypatch.setattr(model_installs, "check_gpu_available", Mock(
         side_effect=RuntimeError("GPU probe failed"),
     ))
     guiWin.SegForLostIDsWorkerAskInstallGPU(window, "cellpose_v3", True)
@@ -267,7 +271,7 @@ def test_lost_ids_gpu_failure_releases_worker(monkeypatch, caplog):
      ({"device_type": "directml_gpu"}, True)],
 )
 def test_gpu_request_parameters(kwargs, expected):
-    assert myutils.check_gpu_requested_segm_model(kwargs) is expected
+    assert model_installs.check_gpu_requested_segm_model(kwargs) is expected
 
 
 @pytest.mark.parametrize('python_exec', [None, 'model-python'])
@@ -283,7 +287,7 @@ def test_segmentation_module_checks_gpu_before_init(
         monkeypatch, python_exec, kwargs, use_gpu, cuda, directml, proceed,
     ):
     pytest.importorskip('qtpy')
-    from cellacdc.segm import segmWin
+    from cellacdc.segmentation_module.main_window import segmWin
 
     execution = SimpleNamespace(
         env_python=python_exec, init_model=Mock(return_value=object()),
@@ -302,7 +306,7 @@ def test_segmentation_module_checks_gpu_before_init(
 
     execution.init_model.side_effect = lambda *a: events.append('init') or 'model'
     check_gpu = Mock(side_effect=check)
-    monkeypatch.setattr(myutils, 'check_gpu_available', check_gpu)
+    monkeypatch.setattr(model_installs, 'check_gpu_available', check_gpu)
     result = segmWin.initModelExecution(window, kwargs)
     check_gpu.assert_called_once_with(
         'cellpose_v3', use_gpu, qparent=window, cuda=cuda, directML=directml,

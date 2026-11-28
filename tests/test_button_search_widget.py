@@ -4,8 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from cellacdc import apps, qutils, widgets
-from cellacdc.gui import guiWin
+from cellacdc import qutils
+from cellacdc.shared.dialogs import set_measurements as dialogs_set_measurements
+from cellacdc.shared.widgets import search_widgets as widgets_search_widgets
+from cellacdc.gui.main_window.window import guiWin
 
 from qtpy.QtCore import Qt
 from qtpy.QtTest import QTest
@@ -22,7 +24,7 @@ def app():
 
 @pytest.fixture
 def search(app):
-    widget = widgets.ButtonSearchWidget(loadingType=None)
+    widget = widgets_search_widgets.ButtonSearchWidget(loadingType=None)
     yield widget
     app.removeEventFilter(widget)
     widget.popup.deleteLater()
@@ -40,7 +42,7 @@ def test_grouped_search_selection_and_metadata(search, group_type):
     group = group_type((first, second))
     search.addItems([('Grouped controls', group)])
     item = search._items_by_name['grouped controls']
-    tooltip = item.data(widgets.ButtonSearchCompleter.TOOLTIP_ROLE)
+    tooltip = item.data(widgets_search_widgets.ButtonSearchCompleter.TOOLTIP_ROLE)
     assert 'First control' in tooltip
     assert 'Second control' in tooltip
     assert 'Shortcut: Ctrl+K' in tooltip
@@ -179,7 +181,7 @@ def test_single_target_and_documented_id_selection_remain_supported(search):
     ],
 )
 def test_metric_highlighting_matches_literal_terms_and_synonyms(query, label, expected):
-    assert widgets._matchesSearchText(query, label) is expected
+    assert widgets_search_widgets._matchesSearchText(query, label) is expected
 
 
 def test_custom_search_numeric_query_does_not_offer_ids(search):
@@ -196,7 +198,7 @@ def test_dropdown_retains_fuzzy_matching_without_checkbox_highlighting(search):
     search.on_search_text_changed('backgroud')
     assert search.proxy_model.rowCount() == 1
     assert search.proxy_model.index(0, 0).data(Qt.UserRole + 2) is control
-    assert not widgets._matchesSearchText('backgroud', 'Background mean intensity')
+    assert not widgets_search_widgets._matchesSearchText('backgroud', 'Background mean intensity')
 
 
 def _reference_similarity(query, text):
@@ -239,20 +241,20 @@ def test_fuzzy_similarity_preserves_qualifying_ratios(minimum_similarity):
         expected = _reference_similarity(query, text)
         if expected < minimum_similarity:
             expected = 0.0
-        assert widgets._fuzzySearchSimilarity(
+        assert widgets_search_widgets._fuzzySearchSimilarity(
             query, text, minimum_similarity
         ) == expected
 
 
 def test_similarity_cache_reuses_zero_scores_and_resets(search, monkeypatch):
     calls = []
-    original = widgets._fuzzySearchSimilarity
+    original = widgets_search_widgets._fuzzySearchSimilarity
 
     def tracked(query, text, minimum_similarity=0.0):
         calls.append((query, text, minimum_similarity))
         return original(query, text, minimum_similarity)
 
-    monkeypatch.setattr(widgets, '_fuzzySearchSimilarity', tracked)
+    monkeypatch.setattr(widgets_search_widgets, '_fuzzySearchSimilarity', tracked)
     proxy = search.proxy_model
     proxy.setFilterText('unrelated query')
     assert proxy._similarity('xyz') == 0.0
@@ -268,7 +270,7 @@ def test_similarity_cache_reuses_zero_scores_and_resets(search, monkeypatch):
 
 @pytest.fixture
 def measurements_dialog(app):
-    dialog = apps.SetMeasurementsDialog(
+    dialog = dialogs_set_measurements.SetMeasurementsDialog(
         ['GFP', 'RFP'], [], isZstack=False, isSegm3D=False
     )
     dialog.show()
@@ -382,7 +384,7 @@ def test_measurement_search_includes_channel_custom_metrics(
     ):
     dialog = measurements_dialog
     channel_group = dialog.chNameGroupboxes[0]
-    custom_group = widgets._metricsQGBox(
+    custom_group = dialogs_set_measurements._metricsQGBox(
         {'custom_metric': 'Custom metric description'},
         'Custom measurements',
         parent=channel_group,

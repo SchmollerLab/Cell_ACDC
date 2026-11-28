@@ -5,9 +5,9 @@ import skimage
 from cellacdc._run import _setup_app
 
 from cellacdc import VolumeRendererWindow
-from cellacdc import myutils
+from cellacdc.volume_renderer import utils as volume_renderer_utils
 
-exp_folderpath = myutils.download_3d_renderer_demo_data()
+exp_folderpath = volume_renderer_utils.download_3d_renderer_demo_data()
 
 images_path = os.path.join(
     exp_folderpath, 

@@ -23,7 +23,20 @@ pytest.importorskip('qtpy')
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import gui, widgets
+from cellacdc.gui.main_window import (
+    keyboard as gui_main_keyboard,
+    layout as gui_main_layout,
+    menus_actions as gui_main_menus_actions,
+    rois as gui_main_rois,
+    toolbars as gui_main_toolbars,
+    window as gui_window,
+)
+from cellacdc.gui.widgets import (
+    edit_toolbars as gui_widgets_edit_toolbars,
+    points_layer_widgets as gui_widgets_points_layer_widgets,
+)
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from qtpy.QtWidgets import QAction, QMenu
 
 
 @pytest.fixture(scope='module')
@@ -33,14 +46,14 @@ def app():
 
 @pytest.fixture
 def toolbar(app):
-    toolbar = widgets.MagicPromptsToolbar()
+    toolbar = gui_widgets_points_layer_widgets.MagicPromptsToolbar()
     yield toolbar
     toolbar.deleteLater()
 
 
 @pytest.fixture
 def controls(app):
-    controls = widgets.BrushStrokesSelectCellsToolbar('Select cells')
+    controls = gui_widgets_edit_toolbars.BrushStrokesSelectCellsToolbar('Select cells')
     yield controls
     controls.deleteLater()
 
@@ -148,7 +161,7 @@ def test_help_explains_example_pixels_and_train_only(toolbar, monkeypatch):
         def information(self, parent, title, txt, *args, **kwargs):
             texts.append(txt)
 
-    monkeypatch.setattr(widgets, 'myMessageBox', FakeMessageBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeMessageBox)
     toolbar.showHelp()
     txt = texts[0]
     assert 'example pixels' in txt
@@ -182,7 +195,7 @@ def test_select_cells_controls_toggle_and_reset(controls):
     controls.setSelectedIDs([1, 2, 3, 7, 7])
     assert list(controls.selectedIDs) == [1, 2, 3, 7]
     assert controls.selectedIDsLineEdit.text() == '1-3,7'
-    assert isinstance(controls.selectedIDs, widgets.KeptObjectIDsList)
+    assert isinstance(controls.selectedIDs, gui_widgets_edit_toolbars.KeptObjectIDsList)
 
     controls.resetSelection()
     assert list(controls.selectedIDs) == []
@@ -231,7 +244,7 @@ def test_add_to_training_data_requires_selection(controls):
 
 def _bind(window, *names):
     for name in names:
-        func = getattr(gui.guiWin, name)
+        func = getattr(gui_window.guiWin, name)
         func = getattr(func, '__wrapped__', func)
         setattr(window, name, MethodType(func, window))
 
@@ -607,7 +620,7 @@ def test_apply_prompt_type_applies_select_cells_mode():
             isMagicPromptsOn
         )
         window.magicPromptsToolbar.promptType.return_value = 'point'
-        gui.guiWin.applyMagicPromptsPromptType(window)
+        gui_window.guiWin.applyMagicPromptsPromptType(window)
         window.applyBrushStrokesSelectCellsMode.assert_called_once()
 
 
@@ -616,7 +629,7 @@ def test_shortcut_right_click_menu_only_on_action_button(app):
     # "Set shortcut" menu must be installed only on the action's button
     toolbarWidget, button = Mock(name='toolbar'), Mock(name='button')
 
-    class PyQt5LikeAction(gui.QAction):
+    class PyQt5LikeAction(QAction):
         def associatedWidgets(self):
             return [toolbarWidget, button]
 
@@ -628,14 +641,24 @@ def test_shortcut_right_click_menu_only_on_action_button(app):
     )
     _bind(window, '_setupRightClickMenuOnButton')
     # QMenu(self) needs a QWidget parent or None
-    original_qmenu = gui.QMenu
+    original_qmenu = QMenu
     try:
-        gui.QMenu = lambda parent=None: original_qmenu()
+        # moved: QMenu is read in each of these modules
+        gui_main_keyboard.QMenu = lambda parent=None: original_qmenu()
+        gui_main_layout.QMenu = lambda parent=None: original_qmenu()
+        gui_main_menus_actions.QMenu = lambda parent=None: original_qmenu()
+        gui_main_rois.QMenu = lambda parent=None: original_qmenu()
+        gui_main_toolbars.QMenu = lambda parent=None: original_qmenu()
         isSetup, numWidgets = window._setupRightClickMenuOnButton(
             action, name
         )
     finally:
-        gui.QMenu = original_qmenu
+        # moved: QMenu is read in each of these modules
+        gui_main_keyboard.QMenu = original_qmenu
+        gui_main_layout.QMenu = original_qmenu
+        gui_main_menus_actions.QMenu = original_qmenu
+        gui_main_rois.QMenu = original_qmenu
+        gui_main_toolbars.QMenu = original_qmenu
 
     assert isSetup and numWidgets == 1
     installed = [
@@ -901,5 +924,5 @@ def test_no_image_source_with_3D_masks_or_2D_data():
 def test_init_global_attr_resets_image_sources():
     window = Mock()
     window.brushStrokesImageSources = {(0, 0): 3}
-    gui.guiWin.initGlobalAttr(window)
+    gui_window.guiWin.initGlobalAttr(window)
     assert window.brushStrokesImageSources == {}

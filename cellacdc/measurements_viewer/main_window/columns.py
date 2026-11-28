@@ -10,10 +10,11 @@ from qtpy.QtGui import QIcon, QPixmap, QPainter
 from qtpy.QtWidgets import QAction, QMenu, QColorDialog
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc.apps_measurements_viewer import (
-    ConditionalFormattingDialog, _FormattingConditionDialog
+from ..dialogs.conditional_formatting import (
+    ConditionalFormattingDialog,
+    _FormattingConditionDialog,
 )
-from cellacdc.measurements_viewer_utils import signal_color
+from ..viewer_utils import signal_color
 from .. import viewer_utils
 
 

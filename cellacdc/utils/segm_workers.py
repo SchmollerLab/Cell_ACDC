@@ -18,7 +18,8 @@ import skimage.io
 import skimage.measure
 import skimage.exposure
 from qtpy.QtCore import Signal
-from cellacdc import load, myutils, segm_re_pattern, io
+from cellacdc import load, segm_re_pattern, io
+from cellacdc.myutils import filesystem, table_utils
 from cellacdc import core
 from . import base as utils_base
 from cellacdc.shared.workers import base as workers_base
@@ -78,7 +79,7 @@ class CreateConnected3Dsegm(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f) for f in ls 
                     if f.endswith(f'{endFilenameSegm}.npz')
@@ -143,7 +144,7 @@ class ApplyTrackInfoWorker(utils_base.BaseWorkerUtil):
         self.signals.initProgressBar.emit(0)
         imagesPath = os.path.join(self.posPath, 'Images')
         segmFilename = [
-            f for f in myutils.listdir(imagesPath) 
+            f for f in filesystem.listdir(imagesPath) 
             if f.endswith(f'{self.endFilenameSegm}.npz')
         ][0]
         segmFilePath = os.path.join(imagesPath, segmFilename)
@@ -197,7 +198,7 @@ class ApplyTrackInfoWorker(utils_base.BaseWorkerUtil):
             # Fix existing acdc_df
             acdcEndname = self.endFilenameSegm.replace('_segm', '_acdc_output')
             acdcFilename = [
-                f for f in myutils.listdir(imagesPath) 
+                f for f in filesystem.listdir(imagesPath) 
                 if f.endswith(f'{acdcEndname}.csv')
             ]
             if acdcFilename:
@@ -215,7 +216,7 @@ class ApplyTrackInfoWorker(utils_base.BaseWorkerUtil):
             keys = []
             for frame_i, lab in enumerate(trackedData):            
                 rp = skimage.measure.regionprops(lab)
-                acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+                acdc_df_frame_i = table_utils.getBaseAcdcDf(rp)
                 acdc_dfs.append(acdc_df_frame_i)
                 keys.append(frame_i)
             
@@ -292,7 +293,7 @@ class Stack2DsegmTo3Dsegm(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f) for f in ls 
                     if f.endswith(f'{endFilenameSegm}.npz')
@@ -492,7 +493,7 @@ class FilterObjsFromCoordsTable(utils_base.BaseWorkerUtil):
                 )
 
                 images_path = os.path.join(exp_path, pos, 'Images')
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f) for f in ls 
                     if f.endswith(f'{endFilenameSegm}.npz')

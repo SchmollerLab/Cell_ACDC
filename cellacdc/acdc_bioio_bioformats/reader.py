@@ -5,7 +5,7 @@ import numpy as np
 
 from .. import printl
 from .. import colors
-from ..myutils import safe_get_or_call
+from cellacdc.myutils.misc import safe_get_or_call
 from . import _utils
 from . import install, EXTENSION_PACKAGE_MAPPER
 from . import EXTENSION_BIOIMAGE_KWARGS_MAPPER

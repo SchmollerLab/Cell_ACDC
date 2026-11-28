@@ -21,7 +21,13 @@ from qtpy.QtWidgets import (
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 
-from .. import dataStruct, myutils, cite_url, html_utils, urls, widgets
+from .. import cite_url, html_utils, urls
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from .. import _palettes
 
 # NOTE: Enable icons
@@ -47,7 +53,7 @@ class downloadWorker(QObject):
         self.which = which
 
     def run(self):
-        self.exp_path = myutils.download_examples(
+        self.exp_path = download_examples(
             self.which, progress=self.progress
         )
         self.finished.emit()
@@ -785,10 +791,10 @@ class welcomeWin(QWidget):
         self.manualFrame = QFrame(self)
         manualLayout = QGridLayout()
 
-        openManualButton = widgets.showInFileManagerButton(
+        openManualButton = widgets_push_buttons.showInFileManagerButton(
             ' Download and open user manual... '
         )
-        openManualButton.clicked.connect(myutils.browse_docs)
+        openManualButton.clicked.connect(filesystem.browse_docs)
 
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(openManualButton)
@@ -899,7 +905,7 @@ class welcomeWin(QWidget):
         self.df_settings.to_csv(self.df_settings_path)
 
     def openGUIsingleImage(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             After clicking "Ok" on this dialogue, the Cell-ACDC GUI
             (launcher button "Correction: launch GUI...") will open.<br><br>
@@ -937,12 +943,12 @@ class welcomeWin(QWidget):
         self.mainWin.dataStructButton.click()
 
     def addPbar(self):
-        self.QPbar = widgets.ProgressBar(self)
+        self.QPbar = widgets_basic_widgets.ProgressBar(self)
         self.QPbar.setValue(0)
         self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
 
     def testTimeLapseExample(self, checked=True):
-        _, example_path, _, _ = myutils.get_examples_path('time_lapse_2D')
+        _, example_path, _, _ = get_examples_path('time_lapse_2D')
         txt = (
         f"""
         <p style="font-size:11px; font-family:ubuntu">
@@ -979,7 +985,7 @@ class welcomeWin(QWidget):
 
     def downloadExampleWorkerFinished(self):
         self.QPbar.setVisible(False)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             Done!<br><br>
             The example dataset has been downloaded to path below.<br><br>
@@ -1012,7 +1018,7 @@ class welcomeWin(QWidget):
         self.openGUIfolder(self.worker.exp_path)
 
     def test3DzStacksExample(self, checked=True):
-        _, example_path, _, _ = myutils.get_examples_path('snapshots_3D')
+        _, example_path, _, _ = get_examples_path('snapshots_3D')
         txt = (
         f"""
         <p style="font-size:11px; font-family:ubuntu">

@@ -33,9 +33,16 @@ from cellacdc import _window_stacking
 from cellacdc import html_utils
 from cellacdc import printl
 from cellacdc import colors
-from cellacdc import myutils
 from cellacdc import base_cca_dict
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    lut_items as widgets_lut_items,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    plot_items as widgets_plot_items,
+    push_buttons as widgets_push_buttons,
+)
+from ..widgets import main_window_items as gui_widgets_main_window_items
 from cellacdc import core_split_IDs
 from cellacdc.shared.dialogs import generic as dialogs_generic
 
@@ -44,7 +51,7 @@ class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.slider = widgets.sliderWithSpinBox(title='Tolerance')
+        self.slider = widgets_numeric_inputs.sliderWithSpinBox(title='Tolerance')
         self.slider.setMaximum(255)
         self.slider._layout.setColumnStretch(2, 21)
 
@@ -119,20 +126,20 @@ class FutureFramesAction_QDialog(QDialog):
         doNotShowLayout.setContentsMargins(50, 0, 0, 10)
         self.doNotShowCheckbox = doNotShowCheckbox
 
-        apply_and_reinit_b = widgets.reloadPushButton(
+        apply_and_reinit_b = widgets_push_buttons.reloadPushButton(
             ' 1. Apply only to this frame and re-initialize future frames'
         )
 
         self.apply_and_reinit_b = apply_and_reinit_b
         buttonsLayout.addWidget(apply_and_reinit_b)
 
-        apply_and_NOTreinit_b = widgets.currentPushButton(
+        apply_and_NOTreinit_b = widgets_push_buttons.currentPushButton(
             ' 2. Apply only to this frame and keep future frames as they are'
         )
         self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
         buttonsLayout.addWidget(apply_and_NOTreinit_b)
 
-        apply_to_all_visited_b = widgets.futurePushButton(
+        apply_to_all_visited_b = widgets_push_buttons.futurePushButton(
             ' 3. Apply to all future VISITED frames'
         )
         self.apply_to_all_visited_b = apply_to_all_visited_b
@@ -298,13 +305,13 @@ class editCcaTableWidget(QDialog):
         self.tableLayout = tableLayout
 
         # Add buttons
-        cancelButton = widgets.cancelPushButton('Cancel')
-        moreInfoButton = widgets.helpPushButton('More info...')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        moreInfoButton = widgets_push_buttons.helpPushButton('More info...')
         moreInfoButton.setIcon(QIcon(':info.svg'))
-        applyToFutureFramesbutton = widgets.futurePushButton(
+        applyToFutureFramesbutton = widgets_push_buttons.futurePushButton(
             'Apply changes to future frames...'
         )
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -380,7 +387,7 @@ class editCcaTableWidget(QDialog):
             relIDComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
-            genNumSpinBox = widgets.SpinBox()
+            genNumSpinBox = widgets_numeric_inputs.SpinBox()
             genNumSpinBox.setFocusPolicy(Qt.StrongFocus)
             genNumSpinBox.installEventFilter(self)
             genNumSpinBox.setValue(2)
@@ -406,7 +413,7 @@ class editCcaTableWidget(QDialog):
             relationshipComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
-            emergFrameSpinBox = widgets.SpinBox()
+            emergFrameSpinBox = widgets_numeric_inputs.SpinBox()
             emergFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
             emergFrameSpinBox.installEventFilter(self)
             emergFrameSpinBox.setMaximum(SizeT)
@@ -424,7 +431,7 @@ class editCcaTableWidget(QDialog):
 
 
             col += 1
-            divisFrameSpinBox = widgets.SpinBox()
+            divisFrameSpinBox = widgets_numeric_inputs.SpinBox()
             divisFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
             divisFrameSpinBox.installEventFilter(self)
             divisFrameSpinBox.setMinimum(-1)
@@ -489,7 +496,7 @@ class editCcaTableWidget(QDialog):
         
         stop_frame_n = win.value
         changes = self.getChanges()
-        changes_format = myutils.format_cca_manual_changes(changes)
+        changes_format = format_cca_manual_changes(changes)
         detailsText = (
             f'Changes that will be applied from frame n. {self.current_frame_i+1}'
             f' to frame n. {stop_frame_n}:\n\n{changes_format}'
@@ -499,7 +506,7 @@ Use this feature with <b>caution</b>!<br><br>
 Before propagating to future frames <b>carefully inspect what changes</b> 
 will be applied (see below).<br><br>
 """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.setDetailedText(detailsText, visible=True)
         msg.warning(
             self, 'Caution!', txt, buttonsTexts=('Yes, I am sure', 'Cancel')
@@ -510,8 +517,8 @@ will be applied (see below).<br><br>
         self.sigApplyChangesFutureFrames.emit(changes, stop_frame_n)     
     
     def moreInfo(self, checked=True):
-        desc = myutils.get_cca_colname_desc()
-        msg = widgets.myMessageBox(parent=self)
+        desc = get_cca_colname_desc()
+        msg = widgets_message_box.myMessageBox(parent=self)
         msg.setWindowTitle('Cell cycle annotations info')
         msg.setWidth(400)
         msg.setIcon()
@@ -621,7 +628,7 @@ will be applied (see below).<br><br>
         ]
         
         if any(check_rel):
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(""" 
                 Some cells are mother or bud of itself!<br><br>
                 Make sure that the relative ID is different from the Cell ID.
@@ -638,17 +645,17 @@ will be applied (see below).<br><br>
                 <b>makes downstream analysis easier</b>.<br><br>
                 What do you want to do?
             """)
-            correctButton = widgets.editPushButton(' Fine, let me correct. ')
-            keepButton = widgets.WarningButton(
+            correctButton = widgets_push_buttons.editPushButton(' Fine, let me correct. ')
+            keepButton = widgets_push_buttons.WarningButton(
                 ' Keep the generation number that I chose. '
             )
             buttonsTexts = (correctButton, keepButton)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
             if msg.cancel or msg.clickedButton == correctButton:
                 return None
         elif any(check_buds_S):
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             title = (
                 'Bud in S/G2/M not in 0 Generation number'
             )
@@ -660,7 +667,7 @@ will be applied (see below).<br><br>
             msg.critical(self, title, txt)
             return None
         elif any(check_mothers):
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             title = (
                 'Mother not in >=1 Generation number'
             )
@@ -671,7 +678,7 @@ will be applied (see below).<br><br>
             msg.critical(self, title, txt)
             return None
         elif any(check_buds_G1):
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             title = (
                 'Buds in G1!'
             )
@@ -682,7 +689,7 @@ will be applied (see below).<br><br>
             msg.critical(self, title, txt)
             return None
         elif num_moth_S != num_bud_S:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             title = (
                 'Number of mothers-buds mismatch!'
             )
@@ -695,7 +702,7 @@ will be applied (see below).<br><br>
             msg.critical(self, title, txt)
             return None
         elif any(check_relID_S):
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             title = (
                 'Relative\'s ID of cells in S/G2/M = -1'
             )
@@ -765,7 +772,7 @@ will be applied (see below).<br><br>
             f'`ID-relative_ID` mismatches:'
             f'{html_utils.to_list(items)}'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.critical(self, title, txt)
         return False
     
@@ -868,7 +875,7 @@ class EditIDDialog(QDialog):
             QLabel(f'Next unique ID = {nextUniqueID}'), alignment=Qt.AlignCenter
         )
         
-        VBoxLayout.addWidget(widgets.QHLine())
+        VBoxLayout.addWidget(widgets_basic_widgets.QHLine())
         
         self.warnExistingIDLabel = QLabel()
         self.warnExistingIDLabel.setStyleSheet('color: red')
@@ -891,7 +898,7 @@ class EditIDDialog(QDialog):
             howToPropagateGroupbox = self.addHowToPropagateZslicesOptions(
                 currentZslice, SizeZ, zSliceStartValue
             )
-            mainLayout.addWidget(widgets.QHLine())
+            mainLayout.addWidget(widgets_basic_widgets.QHLine())
             mainLayout.addSpacing(10)
             mainLayout.addWidget(howToPropagateGroupbox)
         
@@ -902,9 +909,9 @@ class EditIDDialog(QDialog):
             mainLayout.addWidget(self.propagateCheckbox)
 
         buttonsLayout = QHBoxLayout()
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
-        applyNewIDButton = widgets.AssignNewIDButton('Assign new, unique ID')
+        okButton = widgets_push_buttons.okPushButton('Ok')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        applyNewIDButton = widgets_push_buttons.AssignNewIDButton('Assign new, unique ID')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -965,7 +972,7 @@ class EditIDDialog(QDialog):
             'Change the object ID within a defined range of Z-slices (last included).'
         )
 
-        self.howToPropagateRangeStartZSpinbox = widgets.SpinBox()
+        self.howToPropagateRangeStartZSpinbox = widgets_numeric_inputs.SpinBox()
         self.howToPropagateRangeStartZSpinbox.setMinimum(0)
         self.howToPropagateRangeStartZSpinbox.setStartValue(1)
         self.howToPropagateRangeStartZSpinbox.setValue(currentZslice)
@@ -973,7 +980,7 @@ class EditIDDialog(QDialog):
         if SizeZ is not None:
             self.howToPropagateRangeStartZSpinbox.setMaximum(SizeZ)
 
-        self.howToPropagateRangeEndZSpinbox = widgets.SpinBox()
+        self.howToPropagateRangeEndZSpinbox = widgets_numeric_inputs.SpinBox()
         self.howToPropagateRangeEndZSpinbox.setMinimum(0)
         self.howToPropagateRangeEndZSpinbox.setStartValue(1)
         self.howToPropagateRangeEndZSpinbox.setValue(currentZslice)
@@ -1090,10 +1097,10 @@ class EditIDDialog(QDialog):
             ID {existingID} is <b>already existing</b>.<br><br>
             How do you want to proceed?<br>
         """)
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         doNotAskAgainCheckbox = QCheckBox('Remember my choice and do not ask again')
-        swapButton = widgets.reloadPushButton(f'Swap {newID} with {existingID}')
-        mergeButton = widgets.mergePushButton(f'Merge {newID} with {existingID}')
+        swapButton = widgets_push_buttons.reloadPushButton(f'Swap {newID} with {existingID}')
+        mergeButton = widgets_push_buttons.mergePushButton(f'Merge {newID} with {existingID}')
         msg.warning(
             self, 'Existing ID', warn_msg, 
             buttonsTexts=('Cancel', mergeButton, swapButton),
@@ -1148,7 +1155,7 @@ class EditIDDialog(QDialog):
                 'or a list of elements enclosed in parenthesis separated by a comma<br>'
                 'such as (5, 10), (8, 27) to replace ID 5 with ID 10 and ID 8 with ID 27'
             )
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                 self, 'Invalid entry', err_msg
             )
@@ -1563,12 +1570,12 @@ class manualSeparateGui(QMainWindow):
         self.imgItem = pg.ImageItem(np.zeros((512,512)))
         self.ax.addItem(self.imgItem)
 
-        self.labelsLayer = widgets.BaseLabelsImageItem()
+        self.labelsLayer = widgets_plot_items.BaseLabelsImageItem()
         self.labelsLayer.setOpacity(self.labelsAlpha)
         self.ax.addItem(self.labelsLayer)
 
         #Image histogram
-        self.imgGrad = widgets.myHistogramLUTitem()
+        self.imgGrad = widgets_lut_items.myHistogramLUTitem()
         self.imgGrad.setImageItem(self.imgItem)
         
         if self.img_lut_df is not None:
@@ -1592,7 +1599,7 @@ class manualSeparateGui(QMainWindow):
         self.ax.addItem(self.curvHoverPlotItem)
         self.ax.addItem(self.lineHoverPlotItem)
 
-        self.freeHandItem = widgets.PlotCurveItem(
+        self.freeHandItem = widgets_plot_items.PlotCurveItem(
             pen=pg.mkPen(color='r', width=2)
         )
         self.ax.addItem(self.freeHandItem)
@@ -1925,7 +1932,7 @@ class manualSeparateGui(QMainWindow):
             self.ax.removeItem(labelItemID)
         self.labelItemsIDs = []
         for obj in rp:
-            labelItemID = widgets.myLabelItem()
+            labelItemID = gui_widgets_main_window_items.myLabelItem()
             labelItemID.setText(
                 f'{obj.label}', color='r', size=f'{self.fontSize}px'
             )

@@ -1,4 +1,7 @@
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -15,7 +18,7 @@ class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
             progressDialogueTitle: str, trackSubCellObjParams: dict, 
             parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -28,7 +31,7 @@ class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
         self.thirdSegmAppendedText = trackSubCellObjParams['thirdSegmAppendedText']
     
     def runWorker(self):
-        self.worker = workers.TrackSubCellObjectsWorker(self)
+        self.worker = TrackSubCellObjectsWorker(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigCriticalNotEnoughSegmFiles.connect(
             self.criticalNotEnoughSegmFiles
@@ -49,7 +52,7 @@ class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
             Note that you can create as many segmentation files as you want, 
             you just need to run the segmentation module again. Thanks! 
         """)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.addShowInFileManagerButton(exp_path)
         msg.critical(
             self, 'Not enough segmentation files!', text
@@ -66,7 +69,7 @@ class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
             the name will be the same as the original file.
             """
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             hintText='Insert a name for the <b>new, tracked segmentation</b> file:',
             existingNames=existingEndnames, 
@@ -91,7 +94,7 @@ class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
         else:
             txt = 'Tracking sub-cellular objects completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -183,7 +186,7 @@ class TrackSubCellObjectsWorker(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f) for f in ls 
                     if f.endswith(f'{endFilenameSegm}.npz')

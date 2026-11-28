@@ -23,8 +23,16 @@ from qtpy.QtWidgets import QLabel
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from cellacdc import exception_handler
-from cellacdc import load, apps, html_utils
-from cellacdc import widgets
+from cellacdc import load, html_utils
+from cellacdc.shared.dialogs import image_tools as dialogs_image_tools
+from ..dialogs import points_layers as gui_dialogs_points_layers
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    toolbars as widgets_toolbars,
+)
+from ..widgets import points_layer_widgets as gui_widgets_points_layer_widgets
 from cellacdc import _warnings
 from cellacdc import colors
 
@@ -40,7 +48,7 @@ class PointsLayersGuiElements:
         if not point_id in posData.IDs:
             return True
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = (f"""
             Cell ID {point_id} <b>already exists</b>!<br><br>
             Are you sure you want to add this point?
@@ -75,7 +83,7 @@ class PointsLayersGuiElements:
                     continue
 
     def askSaveAddedPoints(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'Do you want to <b>save the annotated points</b>?'
         )
@@ -122,7 +130,7 @@ class PointsLayersGuiElements:
         
         onlyMouseClicks = toolbar == self.promptSegmentPointsLayerToolbar
         posData = self.data[self.pos_i]
-        self.addPointsWin = apps.AddPointsLayerDialog(
+        self.addPointsWin = gui_dialogs_points_layers.AddPointsLayerDialog(
             channelNames=posData.chNames, 
             imagesPath=posData.images_path, 
             hideCentroidsSection=onlyMouseClicks,
@@ -204,7 +212,7 @@ class PointsLayersGuiElements:
         
         toolButton.setToolTip(tableEndName)
         
-        pointIdSpinbox = widgets.SpinBox()
+        pointIdSpinbox = widgets_numeric_inputs.SpinBox()
         pointIdSpinbox.setMinimum(0)
         pointIdSpinbox.setValue(1)
         pointIdSpinbox.label = QLabel(' Left-click ID: ')
@@ -224,7 +232,7 @@ class PointsLayersGuiElements:
         pointIdSpinbox.toolButton = toolButton
         toolButton.pointIdSpinbox = pointIdSpinbox
         
-        rightClickIDSpinbox = widgets.SpinBox()
+        rightClickIDSpinbox = widgets_numeric_inputs.SpinBox()
         pointIdSpinbox.setLinkedValueWidget(rightClickIDSpinbox)
         rightClickIDSpinbox.setMaximumWidth(pointIdSpinbox.sizeHint().width())
         rightClickIDSpinbox.setValue(pointIdSpinbox.value())
@@ -239,7 +247,7 @@ class PointsLayersGuiElements:
         rightClickIDSpinbox.toolButton = toolButton
         toolButton.rightClickIDSpinbox = rightClickIDSpinbox
         
-        saveToolbutton = widgets.SavePointsLayerButton(
+        saveToolbutton = gui_widgets_points_layer_widgets.SavePointsLayerButton(
             tableEndName, parent=self
         )
         saveToolbutton.sigRenameTableAction.connect(
@@ -255,9 +263,9 @@ class PointsLayersGuiElements:
         
         toolButton.actions.append(saveAction)
         
-        vlineAction = toolbar.addWidget(widgets.QVLine())
+        vlineAction = toolbar.addWidget(widgets_basic_widgets.QVLine())
         spacerAction = toolbar.addWidget(
-            widgets.QHWidgetSpacer(width=5)
+            widgets_basic_widgets.QHWidgetSpacer(width=5)
         )
         
         toolButton.actions.append(vlineAction)
@@ -688,7 +696,7 @@ class PointsLayersGuiElements:
                 'Do you want to load the newer recovery version where available?'
             )
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, yesButton, _ = msg.warning(
             self.addPointsWin, 'Newer recovery table found', text,
             buttonsTexts=('Cancel', 'Yes, load newer recovery', 'No, load main table')
@@ -707,7 +715,7 @@ class PointsLayersGuiElements:
             return
         
         if not forceLoading:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 f'The table <code>{tableEndName}.csv</code> already exists!<br><br>'
                 'Do you want to load it?'
@@ -763,7 +771,7 @@ class PointsLayersGuiElements:
         zRadius = int((self.addPointsWin.zHeight-1)/2)
         r,g,b,a = color.getRgb()
 
-        scatterItem = widgets.PointsScatterPlotItem(
+        scatterItem = gui_widgets_points_layer_widgets.PointsScatterPlotItem(
             [], [], ax=self.ax1, symbol=symbol, pxMode=False, size=pointSize,
             brush=pg.mkBrush(color=(r,g,b,100)),
             pen=pg.mkPen(width=2, color=(r,g,b)),
@@ -772,7 +780,7 @@ class PointsLayersGuiElements:
         )
         self.ax1.addItem(scatterItem)
 
-        toolButton = widgets.PointsLayerToolButton(symbol, color, parent=self)
+        toolButton = widgets_toolbars.PointsLayerToolButton(symbol, color, parent=self)
         toolButton.actions = []
         toolButton.setCheckable(True)
         toolButton.setChecked(True)
@@ -1073,7 +1081,7 @@ class PointsLayersGuiElements:
             self.promptSegmentPointsLayerToolbar.isPointsLayerInit = False
 
     def editPointsLayerAppearance(self, button):
-        win = apps.EditPointsLayerAppearanceDialog(parent=self)
+        win = dialogs_image_tools.EditPointsLayerAppearanceDialog(parent=self)
         win.restoreState(button.action.state)
         win.exec_()
         if win.cancel:
@@ -1358,7 +1366,7 @@ class PointsLayersGuiElements:
             (table called <code>{tableEndName}.csv</code>)?
         """
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, _, saveButton = msg.question(
             self, 'Save points layer?', txt,
             buttonsTexts=('Cancel', 'No, do not save', 'Yes, save points')

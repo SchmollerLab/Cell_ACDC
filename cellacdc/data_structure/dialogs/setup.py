@@ -24,9 +24,14 @@ from qtpy.QtWidgets import (
 )
 from cellacdc import exception_handler
 from cellacdc import html_utils
-from cellacdc import myutils
+from cellacdc.myutils import filesystem
 from cellacdc import qutils
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import urls
 from cellacdc.acdc_regex import is_alphanumeric_filename
 from cellacdc import io
@@ -81,7 +86,7 @@ class DataStructureSetupDialogue(dialogs_base.QBaseDialog):
         }
         
         mainLayout = QVBoxLayout()
-        entriesLayout = widgets.FormLayout()
+        entriesLayout = widgets_line_edits.FormLayout()
 
         headerText = ("""
 <b>Data conversion setup</b><br><br>
@@ -92,7 +97,7 @@ class DataStructureSetupDialogue(dialogs_base.QBaseDialog):
         gh_href = html_utils.href_tag('GitHub page', urls.issues_url)
 
         row = 0
-        self.howRawDataStructCombobox = widgets.ComboBox()
+        self.howRawDataStructCombobox = widgets_combo_boxes.ComboBox()
         options = [
             'Single microscopy file with multiple positions',
             'One or more microscopy files, one for each position',
@@ -116,7 +121,7 @@ as a single file containing multiple positions. If fields of view were acquired 
 {html_utils.to_list(listTexts)}
 """)
         
-        self.howRawDataStructFormWidget = widgets.formWidget(
+        self.howRawDataStructFormWidget = widgets_line_edits.formWidget(
             self.howRawDataStructCombobox, 
             labelTextLeft='Raw data structure',
             addInfoButton=True,
@@ -130,7 +135,7 @@ as a single file containing multiple positions. If fields of view were acquired 
         )
 
         row += 1
-        self.sourceFolderPathControl = widgets.FolderPathControl(
+        self.sourceFolderPathControl = widgets_line_edits.FolderPathControl(
             add_browse_recent=True
         )
 
@@ -144,7 +149,7 @@ Select the folder containing the raw microscopy files to convert.<br><br>
 Please make sure this folder contains <b>only microscopy files</b> and no other files or folders.<br><br>{html_utils.to_admonition(noteText)}                            
 """)
         
-        self.sourceFolderPathFormWidget = widgets.formWidget(
+        self.sourceFolderPathFormWidget = widgets_line_edits.formWidget(
             self.sourceFolderPathControl, 
             labelTextLeft='Source folder with raw files',
             addInfoButton=True,
@@ -154,7 +159,7 @@ Please make sure this folder contains <b>only microscopy files</b> and no other 
             labelLeftSuffix=': '
         )
         entriesLayout.addFormWidget(self.sourceFolderPathFormWidget, row=row)
-        myutils.setRetainSizePolicy(self.sourceFolderPathFormWidget.cogButton)
+        qutils.setRetainSizePolicy(self.sourceFolderPathFormWidget.cogButton)
         self.sourceFolderPathFormWidget.cogButton.hide()
         self.sourceFolderPathFormWidget.sigCogButtonClicked.connect(
             self.setupActionFilesSourceFolder
@@ -164,7 +169,7 @@ Please make sure this folder contains <b>only microscopy files</b> and no other 
         )
 
         row += 1
-        self.dstFolderPathControl = widgets.FolderPathControl(
+        self.dstFolderPathControl = widgets_line_edits.FolderPathControl(
             add_browse_recent=True
         )
 
@@ -177,7 +182,7 @@ The folder will contain one folder per position (called `Position_n`, where `n` 
 You can find more information about Cell-ACDC folder structure on our {data_structure_url_href}.                            
 """)
         
-        self.dstFolderPathFormWidget = widgets.formWidget(
+        self.dstFolderPathFormWidget = widgets_line_edits.formWidget(
             self.dstFolderPathControl, 
             labelTextLeft='Destination folder',
             addInfoButton=True,
@@ -187,7 +192,7 @@ You can find more information about Cell-ACDC folder structure on our {data_stru
             labelLeftSuffix=': '
         )
         entriesLayout.addFormWidget(self.dstFolderPathFormWidget, row=row)
-        myutils.setRetainSizePolicy(self.dstFolderPathFormWidget.cogButton)
+        qutils.setRetainSizePolicy(self.dstFolderPathFormWidget.cogButton)
         self.dstFolderPathFormWidget.cogButton.hide()
         self.dstFolderPathFormWidget.sigCogButtonClicked.connect(
             self.setupActionPosFoldersExisting
@@ -206,8 +211,8 @@ full, you can re-start<br>
 the process and deactivate this option.
 """)
         
-        self.loadEntirePosInRamFormWidget = widgets.formWidget(
-            widgets.Toggle(), 
+        self.loadEntirePosInRamFormWidget = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), 
             labelTextLeft='Load entire field of view in RAM at once',
             stretchWidget=False,
             valueGetterName='isChecked',
@@ -239,8 +244,8 @@ will be created in the respective Position folders.<br>
 {important_admon}<br>
 """)
         
-        self.useSymbolicLinksFormWidget = widgets.formWidget(
-            widgets.Toggle(), 
+        self.useSymbolicLinksFormWidget = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), 
             labelTextLeft='Use symbolic links',
             stretchWidget=False,
             valueGetterName='isChecked',
@@ -258,8 +263,8 @@ If you activate this option, before the conversion process, Cell-ACDC will autom
 into a folder called <code>raw_microscopy_files</code> inside the destination folder.
 """)
         
-        self.moveRawMicroscopyFilesFormWidget = widgets.formWidget(
-            widgets.Toggle(), 
+        self.moveRawMicroscopyFilesFormWidget = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), 
             labelTextLeft='Move raw microscopy files',
             stretchWidget=False,
             valueGetterName='isChecked',
@@ -269,7 +274,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         )
         entriesLayout.addFormWidget(self.moveRawMicroscopyFilesFormWidget, row=row)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -301,7 +306,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             self.warnSourceFolderNotSetupCorrectly()
             return
         
-        ls = natsorted(myutils.listdir(srcFolderPath))
+        ls = natsorted(filesystem.listdir(srcFolderPath))
         files = [
             filename for filename in ls
             if os.path.isfile(os.path.join(srcFolderPath, filename))
@@ -312,7 +317,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             return
         
         self.sourceFolderPathControl.setInvalid(False)
-        myutils.addToRecentPaths(srcFolderPath)
+        filesystem.addToRecentPaths(srcFolderPath)
 
         all_ext = [
             os.path.splitext(filename)[1] for filename in ls
@@ -372,7 +377,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             if is_alphanumeric_filename(file, allowed=allowed):
                 continue
 
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 f"""
                 The filename <code>{file}</code> contains <b>invalid 
@@ -384,10 +389,10 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
                 Thank you for your patience!
                 """
             )
-            renameWithUnderscoresButton = widgets.editPushButton(
+            renameWithUnderscoresButton = widgets_push_buttons.editPushButton(
                 'Rename file (replace invalid characters with "_")'
             )
-            renameWithDashesButton = widgets.editPushButton(
+            renameWithDashesButton = widgets_push_buttons.editPushButton(
                 'Rename file (replace invalid characters with "-")'
             )
             msg.warning(
@@ -450,7 +455,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             Not supported files:
         """)
         detailsText = '<br>'.join(not_supported_files)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'File not supported', txt,
             detailsText=detailsText
@@ -468,7 +473,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         else:
             most_common_ext_msg = most_common_ext
         
-        msg = widgets.myMessageBox(showCentered=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False)
         txt = html_utils.paragraph(f"""
             The following folder<br>
 
@@ -510,12 +515,12 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             <i>NOTE: Only the files with the same basename and position number
             as the raw files will be moved or copied.</i>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
-        leaveButton = widgets.currentPushButton('Leave them where they are')
-        moveButton = widgets.movePushButton(
+        msg = widgets_message_box.myMessageBox(wrapText=False)
+        leaveButton = widgets_push_buttons.currentPushButton('Leave them where they are')
+        moveButton = widgets_push_buttons.movePushButton(
             'Attempt MOVING to their Position folder'
         )
-        copyButton = widgets.copyPushButton(
+        copyButton = widgets_push_buttons.copyPushButton(
             'Attempt COPYING to their Position folder'
         )
         msg.question(
@@ -554,7 +559,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             return files
 
     def warnSelectedPathEmpty(self, srcFolderPath):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             f"""
             The selected folder (see below) is either <b>empty</b> 
@@ -579,7 +584,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         pass
 
     def dstFolderPathSelected(self, dstFolderPath):
-        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
+        pos_foldernames = filesystem.get_pos_foldernames(dstFolderPath)
         if not pos_foldernames:
             self.actionsPosFoldersExisting = {
                 'overwrite': False,
@@ -601,8 +606,8 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
 
     def setupActionPosFoldersExisting(self, *args):
         dstFolderPath = self.dstFolderPathControl.path()
-        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
-        msg = widgets.myMessageBox(wrapText=False)
+        pos_foldernames = filesystem.get_pos_foldernames(dstFolderPath)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'The selected destination folder <b>already contains Position folders</b>.<br><br>'
             'Do you want to <b>overwrite</b> all of its content, '
@@ -615,7 +620,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
                'Cancel', 
                'Overwrite', 
                'Add image files to existing Positions', 
-               widgets.newFilePushButton('Create new Position folders'),
+               widgets_push_buttons.newFilePushButton('Create new Position folders'),
             ),
            path_to_browse=dstFolderPath
         )
@@ -649,7 +654,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             Thank you for your patience!
         """)
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Invalid source folder', txt)
     
     def warnDstFolderPathNotSelected(self):
@@ -659,7 +664,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             Thank you for your patience!
         """)
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Invalid destination folder', txt)
 
     def ok_cb(self):
@@ -731,38 +736,38 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
 
         pathsForm = QFormLayout()
 
-        self.sourceFolderPathControl = widgets.FolderPathControl(
+        self.sourceFolderPathControl = widgets_line_edits.FolderPathControl(
             add_browse_recent=True,
             add_open_in_file_manager=True
         )
         pathsForm.addRow('Source folder:', self.sourceFolderPathControl)
 
-        self.dstFolderPathControl = widgets.FolderPathControl(
+        self.dstFolderPathControl = widgets_line_edits.FolderPathControl(
             add_browse_recent=True,
             add_open_in_file_manager=True
         )
         pathsForm.addRow('Destination folder:', self.dstFolderPathControl)
 
-        self.segmFolderPathControl = widgets.FolderPathControl(
+        self.segmFolderPathControl = widgets_line_edits.FolderPathControl(
             add_browse_recent=True,
             add_open_in_file_manager=True
         )
         pathsForm.addRow('Segmentation mask folder (optional):',
                          self.segmFolderPathControl)
 
-        self.baseNameLE = widgets.alphaNumericLineEdit()
+        self.baseNameLE = widgets_line_edits.alphaNumericLineEdit()
         self.baseNameLE.setPlaceholderText('Optional')
         pathsForm.addRow('Basename (optional):', self.baseNameLE)
 
         pathsForm.addItem(QSpacerItem(20, 20))
 
-        self.positionNameLE = widgets.ReadOnlyLineEdit()
+        self.positionNameLE = ReadOnlyLineEdit()
         self.positionNameLE.setPlaceholderText(
             'After set up, here you can preview first position identifier'
         )
         pathsForm.addRow('Position identifier preview:', self.positionNameLE)
 
-        self.shapeLE = widgets.ReadOnlyLineEdit()
+        self.shapeLE = ReadOnlyLineEdit()
         self.shapeLE.setPlaceholderText(
             'After set up, here you can see the shape of the first TIFF file'
         )
@@ -796,23 +801,23 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
             self.dstFolderPathSelected
         )
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
-        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
+        loadRecipeButton = widgets_push_buttons.OpenFilePushButton('Load saved recipe...')
         self.loadRecipeButton = loadRecipeButton
         buttonsLayout.insertWidget(3, loadRecipeButton)
         
-        saveRecipeButton = widgets.savePushButton('Save current recipe...')
+        saveRecipeButton = widgets_push_buttons.savePushButton('Save current recipe...')
         self.saveRecipeButton = saveRecipeButton
         buttonsLayout.insertWidget(3, saveRecipeButton)
         
-        loadLastParametersButton = widgets.reloadPushButton(
+        loadLastParametersButton = widgets_push_buttons.reloadPushButton(
             'Load last parameters'
         )
         self.loadLastParametersButton = loadLastParametersButton
         buttonsLayout.insertWidget(3, loadLastParametersButton)
 
-        viewFirstImageButton = widgets.viewPushButton('View first image...')
+        viewFirstImageButton = widgets_push_buttons.viewPushButton('View first image...')
         buttonsLayout.insertWidget(3, viewFirstImageButton)
 
         loadLastParametersButton.clicked.connect(self.loadLastParameters)
@@ -938,7 +943,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
         groupLayout.addWidget(QLabel('μm'), row, 2)
 
         row += 1
-        self.TimeIncrement_DSB = widgets.FloatLineEdit(
+        self.TimeIncrement_DSB = widgets_line_edits.FloatLineEdit(
             allowNegative=False, warningValues={1.0}
         )
         self.TimeIncrement_DSB.setValue(1.0)
@@ -1102,7 +1107,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
 
             rowLayout.addWidget(QLabel(f'{index + 1}.'))
 
-            nameLE = widgets.alphaNumericLineEdit()
+            nameLE = widgets_line_edits.alphaNumericLineEdit()
             nameLE.setPlaceholderText(f'Channel {index + 1} name')
             if index < len(previousValues) and previousValues[index][0]:
                 nameLE.setText(previousValues[index][0])
@@ -1131,7 +1136,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
             return
 
         tiffFiles = [
-            name for name in myutils.listdir(folder)
+            name for name in filesystem.listdir(folder)
             if os.path.isfile(os.path.join(folder, name))
             and name.lower().endswith(('.tif', '.tiff'))
         ]
@@ -1206,7 +1211,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
         self.positionNameLE.setToolTip(f'Preview from {filename}')
 
     def _warn(self, message):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self,
             'Incomplete setup',
@@ -1220,7 +1225,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
             Thank you for your patience!
         """)
 
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Invalid source folder', txt)
 
     def ok_cb(self):
@@ -1263,13 +1268,13 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
         self.selectedOptions['files'] = None
         self.shapeLE.setText('')
 
-        ls = natsorted(myutils.listdir(srcFolderPath))
+        ls = natsorted(filesystem.listdir(srcFolderPath))
         files = [
             filename for filename in ls
             if os.path.isfile(os.path.join(srcFolderPath, filename))
         ]
         if not files:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 'The following folder<br><br>'
                 f'<code>{srcFolderPath}</code><br><br>'
@@ -1289,7 +1294,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
         is_ext_unique = len(unique_ext) == 1
         most_common_ext, _ = counter.most_common(1)[0]
         if not is_ext_unique:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 'The following folder<br><br>'
                 f'<code>{srcFolderPath}</code><br><br>'
@@ -1314,7 +1319,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
 
         self.selectedOptions['files'] = files
 
-        myutils.addToRecentPaths(srcFolderPath)
+        filesystem.addToRecentPaths(srcFolderPath)
 
         self.updatePositionNamePreview()
         self.updateShapePreview()
@@ -1346,12 +1351,12 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
         self.selectedOptions['overwrite_destination'] = False
         self.selectedOptions['create_new_position_destination'] = False
 
-        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
+        pos_foldernames = filesystem.get_pos_foldernames(dstFolderPath)
 
         if not pos_foldernames:
             return
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'The selected destination folder <b>already contains Position folders</b>.<br><br>'
             'Do you want to <b>overwrite</b> all of its content, '
@@ -1362,7 +1367,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
            buttonsTexts=(
                'Cancel', 
                'Overwrite', 
-               widgets.newFilePushButton('Create new Position folders'),
+               widgets_push_buttons.newFilePushButton('Create new Position folders'),
             ),
            path_to_browse=dstFolderPath
         )
@@ -1408,7 +1413,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
     
     def saveRecipe(self):
         os.makedirs(restruct_files_recipes_path, exist_ok=True)
-        folder_content = myutils.listdir(restruct_files_recipes_path)
+        folder_content = filesystem.listdir(restruct_files_recipes_path)
         num_recipes = len(folder_content)
         default_text = f'{num_recipes + 1}'
 
@@ -1442,7 +1447,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
             'You can save recipes by clicking on the '
             '<code>Save current recipe...</code> button.'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self,
             'No recipes available',
@@ -1456,7 +1461,7 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
 
         availableRecipes = []
         displayNameToFilenameMapper = {}
-        for file in myutils.listdir(restruct_files_recipes_path):
+        for file in filesystem.listdir(restruct_files_recipes_path):
             if not file.startswith('datastruct_restructure_recipe'):
                 continue
 
@@ -1513,11 +1518,11 @@ class ReStructTiffDataStructureSetupDialogue(dialogs_base.QBaseDialog):
             self.warnNoRecipesAvailable()
             return
 
-        if not myutils.listdir(restruct_files_recipes_path):
+        if not filesystem.listdir(restruct_files_recipes_path):
             self.warnNoRecipesAvailable()
             return
         
-        for file in myutils.listdir(restruct_files_recipes_path):
+        for file in filesystem.listdir(restruct_files_recipes_path):
             if file.startswith('_last_setup'):
                 break
         else:

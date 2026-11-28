@@ -23,8 +23,10 @@ from qtpy.QtWidgets import QAction, QGraphicsSceneMouseEvent
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from cellacdc import exception_handler
-from cellacdc import apps
-from cellacdc import core, myutils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from ..dialogs import editing as gui_dialogs_editing
+from cellacdc import core
+from cellacdc.myutils import image_utils
 from cellacdc import printl
 from cellacdc import is_mac
 from cellacdc import core_split_IDs
@@ -211,7 +213,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                delID_prompt = apps.QLineEditDialog(
+                delID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.<br>'
                         'Enter here ID(s) that you want to delete<br><br>'
@@ -279,7 +281,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                     )
-                sepID_prompt = apps.QLineEditDialog(
+                sepID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to split',
@@ -414,7 +416,7 @@ class MouseEventsGuiElements:
                 manualSep = getattr(self, 'manualSeparateGui', None)
                 img_lut_df = self.imgGrad.saveState(self.df_settings)
                 if manualSep is None:
-                    manualSep = apps.manualSeparateGui(
+                    manualSep = gui_dialogs_editing.manualSeparateGui(
                         lab, ID, img,
                         fontSize=self.fontSize,
                         IDcolor=self.lut[ID],
@@ -497,7 +499,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                clickedBkgrID = apps.QLineEditDialog(
+                clickedBkgrID = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here the ID that you want to '
@@ -547,7 +549,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                mergeID_prompt = apps.QLineEditDialog(
+                mergeID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here the ID that you want to '
@@ -605,7 +607,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                editID_prompt = apps.QLineEditDialog(
+                editID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                         'Enter here ID that you want to replace with a new one',
@@ -633,7 +635,7 @@ class MouseEventsGuiElements:
                 and posData.frame_i == self.navigateScrollBar.maximum() - 1
                 and posData.frame_i < posData.SizeT - 1
             )
-            editID = apps.EditIDDialog(
+            editID = gui_dialogs_editing.EditIDDialog(
                 ID, posData.IDs, 
                 doNotShowAgain=self.doNotAskAgainExistingID,
                 parent=self, 
@@ -685,7 +687,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                keepID_win = apps.QLineEditDialog(
+                keepID_win = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                         'Enter ID that you want to keep',
@@ -717,7 +719,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                binID_prompt = apps.QLineEditDialog(
+                binID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to remove from the analysis',
@@ -798,7 +800,7 @@ class MouseEventsGuiElements:
                 nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab,force_z=False), y, x
                 )
-                ripID_prompt = apps.QLineEditDialog(
+                ripID_prompt = dialogs_generic.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as dead',
@@ -892,7 +894,7 @@ class MouseEventsGuiElements:
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         # Eraser dragging mouse --> keep erasing
@@ -976,7 +978,7 @@ class MouseEventsGuiElements:
             return
             
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             self.isMouseDragImg2 = False
             self.updateAllImages()
             return

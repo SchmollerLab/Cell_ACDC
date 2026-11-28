@@ -52,7 +52,8 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
         from qtpy.QtWidgets import QApplication
 
         import cellacdc
-        from cellacdc import segm
+        from cellacdc.segmentation_module import main_window as segm_window
+        from qtpy.QtCore import QThread
 
         app = QApplication([])
 
@@ -84,7 +85,7 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
         release_worker = threading.Event()
 
         thread_refs = []
-        class TestQThread(segm.QThread):
+        class TestQThread(QThread):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 # Weak reference: a strong one would hide the bug
@@ -105,7 +106,7 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
                         Qt.ConnectionType.DirectConnection
                     )
 
-        segm.QThread = TestQThread
+        segm_window.QThread = TestQThread
 
         class SlowFinishedSignal:
             def __init__(self, signal):
@@ -141,10 +142,10 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
                 raise RuntimeError('simulated segmentation error')
             processed.append(worker.img_path)
 
-        segm.SegmWorker.init_kernel = init_kernel
-        segm.SegmWorker.run_kernels = run_kernels
+        segm_window.SegmWorker.init_kernel = init_kernel
+        segm_window.SegmWorker.run_kernels = run_kernels
 
-        win = segm.segmWin()
+        win = segm_window.segmWin()
         win.user_ch_file_paths = [f'pos{i}' for i in range(4)]
         win.stopFrames = [1]*4
         if mode == 'timeout':
@@ -164,9 +165,9 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
             assert processed == [], processed
 
         if mode in ('orphan', 'timeout'):
-            assert len(segm.SEGM_ORPHAN_THREADS) == 1
+            assert len(segm_window.SEGM_ORPHAN_THREADS) == 1
             release_worker.set()
-            thread, worker = segm.SEGM_ORPHAN_THREADS.pop()
+            thread, worker = segm_window.SEGM_ORPHAN_THREADS.pop()
             assert thread.wait(10000)
             del thread, worker
 
@@ -188,7 +189,7 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
             assert processed == ['pos0', 'pos1', 'pos2', 'pos3'], processed
             assert not errors, errors
 
-        assert not segm.SEGM_ORPHAN_THREADS, segm.SEGM_ORPHAN_THREADS
+        assert not segm_window.SEGM_ORPHAN_THREADS, segm_window.SEGM_ORPHAN_THREADS
         alive_threads = [ref() for ref in thread_refs if ref() is not None]
         assert all(thread.isFinished() for thread in alive_threads)
         print('Segmentation worker threads released safely', flush=True)
@@ -224,7 +225,7 @@ def test_segm_run_ended_reports_only_completed_runs_as_finished(
     "Segmentation process finished!".
     """
     pytest.importorskip("qtpy")
-    from cellacdc import segm
+    from cellacdc.segmentation_module import main_window as segm_window
 
     calls = []
 
@@ -244,14 +245,14 @@ def test_segm_run_ended_reports_only_completed_runs_as_finished(
         def close(self):
             calls.append('close')
 
-    segm.segmWin.segmRunEnded(FakeSegmWin(), status, 1.0)
+    segm_window.segmWin.segmRunEnded(FakeSegmWin(), status, 1.0)
     assert calls == expected_calls
 
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'type'])
 
 def test_parse_model_params_keeps_explicit_none():
-    from cellacdc import myutils
+    from cellacdc.myutils import segm_models
 
     argspecs = [
         ArgSpec('model_type', str),
@@ -260,7 +261,7 @@ def test_parse_model_params_keeps_explicit_none():
         ArgSpec('augment', bool),
         ArgSpec('diameter', float),
     ]
-    parsed = myutils.parse_model_params(argspecs, {
+    parsed = segm_models.parse_model_params(argspecs, {
         'model_type': None, 'model_path': 'model.pt', 'batch_size': '36',
         'augment': None, 'unknown': 'value',
     })
@@ -279,7 +280,8 @@ def test_workflow_config_roundtrip_keeps_model_type_none(tmp_path):
     `model_path`", because `model_type = None` was dropped and the model
     default (`model_type='cpsam'`) was used instead.
     """
-    from cellacdc import load, myutils
+    from cellacdc import load
+    from cellacdc.myutils import segm_models
 
     images_path = tmp_path / 'Position_1' / 'Images'
     images_path.mkdir(parents=True)
@@ -301,7 +303,7 @@ def test_workflow_config_roundtrip_keeps_model_type_none(tmp_path):
         ArgSpec('device', str),
         ArgSpec('batch_size', int),
     ]
-    parsed = myutils.parse_model_params(
+    parsed = segm_models.parse_model_params(
         argspecs, workflow_params['init_segmentation_model_params']
     )
     assert parsed == init_kwargs

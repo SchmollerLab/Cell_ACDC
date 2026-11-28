@@ -9,12 +9,17 @@ from qtpy.QtWidgets import (
     QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QVBoxLayout
 )
-from cellacdc import apps, background_values, html_utils
-from cellacdc import widgets
+from cellacdc import background_values, html_utils
+from cellacdc.shared.dialogs import base as dialogs_base
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from . import predictor_editors as viewer_dialogs_predictor_editors
 
 
-class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
+class ChannelPlaceholderMappingDialog(dialogs_base.QBaseDialog):
     """Map each channel placeholder of a premade configuration to a channel
     and enter the values of its input placeholders.
 
@@ -102,7 +107,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
                 lineEdit.setToolTip(f'Type: {spec["type"]}')
                 inputsGrid.addWidget(lineEdit, row, 1)
                 if spec.get('info'):
-                    infoButton = widgets.infoPushButton(
+                    infoButton = widgets_push_buttons.infoPushButton(
                         info_text=html_utils.paragraph(spec['info']),
                         info_title=name
                     )
@@ -113,7 +118,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
             if self.backgroundValues is not None:
                 layout.addLayout(self._backgroundValuesLayout())
         layout.addSpacing(10)
-        buttons = widgets.CancelOkButtonsLayout()
+        buttons = widgets_push_buttons.CancelOkButtonsLayout()
         buttons.okButton.clicked.connect(self.ok_cb)
         buttons.cancelButton.clicked.connect(self.close)
         layout.addLayout(buttons)
@@ -168,7 +173,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         layout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
         if self.computeBackgroundValues is not None:
-            computeButton = widgets.calcPushButton(
+            computeButton = widgets_push_buttons.calcPushButton(
                 'Calculate background values...'
             )
             computeButton.setToolTip(
@@ -182,7 +187,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
             computeButton.clicked.connect(self.computeBackgroundValuesClicked)
             buttonsLayout.addWidget(computeButton)
             self.computeBackgroundButton = computeButton
-        loadButton = widgets.LoadPushButton(
+        loadButton = widgets_push_buttons.LoadPushButton(
             'Load calculated background values...'
         )
         loadButton.setToolTip(
@@ -235,7 +240,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         ))
 
     def _warnBackgroundValues(self, title, text):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, title, html_utils.paragraph(text))
 
     def computeBackgroundValuesClicked(self):
@@ -281,7 +286,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         """Ask which row (channel) of the table to use for `placeholder`,
         mapped to `channel` that the table does not have. Returns the
         channel or None to skip its values."""
-        win = widgets.QDialogListbox(
+        win = widgets_item_views.QDialogListbox(
             'Select channel of the table',
             f'The table has no values for the channel "{channel}" '
             f'({placeholder}).\n'
@@ -458,7 +463,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         try:
             inputValues = self.currentValues()
         except ValueError as err:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Invalid value', html_utils.paragraph(str(err))
             )
@@ -467,7 +472,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         values = list(mapping.values())
         duplicated = sorted({ch for ch in values if values.count(ch) > 1})
         if duplicated:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Channel used twice',
                 html_utils.paragraph(
@@ -481,7 +486,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
             try:
                 self.validate(mapping, inputValues)
             except ValueError as err:
-                msg = widgets.myMessageBox(wrapText=False)
+                msg = widgets_message_box.myMessageBox(wrapText=False)
                 msg.warning(
                     self, 'Invalid selection',
                     html_utils.paragraph(html.escape(str(err)))

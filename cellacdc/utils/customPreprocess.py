@@ -2,7 +2,13 @@ import os
 
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils, load, printl
+from .. import html_utils, load, printl
+from cellacdc.myutils import filesystem, image_utils
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    preprocessing as dialogs_preprocessing,
+)
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 from typing import List, Dict, Any, Iterable
@@ -17,7 +23,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -25,7 +31,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.CustomPreprocessWorkerUtil(self)
+        self.worker = CustomPreprocessWorkerUtil(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigAskSetupRecipe.connect(self.askSetupRecipe)
         self.worker.sigAborted.connect(self.workerAborted)
@@ -37,7 +43,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
             channel_names.update(chNames)
             if df_metadata is not None:
                 continue
@@ -45,7 +51,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
             self.worker.basename = basename
             df_metadata = load.load_metadata_df(images_path)
         
-        win = apps.PreProcessRecipeDialogUtil(
+        win = dialogs_preprocessing.PreProcessRecipeDialogUtil(
             channel_names,
             df_metadata=df_metadata,
             parent=self
@@ -73,7 +79,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
             the name will be the same as the original file.
             """
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             ext='.tif',
             hintText='Insert a name for the <b>preprocessed image</b> file:',
@@ -100,7 +106,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
         else:
             txt = 'Custom pre-processing completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -154,7 +160,7 @@ class CustomPreprocessWorkerUtil(utils_base.BaseWorkerUtil):
             
             keep_input_data_type = recipe[0].get('keep_input_data_type', True)
             if keep_input_data_type:
-                preprocessed_ch_data = myutils.convert_to_dtype(
+                preprocessed_ch_data = image_utils.convert_to_dtype(
                     preprocessed_ch_data, ch_image_data.dtype
                 )
 

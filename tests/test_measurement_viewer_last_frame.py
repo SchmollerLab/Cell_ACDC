@@ -20,10 +20,20 @@ import pytest
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import apps, measurements_viewer
 from cellacdc.measurements_viewer import (
-    LAST_ANALYZED_CCA, LAST_ANALYZED_TRACKED, MeasurementsViewerWin,
-    analysis_last_frame, last_analyzed_frame, update_last_analyzed_frame,
+    position_data as viewer_position_data,
+    viewer_utils,
+)
+from cellacdc.measurements_viewer.dialogs import phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs
+from cellacdc.shared.dialogs import combine_measurements as dialogs_combine_measurements
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
+from cellacdc.measurements_viewer.position_data import analysis_last_frame
+from cellacdc.measurements_viewer.viewer_utils import (
+    LAST_ANALYZED_CCA,
+    LAST_ANALYZED_TRACKED,
+    last_analyzed_frame,
+    update_last_analyzed_frame,
 )
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX, TimepointIdentifier
 
@@ -210,21 +220,21 @@ def test_update_and_analysis_last_frame():
 def test_mask_frames_and_blank_unanalyzed_outputs():
     table = cca_table(index=True)
     table['out'] = 1.
-    assert measurements_viewer.mask_frames(table, None) is table
-    masked = measurements_viewer.mask_frames(table, LAST)
+    assert viewer_position_data.mask_frames(table, None) is table
+    masked = viewer_position_data.mask_frames(table, LAST)
     assert masked.index.get_level_values('frame_i').tolist() == [0, 1, 2]
-    flat = measurements_viewer.mask_frames(table.reset_index(), 1)
+    flat = viewer_position_data.mask_frames(table.reset_index(), 1)
     assert flat['frame_i'].tolist() == [0, 1]
-    changed = measurements_viewer.blank_unanalyzed_outputs(
+    changed = viewer_utils.blank_unanalyzed_outputs(
         table, ['out', 'missing', 'area'], LAST
     )
     assert changed == ['out', 'area']
     assert_nan_after(table['out'].tolist())
     # Already blank: nothing changes
-    assert measurements_viewer.blank_unanalyzed_outputs(
+    assert viewer_utils.blank_unanalyzed_outputs(
         table, ['out'], LAST
     ) == []
-    assert measurements_viewer.blank_unanalyzed_outputs(
+    assert viewer_utils.blank_unanalyzed_outputs(
         table, ['out'], None
     ) == []
 
@@ -232,7 +242,7 @@ def test_mask_frames_and_blank_unanalyzed_outputs():
 def test_evaluate_masked_cell_equation_uses_analyzed_frames():
     table = cca_table(index=True)
     table['signal'] = np.arange(SIZE_T) * 10.
-    evaluate = measurements_viewer.evaluate_masked_cell_equation
+    evaluate = viewer_utils.evaluate_masked_cell_equation
     unmasked = evaluate(table, 'MAX(signal)', SizeT=SIZE_T)
     assert list(unmasked) == [50.] * SIZE_T
     masked = evaluate(table, 'MAX(signal)', SizeT=SIZE_T, last_frame=LAST)
@@ -616,7 +626,7 @@ def test_phase_translator_dialog_options_use_analyzed_frames(
             pass
 
     monkeypatch.setattr(
-        measurements_viewer.apps_measurements_viewer,
+        viewer_dialogs_phase_translator_dialogs,
         'PhaseTranslatorDialog', FakeDialog
     )
     viewer.configurePhaseTranslator()
@@ -643,7 +653,7 @@ def accept_formula(monkeypatch, formula, name):
         dialog.test_cb()
         dialog.ok_cb()
 
-    monkeypatch.setattr(apps.CombineMetricsEquationDialog, 'exec_', accept)
+    monkeypatch.setattr(dialogs_combine_measurements.CombineMetricsEquationDialog, 'exec_', accept)
     return dialogs
 
 
@@ -1144,7 +1154,7 @@ def test_ask_mask_unanalyzed_frames_choices(
             return buttonsTexts
 
     monkeypatch.setattr(
-        measurements_viewer.widgets, 'myMessageBox', FakeMessageBox
+        widgets_message_box, 'myMessageBox', FakeMessageBox
     )
     partial = [partial_position(pos) for pos in range(1, 8)]
     data = [*partial, partial_position(8, last=9)]
@@ -1221,7 +1231,7 @@ def test_reload_keeps_step_outputs_empty_on_newly_analyzed_frames(
     posData = viewer.posData()
     accept_formula(monkeypatch, 'signal * 2', 'double')
     viewer.combineMeasurements()
-    key = measurements_viewer.position_key(posData)
+    key = viewer_utils.position_key(posData)
     assert viewer.measurementStepsLastFrames == {key: LAST}
     assert viewer.configuration()['measurement_steps_last_frames'] == {
         key: LAST
@@ -1254,7 +1264,7 @@ def test_open_folder_keeps_step_outputs_empty_after_recorded_frame(
     path = load(viewer, tmp_path, mask=True)
     accept_formula(monkeypatch, 'signal * 2', 'double')
     viewer.combineMeasurements()
-    key = measurements_viewer.position_key(viewer.posData())
+    key = viewer_utils.position_key(viewer.posData())
     assert viewer.measurementStepsLastFrames == {key: LAST}
     set_column(path, 'double', {0: 0., 1: 20., 2: 40., 3: 0., 4: 0., 5: 0.})
     rewrite_cca_frames(path, range(5))
@@ -1406,7 +1416,7 @@ def test_masked_bool_combined_measurement_stays_numeric(
     ).columns
     table = frames_table()
     table['flag'] = table['signal'] > 5
-    measurements_viewer.blank_unanalyzed_outputs(table, ['flag'], LAST)
+    viewer_utils.blank_unanalyzed_outputs(table, ['flag'], LAST)
     assert pd.api.types.is_float_dtype(table['flag'])
 
 
@@ -1423,7 +1433,7 @@ def test_combine_refused_when_option_toggled_meanwhile(
         viewer.setMaskUnanalyzedFrames(False)
         dialog.ok_cb()
 
-    monkeypatch.setattr(apps.CombineMetricsEquationDialog, 'exec_', accept)
+    monkeypatch.setattr(dialogs_combine_measurements.CombineMetricsEquationDialog, 'exec_', accept)
     viewer.combineMeasurements()
     viewer.measurementProcessingWarning.assert_called_once()
     assert 'peak' not in viewer.acdc_df.columns

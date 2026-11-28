@@ -12,8 +12,17 @@ from qtpy.QtWidgets import (
     QAction, QLabel, QMenu, QToolButton, QActionGroup, QDockWidget
 )
 from cellacdc import html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import filesystem, segm_models
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    line_edits as widgets_line_edits,
+    search_widgets as widgets_search_widgets,
+    toolbars as widgets_toolbars,
+)
+from ..widgets import (
+    edit_toolbars as gui_widgets_edit_toolbars,
+    main_window_items as gui_widgets_main_window_items,
+)
 from cellacdc import rst_utils
 
 
@@ -266,7 +275,7 @@ class MenusActionsGuiElements:
         helpMenu.addAction(self.UserManualAction)
         self.helpMenu = helpMenu
 
-        self.searchWidget = widgets.ButtonSearchWidget(self)
+        self.searchWidget = widgets_search_widgets.ButtonSearchWidget(self)
         self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
         menuBar.setCornerWidget(self.searchWidget)
         self.focusOnSearchAction = QAction("Search for ID or functionality", self)
@@ -289,7 +298,7 @@ class MenusActionsGuiElements:
         self.statusbar = self.statusBar()
         # Permanent widget. Its text is updated at every mouse move -->
         # fixed size (growing only) to avoid re-layouting the main window
-        self.wcLabel = widgets.AutoGrowFixedSizeLabel('')
+        self.wcLabel = widgets_basic_widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
 
         # self.toggleTerminalButton = widgets.ToggleTerminalButton()
@@ -302,7 +311,7 @@ class MenusActionsGuiElements:
         self.statusbar.addWidget(self.statusBarLabel)
 
     def gui_createTerminalWidget(self):
-        self.terminal = widgets.QLog(logger=self.logger)
+        self.terminal = gui_widgets_main_window_items.QLog(logger=self.logger)
         self.terminal.connect()
         self.terminalDock = QDockWidget('Log', self)
 
@@ -321,7 +330,7 @@ class MenusActionsGuiElements:
 
     def gui_createActions(self):
         # File actions
-        self.segmNdimIndicator = widgets.ToolButtonTextIcon(text='')
+        self.segmNdimIndicator = gui_widgets_edit_toolbars.ToolButtonTextIcon(text='')
         self.segmNdimIndicator.setCheckable(True)
         self.segmNdimIndicator.setChecked(True)
         # self.segmNdimIndicator.setDisabled(True)        
@@ -419,13 +428,13 @@ class MenusActionsGuiElements:
         self.skipToNewIdAction = QAction(self)
         self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
         self.skipToNewIdAction.setShortcut(
-            widgets.KeySequenceFromText(Qt.Key_PageUp)
+            widgets_line_edits.KeySequenceFromText(Qt.Key_PageUp)
         )
 
         self.skipToNewIdAction.setDisabled(True)
 
         # Edit actions
-        models = myutils.get_list_of_models()
+        models = segm_models.get_list_of_models()
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -498,14 +507,14 @@ class MenusActionsGuiElements:
         self.trackWithYeazAction.setCheckable(True)
         self.trackingAlgosGroup.addAction(self.trackWithYeazAction)
 
-        rt_trackers = myutils.get_list_of_real_time_trackers()
+        rt_trackers = segm_models.get_list_of_real_time_trackers()
         for rt_tracker in rt_trackers:
             rtTrackerAction = QAction(rt_tracker, self)
             rtTrackerAction.setCheckable(True)
             self.trackingAlgosGroup.addAction(rtTrackerAction)
 
         self.trackWithAcdcAction.setChecked(True)
-        aliases = myutils.aliases_real_time_trackers()
+        aliases = segm_models.aliases_real_time_trackers()
 
         if 'tracking_algorithm' in self.df_settings.index:
             trackingAlgo = self.df_settings.at['tracking_algorithm', 'value']
@@ -556,7 +565,7 @@ class MenusActionsGuiElements:
         )
         self.gui_updateSwitchColorSchemeActionText()
         
-        self.scalingLabelsAction = widgets.CheckableAction(
+        self.scalingLabelsAction = widgets_toolbars.CheckableAction(
             'Fix text annotations to screen size'
         )
         scalingLabelsTooltip = html_utils.paragraph(
@@ -569,7 +578,7 @@ class MenusActionsGuiElements:
         checked = self._get_setting_value('scalingLabels', False, cast=bool)
         self.scalingLabelsAction.setChecked(checked)
         
-        self.highLowResAction = widgets.CheckableAction(
+        self.highLowResAction = widgets_toolbars.CheckableAction(
             'High resolution text annotations'
         )
         highLowResTooltip = (
@@ -795,7 +804,7 @@ class MenusActionsGuiElements:
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
-        self.UserManualAction.triggered.connect(myutils.browse_docs)
+        self.UserManualAction.triggered.connect(filesystem.browse_docs)
         self.openLogFileAction.triggered.connect(self.openLogFile)
         self.showLogFilesAction.triggered.connect(self.showLogFiles)
         self.aboutAction.triggered.connect(self.showAbout)

@@ -9,7 +9,8 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 from qtpy.QtCore import Signal, QObject
-from cellacdc import load, myutils, io
+from cellacdc import load, io
+from cellacdc.myutils import image_utils
 from cellacdc import core
 from cellacdc.shared.workers import base as workers_base
 
@@ -130,7 +131,7 @@ class AlignDataWorker(QObject):
 
                 self.logger.log(f'Storing temporary file: {tif}')
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
-                myutils.to_tiff(temp_tif, aligned_frames)
+                image_utils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_tif, tif)
                 self.posData.img_data = load.imread(temp_tif)
 
@@ -184,7 +185,7 @@ class AlignDataWorker(QObject):
 
                 self.logger.log(f'Saving: {tif}')
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
-                myutils.to_tiff(temp_tif, aligned_frames)
+                image_utils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_tif, tif)
 
         if not aligned:

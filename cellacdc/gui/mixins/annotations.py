@@ -35,7 +35,12 @@ from qtpy.QtWidgets import QWidget, QGridLayout
 
 import pyqtgraph as pg
 
-from cellacdc import widgets, html_utils, annotate, core, colors, apps
+from cellacdc import html_utils, annotate, core, colors
+from cellacdc.shared.widgets import basic_widgets as widgets_basic_widgets
+from . import (
+    dialogs as gui_mixin_dialogs,
+    widgets as gui_mixin_widgets,
+)
 
 # (row, col, rowSpan, colSpan, slot)
 CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER = {
@@ -97,9 +102,9 @@ class AnnotationsGuiElements:
 
             if name.startswith('Separator'):
                 checkbox = None
-                widget = widgets.QVLine()
+                widget = widgets_basic_widgets.QVLine()
             else:
-                checkbox = widgets.CheckBox(
+                checkbox = gui_mixin_widgets.CheckBox(
                     name, keyPressCallback=self.resetFocus
                 )
                 widget = checkbox
@@ -1281,7 +1286,7 @@ class AnnotationsGuiElements:
 
     def setAnnotateObjTrackSettings(self, *args):
         self.initannotateObjTrackSettings()
-        win = apps.AnnotateObjTrackSettingsDialog(
+        win = gui_mixin_dialogs.AnnotateObjTrackSettingsDialog(
             settings=self.annotateObjTrackSettings,
             parent=self,
         )

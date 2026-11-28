@@ -11,7 +11,9 @@ from qtpy.QtWidgets import (
     QLabel, QHBoxLayout, QToolButton, QApplication, QWidget, QVBoxLayout,
     QScrollArea, QComboBox
 )
-from cellacdc import myutils, is_mac, is_win, html_utils, is_linux
+from cellacdc import is_mac, is_win, html_utils, is_linux
+from cellacdc.myutils import filesystem
+from .. import helpers as data_structure_helpers
 from cellacdc.shared.widgets import item_views as widgets_item_views
 from cellacdc.shared.widgets import message_box as widgets_message_box
 import os
@@ -23,7 +25,11 @@ from qtpy.QtWidgets import (
     QDoubleSpinBox, QRadioButton
 )
 from cellacdc import _window_stacking
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc.acdc_regex import is_alphanumeric_filename
 from cellacdc import io
 from cellacdc import fonts
@@ -157,7 +163,7 @@ class installJavaDialog(widgets_message_box.myMessageBox):
         self.scrollArea = QScrollArea()
         _container = QWidget()
         _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+        for t, text in enumerate(data_structure_helpers.install_javabridge_instructions_text()):
             label = QLabel()
             label.setText(text)
             if (t == 1 or t == 2):
@@ -170,10 +176,10 @@ class installJavaDialog(widgets_message_box.myMessageBox):
                 copyButton.setIcon(QIcon(':edit-copy.svg'))
                 copyButton.setText('Copy link')
                 if t==1:
-                    copyButton.textToCopy = myutils.jdk_windows_url()
+                    copyButton.textToCopy = data_structure_helpers.jdk_windows_url()
                     code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
                 else:
-                    copyButton.textToCopy = myutils.cpp_windows_url()
+                    copyButton.textToCopy = data_structure_helpers.cpp_windows_url()
                     screenshotButton = QToolButton()
                     screenshotButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
                     screenshotButton.setIcon(QIcon(':cog.svg'))
@@ -208,7 +214,7 @@ class installJavaDialog(widgets_message_box.myMessageBox):
         self.scrollArea = QScrollArea()
         _container = QWidget()
         _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+        for t, text in enumerate(data_structure_helpers.install_javabridge_instructions_text()):
             label = QLabel()
             label.setText(text)
             # label.setWordWrap(True)
@@ -221,9 +227,9 @@ class installJavaDialog(widgets_message_box.myMessageBox):
                 copyButton.setIcon(QIcon(':edit-copy.svg'))
                 copyButton.setText('Copy')
                 if t==1:
-                    copyButton.textToCopy = myutils._install_homebrew_command()
+                    copyButton.textToCopy = data_structure_helpers._install_homebrew_command()
                 else:
-                    copyButton.textToCopy = myutils._brew_install_java_command()
+                    copyButton.textToCopy = data_structure_helpers._brew_install_java_command()
                 copyButton.clicked.connect(self.copyToClipboard)
                 code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
                 # code_layout.addStretch(1)
@@ -248,7 +254,7 @@ class installJavaDialog(widgets_message_box.myMessageBox):
         self.scrollArea = QScrollArea()
         _container = QWidget()
         _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+        for t, text in enumerate(data_structure_helpers.install_javabridge_instructions_text()):
             label = QLabel()
             label.setText(text)
             # label.setWordWrap(True)
@@ -261,11 +267,11 @@ class installJavaDialog(widgets_message_box.myMessageBox):
                 copyButton.setIcon(QIcon(':edit-copy.svg'))
                 copyButton.setText('Copy')
                 if t==1:
-                    copyButton.textToCopy = myutils._apt_update_command()
+                    copyButton.textToCopy = data_structure_helpers._apt_update_command()
                 elif t==2:
-                    copyButton.textToCopy = myutils._apt_install_java_command()
+                    copyButton.textToCopy = data_structure_helpers._apt_install_java_command()
                 elif t==3:
-                    copyButton.textToCopy = myutils._apt_gcc_command()
+                    copyButton.textToCopy = data_structure_helpers._apt_gcc_command()
                 copyButton.clicked.connect(self.copyToClipboard)
                 code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
                 # code_layout.addStretch(1)
@@ -313,24 +319,24 @@ class installJavaDialog(widgets_message_box.myMessageBox):
                     subprocess.check_call(['brew', 'update'])
                 except Exception as e:
                     subprocess.run(
-                        myutils._install_homebrew_command(),
+                        data_structure_helpers._install_homebrew_command(),
                         check=True, text=True, shell=True
                     )
                 subprocess.run(
-                    myutils._brew_install_java_command(),
+                    data_structure_helpers._brew_install_java_command(),
                     check=True, text=True, shell=True
                 )
             elif is_linux:
                 subprocess.run(
-                    myutils._apt_gcc_command()(),
+                    data_structure_helpers._apt_gcc_command()(),
                     check=True, text=True, shell=True
                 )
                 subprocess.run(
-                    myutils._apt_update_command()(),
+                    data_structure_helpers._apt_update_command()(),
                     check=True, text=True, shell=True
                 )
                 subprocess.run(
-                    myutils._apt_install_java_command()(),
+                    data_structure_helpers._apt_install_java_command()(),
                     check=True, text=True, shell=True
                 )
             self.close()
@@ -459,7 +465,7 @@ class QDialogMetadataXML(QDialog):
             row += 1
             # self.SizeS_SB.setValue(1)
             self.SizeS_SB.setDisabled(True)
-            self.posSelector = widgets.ExpandableListBox()
+            self.posSelector = ExpandableListBox()
             positions = ['All positions']
             positions.extend([f'Position_{i+1}' for i in range(SizeS)])
             self.posSelector.addItems(positions)
@@ -492,7 +498,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeT_SB.valueChanged.connect(self.hideShowTimeIncrement)
         
         row += 1
-        self.timeRangeToSaveWidget = widgets.RangeSelector(integers=True)
+        self.timeRangeToSaveWidget = widgets_numeric_inputs.RangeSelector(integers=True)
         self.timeRangeToSaveWidget.setRange(1, SizeT)
         txt = 'Time range to save:  '
         label = QLabel(txt)
@@ -513,7 +519,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeZ_SB.valueChanged.connect(self.hideShowPhysicalSizeZ)
 
         row += 1
-        self.TimeIncrement_DSB = widgets.FloatLineEdit(
+        self.TimeIncrement_DSB = widgets_line_edits.FloatLineEdit(
             allowNegative=False, warningValues={1.0}
         )
         self.TimeIncrement_DSB.setValue(TimeIncrement)
@@ -725,7 +731,7 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.setContentsMargins(0, 15, 0, 0)
 
         if rawDataStruct is None or rawDataStruct!=-1:
-            okButton = widgets.okPushButton(' Ok ')
+            okButton = widgets_push_buttons.okPushButton(' Ok ')
         elif rawDataStruct==1:
             okButton = QPushButton(' Load next position ')
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -760,7 +766,7 @@ class QDialogMetadataXML(QDialog):
             trustButton.clicked.connect(self.ok_cb)
             overWriteButton.clicked.connect(self.ok_cb)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
         buttonsLayout.addWidget(cancelButton, 0, 2)
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.setColumnStretch(3, 1)
@@ -963,7 +969,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeZUnit_Label.setText(unit)
     
     def warnRestart(self):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph("""
             Since you manually changed some of the metadata, this dialogue will now restart<br>
             because it <b>needs to read the image data again</b>.<br><br>
@@ -988,7 +994,7 @@ class QDialogMetadataXML(QDialog):
             idx = self.showChannelDataButtons.index(self.sender())
         dimsOrder = 'ctz'
         imgData = self.sampleImgData[dimsOrder][idx]
-        posData = myutils.utilClass()
+        posData = filesystem.utilClass()
         posData.frame_i = 0
         sampleSizeT = 4 if self.SizeT_SB.value() >= 4 else self.SizeT_SB.value()
         posData.SizeT = sampleSizeT
@@ -1136,7 +1142,7 @@ class QDialogMetadataXML(QDialog):
                 '<br><br>'
                 'Insert a unique text for each channel name.'
             )
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.critical(
                self, 'Invalid channel names', err_msg
             )
@@ -1265,16 +1271,16 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
         self.filesStructureCombobox.currentTextChanged.connect(
             self.fileStructureChanged
         )
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoFileStructure)
         
         row += 1
         label = QLabel('Folder with raw microscopy files: ')
         gridLayout.addWidget(label, row, 0)
-        self.folderPathLineEdit = widgets.ElidingLineEdit()
+        self.folderPathLineEdit = widgets_line_edits.ElidingLineEdit()
         gridLayout.addWidget(self.folderPathLineEdit, row, 1)
-        browseButton = widgets.browseFileButton(openFolder=True)
+        browseButton = widgets_push_buttons.browseFileButton(openFolder=True)
         gridLayout.addWidget(browseButton, row, 2)
         browseButton.sigPathSelected.connect(
             partial(self.updateFolderPath, lineEdit=self.folderPathLineEdit)
@@ -1284,29 +1290,29 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
         row += 1
         label = QLabel('Destination folder: ')
         gridLayout.addWidget(label, row, 0)
-        self.dstfolderPathLineEdit = widgets.ElidingLineEdit()
+        self.dstfolderPathLineEdit = widgets_line_edits.ElidingLineEdit()
         gridLayout.addWidget(self.dstfolderPathLineEdit, row, 1)
-        browseButton = widgets.browseFileButton(openFolder=True)
+        browseButton = widgets_push_buttons.browseFileButton(openFolder=True)
         gridLayout.addWidget(browseButton, row, 2)
         browseButton.sigPathSelected.connect(self.dstfolderPathLineEdit.setText)
         
         row += 1
         label = QLabel('Channel(s) name: ')
         gridLayout.addWidget(label, row, 0)
-        self.channelNamesLineEdit = widgets.alphaNumericLineEdit(
+        self.channelNamesLineEdit = widgets_line_edits.alphaNumericLineEdit(
             additionalChars=' ,'
         )
         gridLayout.addWidget(self.channelNamesLineEdit, row, 1)
-        checkButton = widgets.TestPushButton('Check')
+        checkButton = widgets_push_buttons.TestPushButton('Check')
         gridLayout.addWidget(checkButton, row, 3)
         checkButton.clicked.connect(self.checkChannelNames)
         checkButton.setDisabled(True)
         self.checkButton = checkButton
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         gridLayout.addWidget(infoButton, row, 2)
         infoButton.clicked.connect(self.showInfoChannelName)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -1348,7 +1354,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
             'The following Position folders will be created based on the provided channel names:<br>'
             f'{pos_folders_html_list}'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Position folders', text)
 
     def srcFolderPathChanged(self, text):
@@ -1366,7 +1372,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
             (e.g., snapshots), or you setup automatic acquisition of multiple 
             positions.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Files structure info', txt)
     
     def showInfoChannelName(self):
@@ -1383,13 +1389,13 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
             After providing the channel names, you can check that they are correct by clicking on the "Check" button next to the channel names field.<br>
             The number of Positions that will be created will be displayed alongside the basename.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Files structure info', txt)
     
     def updateFolderPath(self, path, lineEdit=''):
         for file in os.listdir(path):
             if not is_alphanumeric_filename(file):
-                msg = widgets.myMessageBox(wrapText=False)
+                msg = widgets_message_box.myMessageBox(wrapText=False)
                 txt = html_utils.paragraph(
                     f"""
                     The filename <b>{file}</b> contains <b>invalid 
@@ -1412,7 +1418,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
         txt = html_utils.paragraph(f"""
             {path_name} <b>cannot be empty</b>.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty folder path', txt)
     
     def warnSelectedPathDoesNotExist(self, path):
@@ -1420,7 +1426,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
             The selected path <b>does not exist</b>.<br><br>
             Selected path:
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Folder path does not exist', txt, commands=(path,))
     
     def warnSelectedPathNotAFolder(self, path):
@@ -1428,7 +1434,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
             The selected path is <b>not a folder</b>.<br><br>
             Selected path:
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Selected path not a folder', txt, commands=(path,))
     
     def warnMultipleExtensionsPresent(self, path, extensions):
@@ -1440,7 +1446,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
             extension before proceeding.<br><br>
             Selected path:
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Multiple file extensions detected', txt, commands=(path,)
         )
@@ -1449,7 +1455,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
         txt = html_utils.paragraph("""
             Channel(s) name <b>cannot be empty</b>.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty channel name', txt)
     
     def validate(self):
@@ -1472,7 +1478,7 @@ class InitFijiMacroDialog(dialogs_base.QBaseDialog):
                 self.warnSelectedPathNotAFolder(_path)
                 return False
         
-        files = myutils.listdir(path)
+        files = filesystem.listdir(path)
         extensions = set([os.path.splitext(file)[1] for file in files])
         if len(extensions) > 1:
             self.warnMultipleExtensionsPresent(path, extensions)

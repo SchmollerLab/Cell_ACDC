@@ -6,9 +6,16 @@ from functools import partial
 import pandas as pd
 from qtpy.QtCore import QEventLoop, QTimer, QThread
 from cellacdc import exception_handler, disableWindow
-from cellacdc import prompts, apps, workers, html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc import prompts, html_utils
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+    model_selection as dialogs_model_selection,
+)
+from ..dialogs import segmentation as gui_dialogs_segmentation
+from ..workers import segmentation_tracking as gui_workers_segmentation_tracking
+from cellacdc.myutils import filesystem, segm_models
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import _warnings
 from cellacdc import qutils
 from cellacdc.promptable_models import utils as prompt_utils
@@ -64,7 +71,7 @@ class MagicPromptsGuiElements:
             self, model_name, posData, win, acdcPromptSegment, toolbar
         ):
         self.logger.info(f'Initializing promptable model {model_name}...')
-        apps.downloadModel(model_name, parent=self).download()
+        dialogs_model_selection.downloadModel(model_name, parent=self).download()
         init_kwargs = win.init_kwargs
         execution = self.getPromptModelExecution(model_name)
         # `prepare` returns the cached spec if already prepared (it is needed
@@ -185,10 +192,10 @@ class MagicPromptsGuiElements:
         ):
         posData = self.data[self.pos_i]
         
-        init_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+        init_argspecs = segm_models.setDefaultValueArgSpecsFromKwargs(
             init_argspecs, init_kwargs
         )
-        segment_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+        segment_argspecs = segm_models.setDefaultValueArgSpecsFromKwargs(
             segment_argspecs, segment_kwargs
         )
         
@@ -412,14 +419,14 @@ class MagicPromptsGuiElements:
         if global_image is None:
             global_image = posData.img_data[posData.frame_i]
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title=desc, parent=self, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(0)
         self.progressWin.show(self.app)
 
         self.magicPromptsThread = QThread()
-        self.magicPromptsWorker = workers.MagicPromptsWorker(
+        self.magicPromptsWorker = gui_workers_segmentation_tracking.MagicPromptsWorker(
             posData, image, df_points, model, model_segment_kwargs,
             image_origin=image_origin,
             global_image=global_image,
@@ -750,7 +757,7 @@ class MagicPromptsGuiElements:
     def askRetrainLoadedPromptModel(self, model_name, loadedModelName):
         """Ask whether to replace the loaded model by re-training it on the
         brush strokes. Returns 'retrain', 'use_loaded', or 'cancel'."""
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             The current {model_name} model was <b>loaded</b> from the saved
             model <code>{loadedModelName}</code> and the brush strokes
@@ -780,7 +787,7 @@ class MagicPromptsGuiElements:
         from cellacdc.service import model_execution
 
         self.titleLabel.setText(desc, color=self.titleColor)
-        progressWin = apps.QDialogWorkerProgress(
+        progressWin = dialogs_generic.QDialogWorkerProgress(
             title=desc, parent=self, pbarDesc=desc
         )
         progressWin.mainPbar.setMaximum(0)
@@ -846,7 +853,7 @@ class MagicPromptsGuiElements:
             "<b>Load trained model</b>" button of the promptable models
             toolbar.
         """)
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             ext=ext,
             title=f'Save trained {model_name} model',
             hintText=html_utils.paragraph(
@@ -911,7 +918,7 @@ class MagicPromptsGuiElements:
         """Ask what to do with the trained model (not saved) before `action`
         (e.g., 'Loading another model') replaces it. Returns 'save',
         'replace', or 'cancel'."""
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             The current {model_name} model was <b>trained</b> in this
             session and it was <b>not saved</b>.<br><br>
@@ -980,7 +987,7 @@ class MagicPromptsGuiElements:
             f'The loaded {model_name} model "{name}" has the classes '
             f'{classes_str} (Cell-ACDC uses class 2 as foreground).'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             The loaded {model_name} model <code>{name}</code> has the
             classes <code>{classes_str}</code>.<br><br>
@@ -996,8 +1003,8 @@ class MagicPromptsGuiElements:
             return
 
         model_name = toolbar.model_name
-        win = apps.LoadSavedPromptableModelDialog(
-            model_name, ext, start_dir=myutils.getMostRecentPath(),
+        win = gui_dialogs_segmentation.LoadSavedPromptableModelDialog(
+            model_name, ext, start_dir=filesystem.getMostRecentPath(),
             parent=self
         )
         win.exec_()
@@ -1024,7 +1031,7 @@ class MagicPromptsGuiElements:
             # The current model was saved with the name of the model
             # selected for loading --> the selected model does not exist
             # anymore and loading it would load the current model again
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(f"""
                 The current model was saved as <code>{confirmed.name}</code>,
                 replacing the model selected for loading.<br><br>
@@ -1212,7 +1219,7 @@ class MagicPromptsGuiElements:
             return
 
         model_name = toolbar.model_name
-        win = apps.startStopFramesDialog(
+        win = gui_dialogs_segmentation.startStopFramesDialog(
             posData.SizeT, currentFrameNum=posData.frame_i+1, parent=self,
             windowTitle=(
                 f'Select frame range to segment with {model_name} '
@@ -1256,7 +1263,7 @@ class MagicPromptsGuiElements:
             '(check progress in terminal/console)', color=self.titleColor
         )
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title=f'Segmenting frames with {model_name}', parent=self,
             pbarDesc=(
                 f'Segmenting from frame n. {startFrameNum} to '
@@ -1268,7 +1275,7 @@ class MagicPromptsGuiElements:
 
         self.magicPromptsSegmStackThread = QThread()
         self.magicPromptsSegmStackWorker = (
-            workers.MagicPromptsSegmStackWorker(
+            gui_workers_segmentation_tracking.MagicPromptsSegmStackWorker(
                 posData, toolbar.model, toolbar.model_segment_kwargs,
                 startFrameNum, stopFrameNum, annot_ndim
             )
@@ -1301,14 +1308,14 @@ class MagicPromptsGuiElements:
         self.magicPromptsToolbar.setDisabled(False)
 
     def showInstructionsCustomPromptModel(self):
-        modelFilePath = apps.addCustomPromptModelMessages(QParent=self)
+        modelFilePath = gui_dialogs_segmentation.addCustomPromptModelMessages(QParent=self)
         if modelFilePath is None:
             self.logger.info('Adding custom promptable model process stopped.')
             return
         
-        myutils.store_custom_promptable_model_path(modelFilePath)
+        segm_models.store_custom_promptable_model_path(modelFilePath)
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         info_txt = html_utils.paragraph(f"""
             Done!<br><br>
             The custom promptable model has been added to the list of models.<br><br>

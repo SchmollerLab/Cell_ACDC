@@ -18,8 +18,16 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import QAction, QApplication, QMainWindow, QToolButton
 
-from cellacdc import apps, gui, widgets
-from cellacdc.gui_custom_annotations import CustomAnnotationsGuiElements
+from cellacdc.gui.dialogs import points_layers as gui_dialogs_points_layers
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
+from cellacdc.shared.dialogs import base as dialogs_base
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    toolbars as widgets_toolbars,
+)
+from cellacdc.gui.mixins.custom_annotations import CustomAnnotationsGuiElements
 
 pytestmark = pytest.mark.gui
 
@@ -30,10 +38,10 @@ def app():
 
 
 class _Host(QMainWindow):
-    KEY_EVENT_KEYS = gui.guiWin.KEY_EVENT_KEYS
-    reservedShortcuts = gui.guiWin.reservedShortcuts
-    userKeyButtons = gui.guiWin.userKeyButtons
-    customAnnotationDialogKwargs = gui.guiWin.customAnnotationDialogKwargs
+    KEY_EVENT_KEYS = gui_window.guiWin.KEY_EVENT_KEYS
+    reservedShortcuts = gui_window.guiWin.reservedShortcuts
+    userKeyButtons = gui_window.guiWin.userKeyButtons
+    customAnnotationDialogKwargs = gui_window.guiWin.customAnnotationDialogKwargs
     customAnnotButtonByName = (
         CustomAnnotationsGuiElements.customAnnotButtonByName
     )
@@ -41,7 +49,7 @@ class _Host(QMainWindow):
     def __init__(self):
         super().__init__()
         self.zoomOutKeyValue = Qt.Key.Key_H
-        toolbar = widgets.ToolBar('Edit', self)
+        toolbar = widgets_toolbars.ToolBar('Edit', self)
         self.addToolBar(toolbar)
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setShortcut('D')
@@ -56,7 +64,7 @@ class _Host(QMainWindow):
         self.saveAction = QAction('Save...', self)
         self.saveAction.setShortcut('Ctrl+Alt+S')
 
-        self.annotateToolbar = widgets.ToolBar('Custom annotations', self)
+        self.annotateToolbar = widgets_toolbars.ToolBar('Custom annotations', self)
         self.addToolBar(self.annotateToolbar)
         self.annotButton = QToolButton(self)
         self.annotButton.setShortcut('Q')
@@ -65,16 +73,16 @@ class _Host(QMainWindow):
             self.annotButton: {'state': {'name': 'budding'}}
         }
 
-        pointsToolbar = widgets.ToolBar('Points layers', self)
+        pointsToolbar = widgets_toolbars.ToolBar('Points layers', self)
         self.addToolBar(pointsToolbar)
-        self.pointsButton = widgets.PointsLayerToolButton('o', parent=self)
+        self.pointsButton = widgets_toolbars.PointsLayerToolButton('o', parent=self)
         self.pointsButton.setShortcut('J')
         action = pointsToolbar.addWidget(self.pointsButton)
         action.layerType = 'Spots'
         self.pointsLayersToolbars = [pointsToolbar]
 
         # A dialog's buttons are not keys of the window
-        self.dialog = apps.QBaseDialog(self)
+        self.dialog = dialogs_base.QBaseDialog(self)
         dialogButton = QToolButton(self.dialog)
         dialogButton.setShortcut('Ctrl+Shift+Y')
 
@@ -112,7 +120,7 @@ def test_overlay_digits_and_delete_object_key_are_reserved(host):
     # No "Delete object" key: default (middle click, Ctrl on macOS)
     assert 'Delete object' not in reserved.values()
     host.delObjAction = (
-        widgets.KeySequenceFromText('X'), Qt.MouseButton.LeftButton
+        widgets_line_edits.KeySequenceFromText('X'), Qt.MouseButton.LeftButton
     )
     assert host.reservedShortcuts()['X'] == 'Delete object'
     # Mouse button only
@@ -143,12 +151,12 @@ def test_custom_annotation_dialog_refuses_key_taken_while_open(
     ):
     warnings = []
     monkeypatch.setattr(
-        apps.widgets, 'myMessageBox',
+        widgets_message_box, 'myMessageBox',
         lambda *args, **kwargs: type('Msg', (), {
             'warning': lambda self, parent, title, text: warnings.append(text)
         })()
     )
-    dialog = apps.customAnnotationDialog(
+    dialog = gui_mixin_dialogs.customAnnotationDialog(
         {}, parent=host, **host.customAnnotationDialogKwargs()
     )
     try:
@@ -170,7 +178,7 @@ def test_custom_annotation_dialog_refuses_key_taken_while_open(
 def test_add_points_layer_dialog_refuses_key_taken_while_open(
         host, monkeypatch
     ):
-    dialog = apps.AddPointsLayerDialog(
+    dialog = gui_dialogs_points_layers.AddPointsLayerDialog(
         parent=host, reservedShortcuts=host.reservedShortcuts
     )
     warnings = []
@@ -192,7 +200,7 @@ def test_add_points_layer_dialog_refuses_key_taken_while_open(
 def test_add_points_layer_dialog_refuses_used_key(
         host, monkeypatch, shortcut, refused, callable_
     ):
-    dialog = apps.AddPointsLayerDialog(
+    dialog = gui_dialogs_points_layers.AddPointsLayerDialog(
         parent=host, reservedShortcuts=(
             host.reservedShortcuts if callable_
             else host.reservedShortcuts()

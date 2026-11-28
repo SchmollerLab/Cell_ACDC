@@ -17,8 +17,12 @@ from qtpy.QtWidgets import (
 from cellacdc import _window_stacking
 from cellacdc import load, html_utils
 from cellacdc import printl
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import table_utils
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import plot
 from cellacdc import path
 from cellacdc import disableWindow
@@ -56,7 +60,7 @@ class askStopFrameSegm(QDialog):
         )
 
         columnsLayout = QHBoxLayout()
-        mainScrollArea = widgets.ScrollArea()
+        mainScrollArea = widgets_basic_widgets.ScrollArea()
         mainScrollAreaWidget = QWidget()
         mainScrollAreaWidget.setLayout(columnsLayout)
         mainScrollArea.setWidget(mainScrollAreaWidget)
@@ -69,7 +73,7 @@ class askStopFrameSegm(QDialog):
         self.groupboxScrollAreas = []
         
         for col, (exp_path, pos_folders_files) in enumerate(iter_items):
-            groupboxScrollArea = widgets.ScrollArea()
+            groupboxScrollArea = widgets_basic_widgets.ScrollArea()
             self.groupboxScrollAreas.append(groupboxScrollArea)
             groupbox = QGroupBox()
             groupbox.setCheckable(False)
@@ -84,7 +88,7 @@ class askStopFrameSegm(QDialog):
                 img_filename = filenames[i]
                 images_path = os.path.join(exp_path, pos_foldername, 'Images')
                 img_path = os.path.join(images_path, img_filename)
-                spinBox = widgets.SpinBox()
+                spinBox = widgets_numeric_inputs.SpinBox()
                 spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
                 posData = load.loadData(img_path, user_ch_name, QParent=parent)
                 posData.getBasenameAndChNames(qparent=self)
@@ -101,7 +105,7 @@ class askStopFrameSegm(QDialog):
                 else:
                     spinBox.setValue(stopFrameNum)
                 spinBox.setAlignment(Qt.AlignCenter)
-                visualizeButton = widgets.viewPushButton('Visualize')
+                visualizeButton = widgets_push_buttons.viewPushButton('Visualize')
                 visualizeButton.clicked.connect(self.visualize_cb)
                 formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
                 layout = QHBoxLayout()
@@ -122,10 +126,10 @@ class askStopFrameSegm(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         mainLayout.addWidget(mainScrollArea)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)    
         buttonsLayout.addWidget(cancelButton)
@@ -260,7 +264,7 @@ class askZPlaneView(QDialog):
         )
 
         columnsLayout = QHBoxLayout()
-        mainScrollArea = widgets.ScrollArea()
+        mainScrollArea = widgets_basic_widgets.ScrollArea()
         mainScrollAreaWidget = QWidget()
         mainScrollAreaWidget.setLayout(columnsLayout)
         mainScrollArea.setWidget(mainScrollAreaWidget)
@@ -273,7 +277,7 @@ class askZPlaneView(QDialog):
         self.groupboxScrollAreas = []
         
         for col, (exp_path, pos_folders_files) in enumerate(iter_items):
-            groupboxScrollArea = widgets.ScrollArea()
+            groupboxScrollArea = widgets_basic_widgets.ScrollArea()
             self.groupboxScrollAreas.append(groupboxScrollArea)
             groupbox = QGroupBox()
             groupbox.setCheckable(False)
@@ -288,7 +292,7 @@ class askZPlaneView(QDialog):
                 img_filename = filenames[i]
                 images_path = os.path.join(exp_path, pos_foldername, 'Images')
                 img_path = os.path.join(images_path, img_filename)
-                spinBox = widgets.SpinBox()
+                spinBox = widgets_numeric_inputs.SpinBox()
                 spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
                 posData = load.loadData(img_path, user_ch_name, QParent=parent)
                 posData.getBasenameAndChNames(qparent=self)
@@ -309,12 +313,12 @@ class askZPlaneView(QDialog):
 
                 spinBox.setValue(round(posData.SizeZ/2))
                 
-                visualizeButton = widgets.viewPushButton(' View')
+                visualizeButton = widgets_push_buttons.viewPushButton(' View')
                 visualizeButton.clicked.connect(
                     partial(self.visualize_cb, images_path=images_path)
                 )
 
-                dataPrepButton = widgets.dataPrepButton('Launch data prep...')
+                dataPrepButton = widgets_push_buttons.dataPrepButton('Launch data prep...')
                 dataPrepButton.clicked.connect(
                     partial(self.launch_dataprep, images_path=images_path)
                 )
@@ -343,17 +347,17 @@ class askZPlaneView(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         mainLayout.addWidget(mainScrollArea)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)    
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
 
         if posData.SizeT == 1:
-            launchDataPrepButton = widgets.dataPrepButton(
+            launchDataPrepButton = widgets_push_buttons.dataPrepButton(
                 'Launch data prep with all Positions...'
             )
             buttonsLayout.addWidget(launchDataPrepButton)
@@ -412,11 +416,11 @@ class askZPlaneView(QDialog):
             
             filename = posData.filename
             if posData.segmInfo_df is None:
-                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                df = table_utils.getDefault_SegmInfo_df(posData, filename)
                 posData.segmInfo_df = df
             
             if filename not in posData.segmInfo_df.index:
-                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                df = table_utils.getDefault_SegmInfo_df(posData, filename)
                 posData.segmInfo_df = pd.concat([df, posData.segmInfo_df])
             
             posData.segmInfo_df.loc[filename, 'z_slice_used_dataPrep'] = (

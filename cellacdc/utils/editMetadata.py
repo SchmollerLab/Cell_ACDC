@@ -2,7 +2,10 @@ import pprint
 
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import metadata as dialogs_metadata
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -108,7 +111,7 @@ class EditMetadataUtil(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str,
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle,
             parent=parent
@@ -116,7 +119,7 @@ class EditMetadataUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
 
     def runWorker(self):
-        self.worker = workers.EditMetadataWorker(self)
+        self.worker = EditMetadataWorker(self)
         self.worker.sigAskEditMetadata.connect(self.askEditMetadata)
         super().runWorker(self.worker)
 
@@ -133,7 +136,7 @@ class EditMetadataUtil(NewThreadMultipleExpBaseUtil):
             '<code>metadata.csv</code> file.<br><br>'
             'There is nothing to edit.'
         )
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.setDetailedText('\n'.join(missingMetadataPaths))
         msg.warning(self, 'Metadata not found', txt)
 
@@ -181,7 +184,7 @@ class EditMetadataUtil(NewThreadMultipleExpBaseUtil):
             'See the details below for the values in each file.<br><br>'
             'Do you want to continue?'
         )
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.setDetailedText('\n'.join(detailsLines))
         msg.warning(
             self, 'Metadata is not the same in all Positions',
@@ -228,7 +231,7 @@ class EditMetadataUtil(NewThreadMultipleExpBaseUtil):
             if key.startswith('__')
         }
 
-        win = apps.QDialogMetadata(
+        win = dialogs_metadata.QDialogMetadata(
             _to_int(refValues.get('SizeT')),
             _to_int(refValues.get('SizeZ')),
             _to_float(refValues.get('TimeIncrement')),
@@ -295,7 +298,7 @@ class EditMetadataUtil(NewThreadMultipleExpBaseUtil):
                 f'Number of updated metadata files: <b>{numEditedFiles}</b>'
             )
         super().workerFinished(worker)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         else:

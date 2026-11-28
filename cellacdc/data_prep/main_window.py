@@ -36,10 +36,24 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 
 # Custom modules
 from cellacdc import exception_handler
-from cellacdc import load, prompts, apps, core, myutils
-from cellacdc import widgets
-from cellacdc import html_utils, myutils, darkBkgrColor, printl
-from cellacdc import autopilot, workers
+from cellacdc import load, prompts, core
+from cellacdc.myutils import app_info, filesystem, image_utils, table_utils
+from cellacdc.shared.dialogs import (
+    generic as dialogs_generic,
+    image_tools as dialogs_image_tools,
+)
+from . import dialogs as data_prep_dialogs
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    lut_items as widgets_lut_items,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    plot_items as widgets_plot_items,
+    push_buttons as widgets_push_buttons,
+)
+from cellacdc import html_utils, darkBkgrColor, printl
+from cellacdc import autopilot
+from . import workers as data_prep_workers
 from cellacdc import urls
 from cellacdc import io
 from cellacdc import qutils
@@ -83,7 +97,7 @@ class dataPrepWin(QMainWindow):
 
         self._version = version
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module='dataPrep'
         )
         self.logger = logger
@@ -104,7 +118,7 @@ class dataPrepWin(QMainWindow):
         if mainWin is not None:
             self.app = mainWin.app
 
-        self._acdc_version = myutils.read_version()
+        self._acdc_version = app_info.read_version()
         self.setWindowTitle(f"Cell-ACDC v{self._acdc_version} - data prep")
         self.setGeometry(100, 50, 850, 800)
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -440,7 +454,7 @@ class dataPrepWin(QMainWindow):
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         #Image histogram
-        self.hist = widgets.myHistogramLUTitem()
+        self.hist = widgets_lut_items.myHistogramLUTitem()
         self.graphLayout.addItem(self.hist, row=1, col=0)
 
         # Title
@@ -452,7 +466,7 @@ class dataPrepWin(QMainWindow):
     def gui_addPlotItems(self):
         # Image Item
         # blankImage = np.full((512,512,3), darkBkgrColor)
-        self.img = widgets.BaseImageItem()
+        self.img = widgets_plot_items.BaseImageItem()
         self.ax1.addItem(self.img)
         self.hist.setImageItem(self.img)
 
@@ -491,7 +505,7 @@ class dataPrepWin(QMainWindow):
         self.navigateScrollbar = QScrollBar(Qt.Horizontal)
         self.navigateScrollbar.setFixedHeight(20)
         self.navigateScrollbar.setDisabled(True)
-        self.navSpinBox = widgets.SpinBox(disableKeyPress=True)
+        self.navSpinBox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.navSpinBox.setMinimum(1)
         self.navSpinBox.setMaximum(100)
         self.navSizeLabel = QLabel('/ND')
@@ -501,10 +515,10 @@ class dataPrepWin(QMainWindow):
 
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
         self.zSliceScrollBar.setFixedHeight(20)
-        self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.zSliceSpinbox = widgets_numeric_inputs.SpinBox(disableKeyPress=True)
         self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
-        _z_label = widgets.Label('z-slice  ')
+        _z_label = widgets_basic_widgets.Label('z-slice  ')
         _z_label.setFont(_font)
         self.z_label = _z_label
 
@@ -514,7 +528,7 @@ class dataPrepWin(QMainWindow):
                                      'mean z-projection',
                                      'median z-proj.'])
 
-        self.zProjLockViewButton = widgets.LockPushButton()
+        self.zProjLockViewButton = widgets_push_buttons.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
         self.zProjLockViewButton.setToolTip(
             'If active (lock closed), '
@@ -912,7 +926,7 @@ class dataPrepWin(QMainWindow):
         for chName in posData.chNames:
             alignedFound = False
             tifFound = False
-            for file in myutils.listdir(posData.images_path):
+            for file in filesystem.listdir(posData.images_path):
                 filePath = os.path.join(posData.images_path, file)
                 filenameNOext, _ = os.path.splitext(file)
                 if file.endswith(f'{chName}_aligned.npz'):
@@ -1081,7 +1095,7 @@ class dataPrepWin(QMainWindow):
         x, y = event.pos().x(), event.pos().y()
         Y, X = posData.img_data.shape[-2:]
         xdata, ydata = int(x), int(y)
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             return
         
         if self.isFreeRoiDrag:
@@ -1104,7 +1118,7 @@ class dataPrepWin(QMainWindow):
             self.saveFreeRoi()
     
     def dataPrepFreeRoiSaved(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'Free-hand ROI saved.<br><br>'
             'When you segment the data, the objects outside of this ROI will be '
@@ -1149,7 +1163,7 @@ class dataPrepWin(QMainWindow):
 
         self.logger.info(f'Saving: {tif_path}')
         temp_tif = self.getTempfilePath(tif_path)
-        myutils.to_tiff(
+        image_utils.to_tiff(
             temp_tif, cropped_data,
             SizeT=getattr(posData, 'SizeT', None),
             SizeZ=getattr(posData, 'SizeZ', None),
@@ -1209,7 +1223,7 @@ class dataPrepWin(QMainWindow):
         except IndexError:
             pass
         
-        for file in myutils.listdir(posData.images_path):                
+        for file in filesystem.listdir(posData.images_path):                
             copy_file = (
                 file.endswith('bkgrRoiData.npz')
                 or file.endswith('dataPrep_bkgrROIs.json')
@@ -1238,7 +1252,7 @@ class dataPrepWin(QMainWindow):
     
     def saveSingleCrop(self, posData, cropROI, dstPath):
         if dstPath != posData.images_path:
-            currentSubPosFolders = myutils.get_pos_foldernames(dstPath)
+            currentSubPosFolders = filesystem.get_pos_foldernames(dstPath)
             currentSubPosNumbers = [
                 int(pos.split('_')[-1]) for pos in currentSubPosFolders
             ]
@@ -1315,7 +1329,7 @@ class dataPrepWin(QMainWindow):
         self.img.mousePressEvent = None
         
         if posData.SizeT > 1:
-            self.progressWin = apps.QDialogWorkerProgress(
+            self.progressWin = dialogs_generic.QDialogWorkerProgress(
                 title='Saving cropped data', 
                 parent=self,
                 pbarDesc=f'Saving cropped data...'
@@ -1325,7 +1339,7 @@ class dataPrepWin(QMainWindow):
         
         self._thread = QThread()
         
-        self.cropWorker = workers.DataPrepCropWorker(posData, self, dstPath)
+        self.cropWorker = data_prep_workers.DataPrepCropWorker(posData, self, dstPath)
         self.cropWorker.moveToThread(self._thread)
         
         self.cropWorker.moveToThread(self._thread)
@@ -1358,7 +1372,7 @@ class dataPrepWin(QMainWindow):
         self.img.mousePressEvent = None
         
         if posData.SizeT > 1:
-            self.progressWin = apps.QDialogWorkerProgress(
+            self.progressWin = dialogs_generic.QDialogWorkerProgress(
                 title='Saving background data', 
                 parent=self,
                 pbarDesc=f'Saving background data...'
@@ -1368,7 +1382,7 @@ class dataPrepWin(QMainWindow):
         
         self._thread = QThread()
         
-        self.saveBkgrDataWorker = workers.DataPrepSaveBkgrDataWorker(
+        self.saveBkgrDataWorker = data_prep_workers.DataPrepSaveBkgrDataWorker(
             posData, self
         )
         self.saveBkgrDataWorker.moveToThread(self._thread)
@@ -1413,7 +1427,7 @@ class dataPrepWin(QMainWindow):
         basename = posData.basename
         for p, cropROI in enumerate(posData.cropROIs):
             parentSubPosPath = cropDstPaths[p]
-            currentSubPosFolders = myutils.get_pos_foldernames(parentSubPosPath)
+            currentSubPosFolders = filesystem.get_pos_foldernames(parentSubPosPath)
             currentSubPosNumbers = [
                 int(pos.split('_')[-1]) for pos in currentSubPosFolders
             ]
@@ -1480,7 +1494,7 @@ class dataPrepWin(QMainWindow):
     def openCropZtool(self, checked):
         posData = self.data[self.pos_i]
         if checked:
-            self.cropZtool = apps.QCropZtool(posData.SizeZ, parent=self)
+            self.cropZtool = dialogs_image_tools.QCropZtool(posData.SizeZ, parent=self)
             self.cropZtool.sigClose.connect(self.cropZtoolClosed)
             self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
             self.cropZtool.sigCrop.connect(self.applyCropZslices)
@@ -1497,7 +1511,7 @@ class dataPrepWin(QMainWindow):
     def openCropTtool(self, checked):
         posData = self.data[self.pos_i]
         if checked:
-            self.cropTtool = apps.QCropTrangeTool(posData.SizeT, parent=self)
+            self.cropTtool = data_prep_dialogs.QCropTrangeTool(posData.SizeT, parent=self)
             self.cropTtool.sigClose.connect(self.cropTtoolClosed)
             self.cropTtool.sigTvalueChanged.connect(self.cropTtoolvalueChanged)
             self.cropTtool.sigCrop.connect(self.applyCropTrange)
@@ -1585,14 +1599,14 @@ class dataPrepWin(QMainWindow):
             <b>To save cropped data</b>, click on the <code>Save cropped data</code> 
             button on the top toolbar.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Preview cropped frames', txt)
 
     def addFreeRoiItem(self):
         if self.freeRoiItem is not None:
             return
         
-        self.freeRoiItem = widgets.PlotCurveItem(
+        self.freeRoiItem = widgets_plot_items.PlotCurveItem(
             pen=pg.mkPen(color='r', width=2)
         )
         self.ax1.addItem(self.freeRoiItem)
@@ -1751,7 +1765,7 @@ class dataPrepWin(QMainWindow):
             The crop ROI is smaller than the free-hand ROI.<br><br>
             Are you sure you want to proceed with cropping?
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         noButton, yesButton = msg.warning(
             self, 'Crop ROI is smaller than free-hand ROI', txt,
             buttonsTexts=(
@@ -1770,7 +1784,7 @@ class dataPrepWin(QMainWindow):
             individually.<br><br>
             Do you want to continue?
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         noButton, yesButton = msg.warning(
             self, 'Multiple crops with free-hand ROI', txt,
             buttonsTexts=(
@@ -1809,7 +1823,7 @@ class dataPrepWin(QMainWindow):
             <b>To save cropped data</b>, click on the <code>Save cropped data</code> 
             button on the top toolbar.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Preview cropped z-slices', txt)
     
     def applyCropYX(self):
@@ -1855,7 +1869,7 @@ class dataPrepWin(QMainWindow):
         if not cropPaths:
             return
         
-        win = apps.DataPrepSubCropsPathsDialog(cropPaths=cropPaths)
+        win = data_prep_dialogs.DataPrepSubCropsPathsDialog(cropPaths=cropPaths)
         win.exec_()
         if win.cancel:
             txt = 'Cropping cancelled.'
@@ -1922,7 +1936,7 @@ class dataPrepWin(QMainWindow):
             'Saved! You can close the program or load another position.'
         )
         self.titleLabel.setText(txt, color='g')
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(txt.replace('! ', '!<br><br>'))
         msg.information(self, 'Data prep done', txt)
         
@@ -2010,7 +2024,7 @@ class dataPrepWin(QMainWindow):
             'Saving cropped data <b>cannot be undone</b>.', 
             admonition_type='Important'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             {info_text}<br>
             {important}<br>
@@ -2197,7 +2211,7 @@ class dataPrepWin(QMainWindow):
             )
             if NO_segmInfo and posData.SizeZ > 1:
                 filename = posData.filename
-                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                df = table_utils.getDefault_SegmInfo_df(posData, filename)
                 if posData.segmInfo_df is None:
                     posData.segmInfo_df = df
                 else:
@@ -2342,7 +2356,7 @@ class dataPrepWin(QMainWindow):
         self.img.mousePressEvent = None
         
         if posData.SizeT > 1:
-            self.progressWin = apps.QDialogWorkerProgress(
+            self.progressWin = dialogs_generic.QDialogWorkerProgress(
                 title='Aligning data', 
                 parent=self,
                 pbarDesc=progressText
@@ -2354,7 +2368,7 @@ class dataPrepWin(QMainWindow):
         self.alignDataWorkerMutex = QMutex()
         self.alignDataWorkerWaitCond = QWaitCondition()
         
-        self.alignDataWorker = workers.AlignDataWorker(
+        self.alignDataWorker = data_prep_workers.AlignDataWorker(
             posData, self, self.alignDataWorkerMutex, 
             self.alignDataWorkerWaitCond
         )
@@ -2424,7 +2438,7 @@ class dataPrepWin(QMainWindow):
                     f'{zipPath}'
                 )
                 txt = html_utils.paragraph(txt)
-                msg = widgets.myMessageBox()
+                msg = widgets_message_box.myMessageBox()
                 _, yes, no = msg.warning(
                    self, 'NON-Tif data detected!', txt,
                    buttonsTexts=('Cancel', 'Yes', 'No')
@@ -2457,7 +2471,7 @@ class dataPrepWin(QMainWindow):
             'place the background ROIs, or close the program'
         )
         self.titleLabel.setText(txt, color='w')
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(txt)
         msg.information(self, 'Dataprep completed', txt)
 
@@ -2714,7 +2728,7 @@ class dataPrepWin(QMainWindow):
             If you choose to not crop, these 0-valued pixels will be automatically 
             excluded from the automatic background estimation.
         """)
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
             self, 'Padding alignment shifts', txt, 
             buttonsTexts=('Cancel', 'Ok')
@@ -2727,7 +2741,7 @@ class dataPrepWin(QMainWindow):
         align = False
         progressText = 'Aligning data...'
         if posData.SizeT > 1:
-            msg = widgets.myMessageBox(showCentered=False)
+            msg = widgets_message_box.myMessageBox(showCentered=False)
             if posData.loaded_shifts is not None:
                 txt = html_utils.paragraph(f"""
                     This Position was <b>already aligned</b>.<br><br>
@@ -2786,7 +2800,7 @@ class dataPrepWin(QMainWindow):
         return not self.alignDataWorker.doAbort
 
     def askAlignSegmData(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'Cell-ACDC found an existing segmentation mask.<br><br>'
             'Do you need to <b>align that</b> too?<b>'
@@ -2823,7 +2837,7 @@ class dataPrepWin(QMainWindow):
 
     def warnTifAligned(self, numFramesWith0s, tifPath, posData):
         if numFramesWith0s>0 and posData.loaded_shifts is not None:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph("""
                 Cell-ACDC detected that the .tif file contains <b>LREADY 
                 aligned data</b>.<br><br>
@@ -2860,7 +2874,7 @@ class dataPrepWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
         # Step 1. Read recent Paths
-        recentPaths, dates = myutils.get_recent_paths()
+        recentPaths, dates = filesystem.get_recent_paths()
         actions = []
         for path in recentPaths[:20]:
             path_text = acdc_path.unexpanduser(path)
@@ -2871,7 +2885,7 @@ class dataPrepWin(QMainWindow):
         self.openRecentMenu.addActions(actions)
         
         # Step 4. Create the "More/Search..." dialog and action
-        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+        self.openRecentMoreDialog = dialogs_generic.SearchableListboxDialog(
             recentPaths,
             title='Recent paths', 
             searchLineEditText='Search recent paths  (double-click to open)...',
@@ -2929,7 +2943,7 @@ class dataPrepWin(QMainWindow):
         self.gui_connectGraphicsEvents()
         
         exp_path = self.data[self.pos_i].exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         if len(pos_foldernames) == 1:
             # There is only one position --> disable switch pos action
             self.loadPosAction.setDisabled(True)
@@ -3073,7 +3087,7 @@ class dataPrepWin(QMainWindow):
         self.aboutWin.show()
     
     def showHowToDataPrep(self):
-        myutils.browse_url(urls.dataprep_docs)
+        filesystem.browse_url(urls.dataprep_docs)
     
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
@@ -3083,12 +3097,12 @@ class dataPrepWin(QMainWindow):
         self.initLoading()
 
         if exp_path is None:
-            self.mostRecentPath = myutils.getMostRecentPath()
+            self.mostRecentPath = filesystem.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
                 self, 'Select experiment folder containing Position_n folders '
                       'or specific Position_n folder', self.mostRecentPath)
 
-        myutils.addToRecentPaths(exp_path)
+        filesystem.addToRecentPaths(exp_path)
 
         if exp_path == '':
             self.openFolderAction.setEnabled(True)
@@ -3097,7 +3111,7 @@ class dataPrepWin(QMainWindow):
                 color='w')
             return
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = filesystem.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.titleLabel.setText('Loading data...', color='w')
@@ -3161,7 +3175,7 @@ class dataPrepWin(QMainWindow):
 
         # Get info from first position selected
         images_path = self.images_paths[0]
-        filenames = myutils.listdir(images_path)
+        filenames = filesystem.listdir(images_path)
         if ch_name_selector.is_first_call:
             ch_names, warn = (
                 ch_name_selector.get_available_channels(filenames, images_path)
@@ -3233,7 +3247,7 @@ class dataPrepWin(QMainWindow):
         # self.titleLabel.item.setTextCursor(cursor)
 
     def askSaveAlignedData(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             Cell-ACDC detected <b>aligned data that was not saved</b>.<br><br> 
             Do you want to save the aligned data?
@@ -3247,7 +3261,7 @@ class dataPrepWin(QMainWindow):
         return msg.clickedButton == yesAlignButton, msg.cancel
     
     def startMoveTempFilesWorker(self):
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Saving aligned data', 
             parent=self,
             pbarDesc='Saving aligned data'
@@ -3256,7 +3270,7 @@ class dataPrepWin(QMainWindow):
         self.progressWin.mainPbar.setMaximum(len(self.tempFilesToMove))
         
         self.saveAlignedThread = QThread()
-        self.saveAlignedWorker = workers.MoveTempFilesWorker(
+        self.saveAlignedWorker = data_prep_workers.MoveTempFilesWorker(
             self.tempFilesToMove
         )
         
@@ -3341,7 +3355,7 @@ class dataPrepWin(QMainWindow):
         return True
     
     def warnSaveAlignedNotReversible(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             WARNING: Saving the aligned data <b>cannot be undone!</b>.<br><br> 
             Do you want to continue with saving the aligned data?
@@ -3373,7 +3387,7 @@ class dataPrepWin(QMainWindow):
         if not isCropped:
             return True
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             You seem to have cropping information that you did not save.<br><br> 
             Do you want to save cropped data?
@@ -3469,7 +3483,7 @@ def launchDataPrepSelectZPlane(
         '_segmInfo.csv file not found. Launching dataPrep.py...'
     )
 
-    msg = widgets.myMessageBox()
+    msg = widgets_message_box.myMessageBox()
     txt = html_utils.paragraph(f"""
         You loaded 3D z-stacks, but (in some or all Positions) 
         you <b>never selected which

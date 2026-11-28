@@ -14,7 +14,8 @@ from qtpy.QtGui import QImage, QPainter
 import pyqtgraph.exporters
 import pyqtgraph as pg
 
-from . import transformation, printl, myutils
+from . import transformation, printl
+from cellacdc.myutils import downloads
 from . import is_mac, is_win
 from . import acdc_ffmpeg_path
 
@@ -260,7 +261,7 @@ class VideoExporter:
         avi_to_mp4(self._avi_filepath, crf=crf)
 
 def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None, crf=18):
-    ffmpeg_exec_path = myutils.download_ffmpeg()
+    ffmpeg_exec_path = downloads.download_ffmpeg()
     
     if out_filepath_mp4 is None:
         out_filepath_mp4 = in_filepath_avi.replace('.avi', '.mp4')

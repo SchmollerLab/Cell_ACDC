@@ -1,4 +1,7 @@
-from .. import apps, myutils, workers, widgets, html_utils, load
+from .. import html_utils, load
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -14,7 +17,7 @@ class fillHolesInSegm(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -22,7 +25,7 @@ class fillHolesInSegm(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.FillHolesInSegWorker(self)
+        self.worker = FillHolesInSegWorker(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigAborted.connect(self.workerAborted)
         self.worker.sigSelectSegmFiles.connect(self.askInputSegm)
@@ -40,7 +43,7 @@ class fillHolesInSegm(NewThreadMultipleExpBaseUtil):
         else:
             txt = 'Filling holes in segmentation mask process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -52,7 +55,7 @@ class fillHolesInSegm(NewThreadMultipleExpBaseUtil):
         existingSegmEndNames = load.get_segm_endnames_from_exp_path(
         exp_path, pos_foldernames=pos_foldernames
     )
-        win = apps.SelectSegmFileDialog(
+        win = dialogs_file_selection.SelectSegmFileDialog(
             existingSegmEndNames, exp_path, parent=self, allowMultipleSelection=True,
             infoText=f"Select the segmentation files for folder {exp_path}."
         )
@@ -73,7 +76,7 @@ class fillHolesInSegm(NewThreadMultipleExpBaseUtil):
             be overwritten.
             """
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             hintText='Insert a name extension if the old file should not be overwritten.',
             helpText=helpText, basename=basename,
             allowEmpty=True

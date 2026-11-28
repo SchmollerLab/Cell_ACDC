@@ -28,8 +28,7 @@ import hashlib
 import itertools
 import json
 
-from cellacdc import myutils
-from cellacdc import myutils_models
+from cellacdc.myutils import segm_models
 from cellacdc.service import prompts
 from cellacdc._model_startup import startup_timer
 from cellacdc.service.client import LocalBackend
@@ -316,12 +315,12 @@ class ModelExecution:
         else:
             self.log(f'Importing {self.model_name}...')
             importer = (
-                myutils.import_promptable_segment_module
+                segm_models.import_promptable_segment_module
                 if self.model_kind == 'promptable'
-                else myutils.import_segment_module
+                else segm_models.import_segment_module
             )
             self.acdcSegment = importer(self.model_name)
-            init_params, segment_params = myutils.getModelArgSpec(
+            init_params, segment_params = segm_models.getModelArgSpec(
                 self.acdcSegment
             )
             url = getattr(self.acdcSegment, 'url_help', lambda: None)()
@@ -383,13 +382,13 @@ class ModelExecution:
 
         if self.backend_type == 'in_process':
             if self.model_kind == 'promptable':
-                return myutils.init_prompt_segm_model(
+                return segm_models.init_prompt_segm_model(
                     self.acdcSegment, posData, init_kwargs
                 )
-            return myutils.init_segm_model(self.acdcSegment, posData, init_kwargs)
+            return segm_models.init_segm_model(self.acdcSegment, posData, init_kwargs)
 
         if self.model_kind == 'segmentation':
-            segm_data = myutils.resolve_segm_model_init_data(
+            segm_data = segm_models.resolve_segm_model_init_data(
                 posData, init_kwargs
             )
             if segm_data is not None:

@@ -2,7 +2,8 @@ import os
 
 import torch
 
-from cellacdc import myutils, printl
+from cellacdc import printl
+from cellacdc.myutils import misc, model_installs
 from cellacdc.models._cellpose_base.acdcSegment import (
     Model as CellposeBaseModel, 
     GPUDirectMLGPUCPU, 
@@ -16,7 +17,7 @@ from . import AvailableModelsv4
 
 class Model(CellposeBaseModel):
     def __new__(cls, *args, **kwargs):
-        myutils.check_install_cellpose(4)
+        model_installs.check_install_cellpose(4)
         return super().__new__(cls)
     
     def __init__(
@@ -58,7 +59,7 @@ class Model(CellposeBaseModel):
         self.init_successful = False
         self.initConstants()
         self.batch_size = batch_size
-        model_type, model_path, device = myutils.translateStrNone(model_type, model_path, device)
+        model_type, model_path, device = misc.translateStrNone(model_type, model_path, device)
 
         self.check_model_path_model_type(
             model_type=model_type, 
@@ -76,7 +77,7 @@ class Model(CellposeBaseModel):
 
         model_path = model_path or model_type
         
-        major_version = myutils.get_cellpose_major_version()
+        major_version = model_installs.get_cellpose_major_version()
         print(f'Initializing Cellpose v{major_version}...')
 
         from cellpose import models

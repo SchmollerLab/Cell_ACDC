@@ -15,9 +15,23 @@ from qtpy.QtGui import QKeySequence
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import apps, measurements_viewer, widgets
+from cellacdc.measurements_viewer import viewer_utils
+from cellacdc.measurements_viewer.dialogs import (
+    conditional_formatting as viewer_dialogs_conditional_formatting,
+    premade_setup as viewer_dialogs_premade_setup,
+    processing_recipe as viewer_dialogs_processing_recipe,
+)
+from cellacdc.measurements_viewer.main_window import configuration as viewer_configuration
+from cellacdc.shared.dialogs import combine_measurements as dialogs_combine_measurements
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+)
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import QColorDialog, QFileDialog
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
-from cellacdc.measurements_viewer import MeasurementsViewerWin, VISITED_COLUMN
+from cellacdc.measurements_viewer.annotation_data import VISITED_COLUMN
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
 # The configurations below use the test-only identity processor 'Dummy'
@@ -247,7 +261,7 @@ def test_ask_measurement_replay_choices(app, monkeypatch, clicked, complete, exp
             self.clickedButton = clicked
             return buttonsTexts
 
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeMessageBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeMessageBox)
     columns = {'area': [1.], 'final': [2.]} if complete else {'area': [1.]}
     data = [SimpleNamespace(
         acdc_df=pd.DataFrame(columns), pos_path='/exp/Position_1'
@@ -385,7 +399,7 @@ def test_close_prompt_options_are_dynamic(
         viewer.saveAcdcDfs(viewer.data)
     if configChanged:
         viewer.normalizeCheckbox.setChecked(True)
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeCloseBox)
     FakeCloseBox.click = 'Cancel'
     assert not viewer.askSaveBeforeClosing()
     assert FakeCloseBox.offered == expected
@@ -406,7 +420,7 @@ def test_close_prompt_actions(
     viewer.normalizeCheckbox.setChecked(True)
     saveConfiguration = Mock(return_value=True)
     monkeypatch.setattr(viewer, 'saveConfiguration', saveConfiguration)
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeCloseBox)
     FakeCloseBox.click = click
     assert viewer.askSaveBeforeClosing()
     assert bool(viewer.unsavedAcdcDfPositions()) != tablesSaved
@@ -419,7 +433,7 @@ def test_close_prompt_actions(
 @pytest.mark.slow
 def test_close_prompt_failed_save_cancels_close(viewer, tmp_path, monkeypatch):
     load_clean_workflow(viewer, tmp_path)
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeCloseBox)
     monkeypatch.setattr(viewer, 'saveAcdcDfs', Mock(return_value=False))
     FakeCloseBox.click = 'Save tables'
     assert not viewer.askSaveBeforeClosing()
@@ -449,7 +463,7 @@ def test_close_prompt_asks_again_for_changes_made_while_open(
             return list(buttonsTexts)
 
     monkeypatch.setattr(
-        measurements_viewer.widgets, 'myMessageBox', EditWhileOpenBox
+        widgets_message_box, 'myMessageBox', EditWhileOpenBox
     )
     assert viewer.askSaveBeforeClosing()
     assert prompts == [
@@ -467,7 +481,7 @@ def test_close_without_changes_does_not_prompt(viewer, tmp_path, monkeypatch):
     load_clean_workflow(viewer, tmp_path)
     viewer.saveAcdcDfs(viewer.data)
     box = Mock()
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', box)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', box)
     assert viewer.askSaveBeforeClosing()
     box.assert_not_called()
 
@@ -523,7 +537,7 @@ def test_flag_columns_saved_by_main_gui_are_parsed_on_load(tmp_path):
     table.reset_index().to_csv(csvPath, index=False)
     assert pd.read_csv(csvPath)[VISITED_COLUMN].dtype == object
 
-    pos = measurements_viewer.load_position(images, 'phase')
+    pos = viewer_utils.load_position(images, 'phase')
     acdc_df = MeasurementsViewerWin._standardizeAcdcDf(pos.acdc_df).sort_index()
     timepoints = acdc_df[f'{TIMEPOINT_PREFIX}Start']
     assert timepoints.dtype == bool and timepoints.tolist() == [True, False, False]
@@ -590,7 +604,7 @@ def test_empty_phases_survive_save_and_reload_with_cca_columns(
         viewer.reloadButtonClicked()
         assert viewer.acdc_df['phase'].tolist() == ['Active', '']
         assert not viewer.unsavedAcdcDfPositions()
-    pos = measurements_viewer.load_position(paths[0], 'phase')
+    pos = viewer_utils.load_position(paths[0], 'phase')
     assert pos.acdc_df['phase'].tolist() == ['Active', '']
     # The reloaded phases are recognized as translator outputs
     assert viewer.applyPhaseTranslator()
@@ -721,7 +735,7 @@ def test_new_experiment_without_visible_overlays_shows_base_channel(
         viewer, 'selectConfigurationInput',
         lambda config: viewer.newExperimentInput(config, newPaths)
     )
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeCloseBox)
     FakeCloseBox.click = 'Continue'
     assert viewer.loadConfiguration(filepath=str(path))
     viewer.configurationError.assert_not_called()
@@ -781,7 +795,7 @@ def test_loading_other_data_asks_to_save_changes(
             texts.append(txt)
             return super().warning(parent, title, txt, **kwargs)
 
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeLoadBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeLoadBox)
     FakeCloseBox.click = click
     loaded = load_other_data(viewer, loader, tmp_path / 'second')
     if loader == 'configuration':
@@ -808,7 +822,7 @@ def test_loading_other_data_offers_unsaved_configuration(
     viewer.addTimepointIdentifierItem(identifier)
     assert viewer.hasUnsavedConfiguration()
     before = viewer.data
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeCloseBox)
     FakeCloseBox.click = 'Cancel'
     viewer.loadImagesPaths(make_experiment(tmp_path / 'second', positions=1))
     assert any('configuration' in text for text in FakeCloseBox.offered)
@@ -826,7 +840,7 @@ def test_loading_other_data_without_changes_does_not_prompt(
     assert viewer.saveAcdcDfs(viewer.data)
     before = viewer.data
     box = Mock()
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', box)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', box)
     viewer.loadImagesPaths(make_experiment(tmp_path / 'second', positions=1))
     box.assert_not_called()
     assert viewer.data is not before
@@ -861,7 +875,7 @@ def test_reopening_unsaved_data_predicts_unvisited_cells_again(
     assert predicted() == ([0], [1])
     # Reopen the same experiment discarding the session's table changes:
     # cell 2 is unvisited in the reloaded table and is predicted again.
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeCloseBox)
     FakeCloseBox.click = "Don't save"
     viewer.loadImagesPaths(paths)
     assert not viewer.acdc_df.xs(2, level='Cell_ID').get(
@@ -965,7 +979,7 @@ def test_new_experiment_missing_overlays_prompt(
             self.clickedButton = click
             return buttonsTexts
 
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', Box)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', Box)
     option = viewer.newExperimentInput(configuration, paths)
     assert 'GFP' in Box.txt
     if expected is None:
@@ -1027,7 +1041,7 @@ def test_input_choices_include_new_experiment(viewer, tmp_path, monkeypatch):
 
     monkeypatch.setattr(viewer, 'selectItem', select)
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getExistingDirectory',
+        QFileDialog, 'getExistingDirectory',
         Mock(return_value=str(tmp_path / 'new'))
     )
     option = MeasurementsViewerWin.selectConfigurationInput(viewer, configuration)
@@ -1244,7 +1258,7 @@ def test_partially_overlapping_outputs_are_refused(viewer, monkeypatch):
         def deleteLater(self):
             pass
     monkeypatch.setattr(
-        measurements_viewer.apps_measurements_viewer,
+        viewer_dialogs_processing_recipe,
         'MeasurementProcessingRecipeDialog', Dialog
     )
     pos.chNames = ['phase']
@@ -1280,7 +1294,7 @@ def test_successful_processing_and_combining_are_recorded(viewer, monkeypatch):
     source = viewer.acdc_df
     dialog = SimpleNamespace(
         getEquationsDict=lambda: ({'combined': 'copy + 1'}, {}),
-        evaluateEquation=lambda df, expression: apps.CombineMetricsEquationDialog.evaluateCellEquation(
+        evaluateEquation=lambda df, expression: dialogs_combine_measurements.CombineMetricsEquationDialog.evaluateCellEquation(
             df, expression
         ),
         close=Mock()
@@ -1308,7 +1322,7 @@ def test_visited_flag_survives_export_and_reload(viewer, tmp_path, monkeypatch):
     assert viewer.acdc_df[VISITED_COLUMN].tolist() == [True, False]
     export = tmp_path / 'export.csv'
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         Mock(return_value=(str(export), 'CSV (*.csv)'))
     )
     viewer.exportMeasurements()
@@ -1332,7 +1346,7 @@ def test_legacy_config_migrates_viewed_ids(viewer, tmp_path):
     configuration['version'] = 1
     configuration.pop('input_options')
     configuration['viewed_cells'] = {
-        measurements_viewer.os.path.normcase(str(tmp_path / 'Position_1')): [2]
+        os.path.normcase(str(tmp_path / 'Position_1')): [2]
     }
     path = tmp_path / 'legacy.json'
     path.write_text(json.dumps(configuration))
@@ -1776,9 +1790,9 @@ def test_invalid_channel_placeholders_are_rejected(bad):
 
 
 def patch_premade_dialogs(viewer, monkeypatch, folder, saved, mapping):
-    monkeypatch.setattr(measurements_viewer, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(saved))
+    monkeypatch.setattr(viewer_configuration, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(saved))
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getExistingDirectory',
+        QFileDialog, 'getExistingDirectory',
         lambda *args, **kwargs: str(folder)
     )
     offered = []
@@ -1928,7 +1942,7 @@ def test_premade_needs_enough_channels(viewer, tmp_path, monkeypatch):
 
 
 def test_shipped_premade_configurations_are_valid():
-    folder = measurements_viewer.PREMADE_CONFIGURATIONS_PATH
+    folder = viewer_configuration.PREMADE_CONFIGURATIONS_PATH
     files = [f for f in os.listdir(folder) if f.endswith('.json')]
     assert files
     for filename in files:
@@ -1955,14 +1969,14 @@ def test_shipped_premade_configurations_are_valid():
 
 
 def test_channel_mapping_dialog(app, monkeypatch):
-    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+    dialog = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog(
         {'RED': 'red channel', 'GREEN': ''}, ['GFP', 'mCherry_red', 'phase']
     )
     # Matching names are preselected, the rest get the first unused channel
     assert dialog.currentMapping() == {'RED': 'mCherry_red', 'GREEN': 'GFP'}
     warnings = []
     monkeypatch.setattr(
-        measurements_viewer.widgets, 'myMessageBox',
+        widgets_message_box, 'myMessageBox',
         lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
     )
     dialog.comboboxes['GREEN'].setCurrentText('mCherry_red')
@@ -1978,17 +1992,17 @@ def test_channel_mapping_dialog_rejects_invalid_equation_channels(
         app, monkeypatch
     ):
     with open(os.path.join(
-            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            viewer_configuration.PREMADE_CONFIGURATIONS_PATH,
             'fucci_cell_cycle.json'), encoding='utf-8') as file:
         template = json.load(file)
-    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+    dialog = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog(
         template['channel_placeholders'], ['488', 'mKO2-hCdt1', 'phase'],
         inputs=template['input_placeholders'],
         validate=partial(MeasurementsViewerWin.resolvePremadeTemplate, template)
     )
     warnings = []
     monkeypatch.setattr(
-        measurements_viewer.widgets, 'myMessageBox',
+        widgets_message_box, 'myMessageBox',
         lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
     )
     dialog.comboboxes['GEMININ'].setCurrentText('488')
@@ -2125,8 +2139,8 @@ def test_custom_signal_colors_are_saved_and_loaded(
         viewer, tmp_path, monkeypatch):
     _, path = load_clean_workflow(viewer, tmp_path)
     monkeypatch.setattr(
-        measurements_viewer.QColorDialog, 'getColor',
-        Mock(return_value=measurements_viewer.QColor('#123456'))
+        QColorDialog, 'getColor',
+        Mock(return_value=QColor('#123456'))
     )
     viewer.changeSignalColor('final')
     assert viewer.configuration()['measurements_colors'] == {
@@ -2219,7 +2233,7 @@ def test_invalid_signal_colors_are_rejected(viewer, tmp_path, bad):
 def test_conditional_formatting_dialog(app, monkeypatch):
     warnings = []
     monkeypatch.setattr(
-        measurements_viewer.widgets, 'myMessageBox',
+        widgets_message_box, 'myMessageBox',
         lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
     )
 
@@ -2227,7 +2241,7 @@ def test_conditional_formatting_dialog(app, monkeypatch):
         if 'bad' in condition:
             raise ValueError('invalid')
 
-    dialog = measurements_viewer.ConditionalFormattingDialog(
+    dialog = viewer_dialogs_conditional_formatting.ConditionalFormattingDialog(
         'x', [{'condition': 'a == 1', 'color': '#00ff00'}],
         validateCondition=validate, editCondition=lambda text: 'b == 2'
     )
@@ -2249,7 +2263,7 @@ def test_conditional_formatting_dialog(app, monkeypatch):
 
 def test_fucci_template_formats_reporters_by_ramp():
     with open(os.path.join(
-            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            viewer_configuration.PREMADE_CONFIGURATIONS_PATH,
             'fucci_cell_cycle.json'), encoding='utf-8') as file:
         template = json.load(file)
     result = MeasurementsViewerWin.resolvePremadeTemplate(
@@ -2276,7 +2290,7 @@ def test_formatting_condition_editor(app):
     acdc_df = pd.DataFrame({
         'frame_i': [0, 1, 0], 'Cell_ID': [1, 1, 2], 'area': [12., 30., 24.]
     }).set_index(['frame_i', 'Cell_ID'])
-    dialog = measurements_viewer._FormattingConditionDialog(
+    dialog = viewer_dialogs_conditional_formatting._FormattingConditionDialog(
         ['phase'], False, False, acdc_df=acdc_df, SizeT=2,
         condition='area > MEAN(area)'
     )
@@ -2301,7 +2315,7 @@ def test_formatting_condition_editor_missing_values_are_false(app):
         'frame_i': [0, 1, 2, 3, 0, 1], 'Cell_ID': [1, 1, 1, 1, 2, 2],
         'flag': [0., 0., 1., 1., 1., np.nan],
     }).set_index(['frame_i', 'Cell_ID'])
-    dialog = measurements_viewer._FormattingConditionDialog(
+    dialog = viewer_dialogs_conditional_formatting._FormattingConditionDialog(
         ['phase'], False, False, acdc_df=acdc_df, SizeT=4,
         condition='SHIFT(flag, 1)'
     )
@@ -2326,15 +2340,15 @@ def test_formatting_condition_editor_missing_values_are_false(app):
 
 @pytest.mark.slow
 def test_relative_formatting_colors(app, viewer, tmp_path):
-    base = measurements_viewer.QColor('#ff0000')
-    lighter = measurements_viewer.formatting_color('lighter', base)
-    darker = measurements_viewer.formatting_color('darker', base)
+    base = QColor('#ff0000')
+    lighter = viewer_dialogs_conditional_formatting.formatting_color('lighter', base)
+    darker = viewer_dialogs_conditional_formatting.formatting_color('darker', base)
     assert lighter.lightness() > base.lightness() > darker.lightness()
     assert lighter.hue() == darker.hue() == base.hue()
-    assert measurements_viewer.formatting_color('darker:300', base).value() < (
+    assert viewer_dialogs_conditional_formatting.formatting_color('darker:300', base).value() < (
         darker.value()
     )
-    assert measurements_viewer.formatting_color('#123456', base).name() == (
+    assert viewer_dialogs_conditional_formatting.formatting_color('#123456', base).name() == (
         '#123456'
     )
     MeasurementsViewerWin.validateConditionalFormatting({'a': [
@@ -2367,7 +2381,7 @@ def test_relative_formatting_colors(app, viewer, tmp_path):
 
 
 def test_formatting_dialog_keeps_relative_modes(app):
-    dialog = measurements_viewer.ConditionalFormattingDialog('x', [
+    dialog = viewer_dialogs_conditional_formatting.ConditionalFormattingDialog('x', [
         {'condition': 'a', 'color': 'darker:250'},
         {'condition': 'b', 'color': '#00ff00'},
     ])
@@ -2434,13 +2448,13 @@ def test_invalid_input_placeholders_are_rejected(bad):
 
 
 def test_setup_dialog_asks_for_inputs(app, monkeypatch):
-    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+    dialog = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog(
         {'MAIN': ''}, ['GFP'], inputs=premade_inputs()
     )
     assert dialog.inputLineEdits['BG'].text() == '0.5'
     warnings = []
     monkeypatch.setattr(
-        measurements_viewer.widgets, 'myMessageBox',
+        widgets_message_box, 'myMessageBox',
         lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
     )
     dialog.inputLineEdits['N'].setText('2.5')
@@ -2578,7 +2592,7 @@ def test_premade_without_mean_columns_is_refused(
 # --- Premade background values ------------------------------------------------
 def fucci_template():
     with open(os.path.join(
-            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            viewer_configuration.PREMADE_CONFIGURATIONS_PATH,
             'fucci_cell_cycle.json'), encoding='utf-8') as file:
         return json.load(file)
 
@@ -2609,7 +2623,7 @@ def fucci_setup_dialog(**kwargs):
         template['background_values'], template['channel_placeholders'],
         template['input_placeholders']
     )
-    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+    dialog = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog(
         template['channel_placeholders'], ['GFP', 'mCherry', 'phase'],
         inputs=template['input_placeholders'], backgroundValues=spec,
         **kwargs
@@ -2622,7 +2636,7 @@ def fucci_setup_dialog(**kwargs):
 def capture_warnings(monkeypatch):
     warnings = []
     monkeypatch.setattr(
-        measurements_viewer.widgets, 'myMessageBox',
+        widgets_message_box, 'myMessageBox',
         lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
     )
     return warnings
@@ -2745,7 +2759,7 @@ def test_setup_dialog_loads_summary_table(app, monkeypatch, tmp_path):
         return str(table), ''
 
     monkeypatch.setattr(
-        measurements_viewer.apps_measurements_viewer.QFileDialog,
+        QFileDialog,
         'getOpenFileName', getOpenFileName
     )
     dialog.loadBackgroundTableButton.click()
@@ -2843,7 +2857,7 @@ def test_setup_dialog_is_disabled_while_a_table_row_is_asked(
 
     def answer(closeSetup=False):
         prompt, = [
-            win for win in dialog.findChildren(widgets.QDialogListbox)
+            win for win in dialog.findChildren(widgets_item_views.QDialogListbox)
             if win.isVisible()
         ]
         states.append((dialog.isEnabled(), prompt.isEnabled()))
@@ -2882,7 +2896,7 @@ def test_fucci_hints_preselect_reporter_channels_for_calculation(app):
         template['channel_hints'], template['channel_placeholders']
     )
     calls = []
-    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+    dialog = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog(
         template['channel_placeholders'],
         ['BF', 'GFP', 'combined', 'combined_preprocessed', 'mCherry'],
         inputs=template['input_placeholders'], backgroundValues=spec,
@@ -2895,7 +2909,7 @@ def test_fucci_hints_preselect_reporter_channels_for_calculation(app):
     dialog.computeBackgroundButton.click()
     assert calls == [['GFP', 'mCherry']]
     # Placeholder names in channel names win over the hints
-    guess = measurements_viewer.ChannelPlaceholderMappingDialog.guessChannels
+    guess = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog.guessChannels
     assert guess(
         template['channel_placeholders'],
         ['GFP', 'mAG1-hGeminin', 'mKO2-hCdt1'], hints
@@ -2920,7 +2934,7 @@ def test_invalid_channel_hints_are_rejected(bad):
 
 
 def test_setup_dialog_without_background_values_has_no_buttons(app):
-    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+    dialog = viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog(
         {'MAIN': ''}, ['GFP'], inputs=premade_inputs()
     )
     assert dialog.backgroundSourceLabel is None
@@ -3012,7 +3026,7 @@ def test_premade_setup_gets_background_values_and_experiment(
 # --- Empty display channel ----------------------------------------------------
 def test_fucci_template_has_both_reporters_as_overlays():
     with open(os.path.join(
-            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            viewer_configuration.PREMADE_CONFIGURATIONS_PATH,
             'fucci_cell_cycle.json'), encoding='utf-8') as file:
         template = json.load(file)
     result = MeasurementsViewerWin.resolvePremadeTemplate(

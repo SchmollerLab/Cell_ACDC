@@ -44,13 +44,13 @@ def run():
     PARAMS_PATH = parser_args['params']
     
     if parser_args['version'] or parser_args['info']:
-        from cellacdc.myutils import get_info_version_text
+        from cellacdc.myutils.app_info import get_info_version_text
         info_txt = get_info_version_text()
         print(info_txt)
         exit()
 
     if parser_args['reset']:
-        from cellacdc.myutils import reset_settings
+        from cellacdc.myutils.filesystem import reset_settings
         reset_info_txt = reset_settings()
         print(reset_info_txt)
         exit()
@@ -122,11 +122,12 @@ def run_gui():
     # Create the application
     app, splashScreen = _run._setup_app(splashscreen=True)
 
-    from cellacdc import myutils, printl
+    from cellacdc import printl
+    from cellacdc.myutils import app_info, installs
     
     print('Launching application...')
 
-    from cellacdc._main import mainWin
+    from cellacdc.launcher.main_window import mainWin
     
     if not splashScreen.isVisible():
         splashScreen.show()
@@ -134,20 +135,20 @@ def run_gui():
     win = mainWin(app)
 
     try:
-        myutils.check_matplotlib_version(qparent=win)
+        installs.check_matplotlib_version(qparent=win)
     except Exception as e:
         pass
-    version, success = myutils.read_version(
+    version, success = app_info.read_version(
         logger=win.logger.info, return_success=True
     )
     if not success:
-        error = myutils.check_install_package(
+        error = installs.check_install_package(
             'setuptools_scm', pypi_name='setuptools-scm'
         )
         if error:
             win.logger.info(error)
         else:
-            version = myutils.read_version(logger=win.logger.info)
+            version = app_info.read_version(logger=win.logger.info)
     win.setVersion(version)
     win.launchWelcomeGuide()
     win.show()

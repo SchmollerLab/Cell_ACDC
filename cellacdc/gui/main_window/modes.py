@@ -7,7 +7,7 @@ from tqdm import tqdm
 from qtpy.QtCore import QTimer
 from cellacdc import disableWindow
 from cellacdc import html_utils
-from cellacdc import widgets
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import _warnings
 from . import constants as gui_main_constants
 
@@ -638,7 +638,7 @@ class ModesGuiElements:
         
         if posData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(
                 f'The last visited frame in "Segmentation and Tracking mode" '
                 f'is frame {last_tracked_i+1}.\n\n'

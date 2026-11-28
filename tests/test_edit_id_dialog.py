@@ -2,7 +2,8 @@
 import pytest
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import apps, widgets
+from cellacdc.gui.dialogs import editing as gui_dialogs_editing
+from cellacdc.shared.widgets import push_buttons as widgets_push_buttons
 
 pytestmark = pytest.mark.gui
 
@@ -13,7 +14,7 @@ def app():
 
 
 def _dialog(isSegm3D):
-    return apps.EditIDDialog(
+    return gui_dialogs_editing.EditIDDialog(
         3, [1, 2, 3], entryID=4, nextUniqueID=5,
         isSegm3D=isSegm3D, SizeZ=6 if isSegm3D else None,
         currentZslice=2, zSliceStartValue=2,
@@ -21,7 +22,7 @@ def _dialog(isSegm3D):
 
 
 def _click_assign_new_id(dialog):
-    dialog.findChild(widgets.AssignNewIDButton).click()
+    dialog.findChild(widgets_push_buttons.AssignNewIDButton).click()
 
 
 def test_assign_new_id_reports_the_z_slices_choice(app):

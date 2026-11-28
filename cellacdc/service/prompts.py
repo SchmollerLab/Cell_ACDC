@@ -219,8 +219,8 @@ class QtHandler(PromptHandler):
         return self._ask_message(prompt)
 
     def _ask_pytorch(self, prompt: Prompt):
-        from cellacdc import apps
-        win = apps.InstallPyTorchDialog(
+        from cellacdc.shared.dialogs import model_selection as dialogs_model_selection
+        win = dialogs_model_selection.InstallPyTorchDialog(
             parent=self.parent,
             target_python=prompt.extra.get('python'),
             platform=prompt.extra.get('platform'),
@@ -232,8 +232,8 @@ class QtHandler(PromptHandler):
         return None if win.cancel else win.command
 
     def _ask_choice_buttons(self, prompt: Prompt):
-        from cellacdc import widgets
-        msg = widgets.myMessageBox(wrapText=False)
+        from cellacdc.shared.widgets import message_box as widgets_message_box
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         buttons = msg.question(
             self.parent, prompt.title, self._html(prompt.text),
             buttonsTexts=(prompt.cancel_text, *prompt.choices),
@@ -248,8 +248,8 @@ class QtHandler(PromptHandler):
         return None
 
     def _ask_choice_combobox(self, prompt: Prompt):
-        from cellacdc import apps
-        win = apps.QDialogCombobox(
+        from cellacdc.shared.dialogs import generic as dialogs_generic
+        win = dialogs_generic.QDialogCombobox(
             prompt.title, list(prompt.choices), self._html(prompt.text),
             CbLabel='', parent=self.parent,
             defaultChannelName=prompt.default,
@@ -259,8 +259,8 @@ class QtHandler(PromptHandler):
 
     def _ask_text(self, prompt: Prompt):
         from qtpy.QtWidgets import QLineEdit
-        from cellacdc import apps
-        win = apps.QLineEditDialog(
+        from cellacdc.shared.dialogs import generic as dialogs_generic
+        win = dialogs_generic.QLineEditDialog(
             title=prompt.title, msg=self._html(prompt.text),
             defaultTxt=prompt.default or '', parent=self.parent,
             allowText=True, allowEmpty=False,
@@ -271,8 +271,8 @@ class QtHandler(PromptHandler):
         return None if win.cancel else win.entryWidget.text()
 
     def _ask_message(self, prompt: Prompt):
-        from cellacdc import widgets
-        msg = widgets.myMessageBox(wrapText=False)
+        from cellacdc.shared.widgets import message_box as widgets_message_box
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         kwargs = dict(
             detailsText=prompt.details, commands=prompt.commands or None
         )

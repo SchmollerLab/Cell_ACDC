@@ -22,8 +22,12 @@ from qtpy.QtWidgets import QAction, QMenu
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from cellacdc import exception_handler
-from cellacdc import apps, workers, html_utils
-from cellacdc import widgets
+from cellacdc import html_utils
+from cellacdc.shared.dialogs import model_selection as dialogs_model_selection
+from ..dialogs import segmentation as gui_dialogs_segmentation
+from ..workers import segmentation_tracking as gui_workers_segmentation_tracking
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from ..widgets import main_window_items as gui_widgets_main_window_items
 from cellacdc import settings_folderpath
 from cellacdc import qutils
 from cellacdc import transformation
@@ -392,7 +396,7 @@ class DeleteRoisGuiElements:
             yb = 0 if yRange[0] < 0 else yRange[0]
         Y, X = self.currentLab2D.shape
         if anchors is None:
-            roi = widgets.DelROI(
+            roi = gui_widgets_main_window_items.DelROI(
                 [xl, yb], [w, h],
                 rotatable=False,
                 removable=True,
@@ -985,7 +989,7 @@ class LabelRoiGuiElements:
             self.labelRoiMutex = QMutex()
             self.labelRoiWaitCond = QWaitCondition()
 
-            labelRoiWorker = workers.LabelRoiWorker(self)
+            labelRoiWorker = gui_workers_segmentation_tracking.LabelRoiWorker(self)
 
             labelRoiWorker.moveToThread(self.labelRoiThread)
             labelRoiWorker.finished.connect(self.labelRoiThread.quit)
@@ -1393,7 +1397,7 @@ class LabelRoiGuiElements:
     def initLabelRoiModel(self):
         self.app.restoreOverrideCursor()
         # Ask which model
-        self.initLabelRoiModelDialog = apps.QDialogSelectModel(parent=self)
+        self.initLabelRoiModelDialog = dialogs_model_selection.QDialogSelectModel(parent=self)
         self.initLabelRoiModelDialog.exec_()
         if self.initLabelRoiModelDialog.cancel:
             self.logger.info('Magic labeller aborted.')
@@ -1445,7 +1449,7 @@ class LabelRoiGuiElements:
             qparent=self
         )
         blinker.start()
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph("""
             Stop frame number is less than start frame number!<br><br>
             What do you want to do?
@@ -1492,5 +1496,5 @@ class LabelRoiGuiElements:
             param_txt = f'<i>{option}</i> = {value}<br>'
             txt = f'{txt}{param_txt}'
         
-        win = apps.ViewTextDialog(txt, parent=self)
+        win = gui_dialogs_segmentation.ViewTextDialog(txt, parent=self)
         win.exec_()

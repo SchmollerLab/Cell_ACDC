@@ -19,7 +19,14 @@ import pandas as pd
 import pytest
 from qtpy.QtWidgets import QAction, QApplication
 
-from cellacdc import apps, gui, load, myutils, widgets, workers
+from cellacdc import load
+from cellacdc.gui import helpers as gui_helpers
+from cellacdc.gui.dialogs import segmentation as gui_dialogs_segmentation
+from cellacdc.gui.main_window import window as gui_window
+from cellacdc.gui.workers import loading_saving as gui_workers_loading_saving
+from cellacdc.myutils import segm_models, table_utils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import base_cca_dict, cca_df_colnames, cca_df_colnames_with_tree
 from cellacdc.regionprops import acdcRegionprops
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
@@ -29,7 +36,7 @@ from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker
 
 pytestmark = pytest.mark.gui
 
-G = gui.guiWin
+G = gui_window.guiWin
 SEGM = 'Segmentation and Tracking'
 LIN = 'Normal division: Lineage tree'
 
@@ -129,7 +136,7 @@ def prompts(monkeypatch):
         remember = False
         log = []
 
-    monkeypatch.setattr(widgets, 'myMessageBox', Prompts)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', Prompts)
     return Prompts
 
 
@@ -206,7 +213,7 @@ class _Host:
         posData.allData_li = []
         frames_dfs = []
         for boxes in FRAMES_BOXES:
-            data_dict = myutils.get_empty_stored_data_dict()
+            data_dict = table_utils.get_empty_stored_data_dict()
             lab = _lab(boxes)
             data_dict['labels'] = lab
             data_dict['regionprops'] = acdcRegionprops(
@@ -666,14 +673,14 @@ def repeat_tracking(monkeypatch):
             def exec_(self):
                 pass
 
-        monkeypatch.setattr(widgets, 'selectTrackerGUI', TrackerSelection)
+        monkeypatch.setattr(gui_dialogs_segmentation, 'selectTrackerGUI', TrackerSelection)
         monkeypatch.setattr(
-            myutils, 'init_tracker', lambda *args, **kwargs: (None, {}, {})
+            segm_models, 'init_tracker', lambda *args, **kwargs: (None, {}, {})
         )
         monkeypatch.setattr(
-            myutils, 'validate_tracker_input', lambda *args, **kwargs: None
+            gui_helpers, 'validate_tracker_input', lambda *args, **kwargs: None
         )
-        monkeypatch.setattr(apps, 'QDialogWorkerProgress', MagicMock())
+        monkeypatch.setattr(dialogs_generic, 'QDialogWorkerProgress', MagicMock())
         host.startTrackingWorker = MagicMock()
         host.repeatTrackingVideo()
         return host.startTrackingWorker.called
@@ -892,7 +899,7 @@ def test_autosave_does_not_rejoin_removed_annotations(app, tmp_path):
     )
     worker = SimpleNamespace(logger=SimpleNamespace(log=print))
 
-    workers.AutoSaveWorker._save_acdc_df(worker, recovery_acdc_df, posData)
+    gui_workers_loading_saving.AutoSaveWorker._save_acdc_df(worker, recovery_acdc_df, posData)
 
     recovered = pd.read_csv(
         load.get_last_stored_unsaved_acdc_df_filepath(

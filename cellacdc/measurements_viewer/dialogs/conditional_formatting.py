@@ -13,8 +13,12 @@ from qtpy.QtWidgets import (
     QComboBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QToolButton,
     QVBoxLayout
 )
-from cellacdc import apps, html_utils
-from cellacdc import widgets
+from cellacdc import html_utils
+from cellacdc.shared.dialogs import base as dialogs_base
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from . import predictor_editors as viewer_dialogs_predictor_editors
 
 
@@ -44,7 +48,7 @@ def formatting_color(spec, baseColor):
     return base.lighter(factor) if match[1] == 'lighter' else base.darker(factor)
 
 
-class ConditionalFormattingDialog(apps.QBaseDialog):
+class ConditionalFormattingDialog(dialogs_base.QBaseDialog):
     """Edit the ordered conditional formatting rules of a plotted column.
 
     `rules` is a list of `{'condition': str, 'color': spec}` where spec is
@@ -87,14 +91,14 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
         self.rowsLayout = QGridLayout()
         self.rowsLayout.setColumnStretch(3, 1)
         layout.addLayout(self.rowsLayout)
-        addButton = widgets.addPushButton(' Add rule')
+        addButton = widgets_push_buttons.addPushButton(' Add rule')
         addButton.clicked.connect(self.addRule)
         addLayout = QHBoxLayout()
         addLayout.addWidget(addButton)
         addLayout.addStretch(1)
         layout.addLayout(addLayout)
         layout.addSpacing(10)
-        buttons = widgets.CancelOkButtonsLayout()
+        buttons = widgets_push_buttons.CancelOkButtonsLayout()
         buttons.okButton.clicked.connect(self.ok_cb)
         buttons.cancelButton.clicked.connect(self.close)
         layout.addLayout(buttons)
@@ -154,7 +158,7 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
                 'color': colorButton, 'edit': edit
             }
             if self.editCondition is not None:
-                row['editor'] = widgets.editPushButton('Edit...')
+                row['editor'] = widgets_push_buttons.editPushButton('Edit...')
                 row['editor'].setToolTip('Open the equation editor')
                 row['editor'].clicked.connect(partial(self.editRule, i))
             for name, text, tooltip, step in (
@@ -166,7 +170,7 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
                 button.setEnabled(0 <= i + step < len(self.rules))
                 button.clicked.connect(partial(self.moveRule, i, step))
                 row[name] = button
-            row['remove'] = widgets.delPushButton()
+            row['remove'] = widgets_push_buttons.delPushButton()
             row['remove'].setToolTip('Remove rule')
             row['remove'].clicked.connect(partial(self.removeRule, i))
             for col, widget in enumerate(row.values()):
@@ -218,7 +222,7 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
                     error = str(err)
             if error is None:
                 continue
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Invalid condition', html_utils.paragraph(
                     f'Rule {i+1} (<code>{html.escape(rule["condition"])}'
@@ -318,5 +322,5 @@ class _FormattingConditionDialog(viewer_dialogs_predictor_editors._TimepointCell
             'Use <code>&amp;</code>, <code>|</code>, <code>~</code> and '
             'parentheses to combine conditions.'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Conditional formatting condition', txt)

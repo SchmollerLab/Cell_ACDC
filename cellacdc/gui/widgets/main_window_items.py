@@ -17,7 +17,6 @@ from qtpy.QtGui import QColor, QPen, QPainter
 from qtpy.QtWidgets import QWidget, QGroupBox, QPlainTextEdit
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import myutils
 from cellacdc.shared.widgets import plot_items as widgets_plot_items
 from math import ceil, floor
 
@@ -183,7 +182,7 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
         mask = skimage.morphology.disk(radius, dtype=bool)
         xx, yy = self.getData()
         Yc, Xc = yy[0], xx[0]
-        mask, self._slice = myutils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
+        mask, self._slice = clipSelemMask(mask, shape, Yc, Xc, copy=False)
         return mask
 
 

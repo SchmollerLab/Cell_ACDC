@@ -4,7 +4,8 @@ from qtpy.QtCore import (
     QTimer, QThread, Signal, QObject
 )
 
-from . import load, printl, myutils
+from . import load, printl
+from cellacdc.myutils import misc
 
 class AutoPilotProfile:
     def __init__(self):
@@ -109,7 +110,7 @@ class AutoPilot:
             windowActions = self.loadingProfile[0]['windowActions']
             windowActionsArgs = self.loadingProfile[0]['windowActionsArgs']
             for action, args in zip(windowActions, windowActionsArgs):
-                func = myutils.get_chained_attr(window, action)
+                func = misc.get_chained_attr(window, action)
                 func(*args)
             
             self.loadingProfile.pop(0)

@@ -3,7 +3,8 @@ import atexit
 import linecache
 from collections import Counter, defaultdict
 
-from . import cellacdc_path, myutils
+from . import cellacdc_path
+from cellacdc.myutils import installs
 
 import gc
 import psutil
@@ -177,7 +178,7 @@ def showRefGraph(object_str:str, debug:bool=True):
     try:
         import objgraph
     except ImportError:
-        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+        conda_prefix, pip_prefix = installs.get_pip_conda_prefix()
 
         print(f"objgraph is not installed. Install it with '{pip_prefix} objgraph' to use reference graph features, as well as https://www.graphviz.org/")
         return
@@ -506,7 +507,7 @@ def check_unused_methods(node_name='guiWin'):
     import ast
     import textwrap
     from collections import Counter
-    from .gui import guiWin
+    from cellacdc.gui.main_window.window import guiWin
 
     gui_cls = vars(sys.modules[guiWin.__module__]).get(node_name)
     if not isinstance(gui_cls, type):

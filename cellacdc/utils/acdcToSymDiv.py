@@ -12,8 +12,18 @@ from qtpy.QtWidgets import (
 )
 
 from .. import (
-    widgets, apps, workers, html_utils, myutils,
+    html_utils, 
     load, printl
+)
+from cellacdc.myutils import app_info, filesystem
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    generic as dialogs_generic,
+    set_measurements as dialogs_set_measurements,
+)
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
 )
 from qtpy.QtCore import QObject, QMutex, QWaitCondition
 from cellacdc import core
@@ -26,7 +36,7 @@ class AcdcToSymDivUtil(QDialog):
 
         self.parent = parent
 
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module='utils.AcdcToSymDiv'
         )
         self.logger = logger
@@ -57,7 +67,7 @@ class AcdcToSymDivUtil(QDialog):
         infoLayout.addWidget(QLabel(infoTxt))
 
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -74,7 +84,7 @@ class AcdcToSymDivUtil(QDialog):
         self.runWorker()
 
     def runWorker(self):
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Building lineage tree table', parent=self,
             pbarDesc='Building lineage tree table...'
         )
@@ -82,7 +92,7 @@ class AcdcToSymDivUtil(QDialog):
         self.progressWin.show(self.app)
 
         self.thread = QThread()
-        self.worker = workers.ToSymDivWorker(self)
+        self.worker = ToSymDivWorker(self)
         self.worker.moveToThread(self.thread)
 
         self.worker.signals.finished.connect(self.thread.quit)
@@ -120,7 +130,7 @@ class AcdcToSymDivUtil(QDialog):
             f'{path}<br><br>'
             'Close file and then press "Ok".'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.setDetailedText(traceback_str)
         msg.warning(self, 'Permission error', err_msg)
         self.worker.waitCond.wakeAll()
@@ -131,10 +141,10 @@ class AcdcToSymDivUtil(QDialog):
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for metrics
             for chName in chNames:
-                filePath = myutils.getChannelFilePath(images_path, chName)
+                filePath = filesystem.getChannelFilePath(images_path, chName)
                 if filePath:
                     break
             else:
@@ -155,7 +165,7 @@ class AcdcToSymDivUtil(QDialog):
             self.worker.waitCond.wakeAll()
             return
 
-        win = apps.SelectSegmFileDialog(
+        win = dialogs_file_selection.SelectSegmFileDialog(
             existingSegmEndNames, exp_path, parent=self
         )
         win.exec_()
@@ -194,14 +204,14 @@ class AcdcToSymDivUtil(QDialog):
             self.close()
     
     def warnMissingAnnot(self, missingAnnotErrors):
-        win = apps.ComputeMetricsErrorsDialog(
+        win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
             missingAnnotErrors, self.logs_path, log_type='missing_annot', 
             parent=self
         )
         win.exec_()
     
     def warnErrors(self, errors):
-        win = apps.ComputeMetricsErrorsDialog(
+        win = dialogs_set_measurements.ComputeMetricsErrorsDialog(
             errors, self.logs_path, log_type='generic', parent=self
         )
         win.exec_()
@@ -223,7 +233,7 @@ class AcdcToSymDivUtil(QDialog):
         if worker.abort:
             txt = 'Adding lineage tree table ABORTED.'
             self.logger.info(txt)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Process aborted', html_utils.paragraph(txt))
         elif worker.errors or worker.missingAnnotErrors:
             if worker.errors:
@@ -231,12 +241,12 @@ class AcdcToSymDivUtil(QDialog):
             else:
                 self.warnMissingAnnot(worker.missingAnnotErrors)
             txt = 'Adding lineage tree table completed <b>WITH ERRORS</b>.'
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Process warning', html_utils.paragraph(txt))
         else:
             txt = 'Adding lineage tree table completed.'
             self.logger.info(txt)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
 
         self.worker = None
@@ -301,7 +311,7 @@ class ToSymDivWorker(QObject):
 
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(
+                basename, chNames = filesystem.getBasenameAndChNames(
                     images_path, useExt=('.tif', '.h5')
                 )
 
@@ -309,7 +319,7 @@ class ToSymDivWorker(QObject):
 
                 # Use first found channel, it doesn't matter for metrics
                 for chName in chNames:
-                    file_path = myutils.getChannelFilePath(images_path, chName)
+                    file_path = filesystem.getChannelFilePath(images_path, chName)
                     if file_path:
                         break
                 else:

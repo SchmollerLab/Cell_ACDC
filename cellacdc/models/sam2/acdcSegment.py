@@ -14,7 +14,8 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-from cellacdc import myutils, printl, _types, sam_embeddings
+from cellacdc import printl, _types, sam_embeddings
+from cellacdc.myutils import image_utils
 
 
 class _EmbeddingPredictor(sam_embeddings.EmbeddingPredictorMixin, SAM2ImagePredictor):
@@ -417,7 +418,7 @@ class Model:
     def _init_embeddings(self, img_rgb):
         """Prepare RGB input; the predictor owns encoder caching and restoration."""
         if img_rgb.ndim == 2:
-            img_rgb = myutils.to_uint8(img_rgb)
+            img_rgb = image_utils.to_uint8(img_rgb)
             img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
 
         predictor = getattr(self.model, 'predictor', self.model)
@@ -431,7 +432,7 @@ class Model:
             automatic_removal_of_background: bool=False
         ) -> np.ndarray:
 
-        img = myutils.to_uint8(image)
+        img = image_utils.to_uint8(image)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         labels = np.zeros(image.shape[:2], dtype=np.uint32)
 

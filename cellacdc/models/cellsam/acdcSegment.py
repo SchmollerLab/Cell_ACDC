@@ -10,7 +10,8 @@ from cellSAM import get_model, get_local_model, segment_cellular_image
 from cellSAM.cellsam_pipeline import cellsam_pipeline, normalize_image
 from cellSAM.wsi import segment_wsi
 
-from cellacdc import myutils, printl
+from cellacdc import printl
+from cellacdc.myutils import misc
 
 
 class AvailableModels:
@@ -115,7 +116,7 @@ class Model:
         self.postprocess = postprocess
         self.remove_boundaries = remove_boundaries
 
-        model_path = myutils.translateStrNone(model_path)[0]
+        model_path = misc.translateStrNone(model_path)[0]
 
         if model_path:
             print(f'Loading CellSAM model from {model_path}...')

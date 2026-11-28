@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from cellacdc import myutils
+from cellacdc.gui import helpers as gui_helpers
 from cellacdc.regionprops import acdcRegionprops
 
 pytestmark = pytest.mark.core
@@ -20,7 +20,7 @@ def rps(request):
 
 
 def test_distances_follow_region_iteration_order(rps):
-    distances = myutils.find_distances_ID(rps, point=(7.5, 2.5))
+    distances = gui_helpers.find_distances_ID(rps, point=(7.5, 2.5))
 
     np.testing.assert_allclose(distances, [[0, 3, np.sqrt(85)]])
 
@@ -36,25 +36,25 @@ def test_distances_follow_region_iteration_order(rps):
     ],
 )
 def test_sort_ids_nearest_first(rps, kwargs, relevant_ids, expected):
-    assert myutils.sort_IDs_dist(
+    assert gui_helpers.sort_IDs_dist(
         rps, relevant_IDs=relevant_ids, **kwargs
     ) == expected
 
 
 def test_id_distance_does_not_reverse_centroid(rps):
     np.testing.assert_allclose(
-        myutils.find_distances_ID(rps, ID=1),
-        myutils.find_distances_ID(rps, point=(7.5, 2.5)),
+        gui_helpers.find_distances_ID(rps, ID=1),
+        gui_helpers.find_distances_ID(rps, point=(7.5, 2.5)),
     )
 
 
 def test_empty_distances_preserve_matrix_shape(rps):
-    assert myutils.find_distances_ID(
+    assert gui_helpers.find_distances_ID(
         rps, point=(7.5, 2.5), relevant_IDs=[]
     ).shape == (1, 0)
 
 
-@pytest.mark.parametrize('helper', [myutils.find_distances_ID, myutils.sort_IDs_dist])
+@pytest.mark.parametrize('helper', [gui_helpers.find_distances_ID, gui_helpers.sort_IDs_dist])
 @pytest.mark.parametrize('relevant_ids', [None, [], [8]])
 @pytest.mark.parametrize('kwargs', [{}, {'point': (7, 2), 'ID': 1}, {'ID': 99}])
 def test_invalid_distance_inputs_raise(rps, helper, relevant_ids, kwargs):
@@ -69,6 +69,6 @@ def test_3d_id_and_point_distances_agree():
     rps = acdcRegionprops(lab)
 
     np.testing.assert_allclose(
-        myutils.find_distances_ID(rps, ID=1),
-        myutils.find_distances_ID(rps, point=(7.5, 2.5, 1.5)),
+        gui_helpers.find_distances_ID(rps, ID=1),
+        gui_helpers.find_distances_ID(rps, point=(7.5, 2.5, 1.5)),
     )

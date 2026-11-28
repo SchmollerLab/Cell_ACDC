@@ -62,8 +62,8 @@ class YeazV2ModelType:
     isWidget = True
 
     def __init__(self):
-        from cellacdc import widgets
-        self.widget = widgets.YeazV2SelectModelNameCombobox(
+        from cellacdc.shared.widgets import combo_boxes as widgets_combo_boxes
+        self.widget = widgets_combo_boxes.YeazV2SelectModelNameCombobox(
             custom_select_item_text='Select custom weights file...'
         )
 
@@ -76,8 +76,8 @@ class CsvFilePath:
     isWidget = True
 
     def __init__(self):
-        from cellacdc import widgets
-        self.widget = widgets.CsvFilePathControl()
+        from cellacdc.shared.widgets import line_edits as widgets_line_edits
+        self.widget = widgets_line_edits.CsvFilePathControl()
 
     @staticmethod
     def cast_dtype(value: Any) -> str:

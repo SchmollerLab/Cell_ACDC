@@ -24,7 +24,13 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 cellacdc_path = os.path.join(os.path.dirname(script_path))
 
 # Custom modules
-from .. import prompts, load, myutils, apps, html_utils, widgets
+from .. import prompts, load, html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from .. import cellacdc_path, settings_folderpath
 from qtpy.QtWidgets import QLineEdit, QHBoxLayout, QDialog, QFormLayout
 from cellacdc import _window_stacking
@@ -79,11 +85,11 @@ class renameFilesWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
     def main(self):
-        most_recent_path = myutils.getMostRecentPath()
+        most_recent_path = filesystem.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, 'Select experiment folder containing Position_n folders '
                   'or specific Position_n folder', most_recent_path)
-        myutils.addToRecentPaths(exp_path)
+        filesystem.addToRecentPaths(exp_path)
 
         if exp_path == '':
             abort = self.doAbort()
@@ -95,7 +101,7 @@ class renameFilesWin(QMainWindow):
             f'Cell-ACDC - Renaming files - "{exp_path}"'
         )
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = filesystem.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         print('Loading data...')
@@ -156,7 +162,7 @@ class renameFilesWin(QMainWindow):
         print(f'Renaming files by appending "_{appendedTxt}"...')
         if len(selectedFilenames) > 1 or len(images_paths) > 1:
             ch_name_selector = prompts.select_channel_name()
-            ls = myutils.listdir(images_paths[0])
+            ls = filesystem.listdir(images_paths[0])
             all_channelNames, abort = ch_name_selector.get_available_channels(
                     ls, images_paths[0], useExt=None
             )
@@ -170,7 +176,7 @@ class renameFilesWin(QMainWindow):
                 f[len(ch_name_selector.basename):] for f in selectedFilenames
             ]
             for images_path in tqdm(images_paths, ncols=100):
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 _, skip = ch_name_selector.get_available_channels(
                     ls, images_path, useExt=None
                 )
@@ -191,7 +197,7 @@ class renameFilesWin(QMainWindow):
         else:
             self._rename(selectedFilenames[0], images_paths[0], appendedTxt)
 
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'Renaming process <b>completed</b>.<br><br>'
         )
@@ -216,18 +222,18 @@ class renameFilesWin(QMainWindow):
     def askTxtAppend(self, filename):
         font = QtGui.QFont()
         font.setPixelSize(13)
-        self.win = apps.QDialogAppendTextFilename(
+        self.win = QDialogAppendTextFilename(
             filename, '', parent=self, font=font
         )
         self.win.exec_()
         return self.win.cancel, self.win.LE.text()
 
     def criticalNoCommonBasename(self, filenames, parent_path):
-        myutils.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
+        filesystem.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
 
 
     def selectFiles(self, images_path, filterExt=None):
-        files = myutils.listdir(images_path)
+        files = filesystem.listdir(images_path)
         if filterExt is not None:
             items = []
             for file in files:
@@ -238,7 +244,7 @@ class renameFilesWin(QMainWindow):
         else:
             items = files
 
-        selectFilesWidget = widgets.QDialogListbox(
+        selectFilesWidget = widgets_item_views.QDialogListbox(
             'Select files',
             'Select the files you want to rename',
             items, multiSelection=True, parent=self
@@ -301,10 +307,10 @@ class QDialogAppendTextFilename(QDialog):
             'font-size:13px; padding:5px 0px 0px 0px;'
         )
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)

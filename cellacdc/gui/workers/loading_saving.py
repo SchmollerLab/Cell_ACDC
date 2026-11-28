@@ -13,7 +13,7 @@ import pandas as pd
 import traceback
 import queue
 from qtpy.QtCore import Signal, QObject
-from cellacdc import load, myutils, io
+from cellacdc import load, io
 from cellacdc import cca_df_colnames, lineage_tree_cols
 from cellacdc.shared.workers import base as workers_base
 
@@ -332,7 +332,7 @@ class AutoSaveWorker(QObject):
                 self.logger.log(f'[WARNING]: {e}')
                 reference_acdc_df = saved_acdc_df
         
-        if myutils.are_acdc_dfs_equal(recovery_acdc_df, reference_acdc_df):
+        if are_acdc_dfs_equal(recovery_acdc_df, reference_acdc_df):
             return
         
         load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)

@@ -11,7 +11,7 @@ import os
 from types import SimpleNamespace
 import numpy as np
 import pandas as pd
-from cellacdc import myutils
+from cellacdc.myutils import table_utils
 from cellacdc import core, settings_csv_path
 from cellacdc.timepoint_predictors import parse_flags
 from . import annotation_data as viewer_annotation_data
@@ -226,7 +226,7 @@ class PositionDataUtils:
             )
         for i in range(posData.SizeT):
             if posData.allData_li[i] is None:
-                posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+                posData.allData_li[i] = table_utils.get_empty_stored_data_dict()
         posData.allIDs = set(allIDs)
         
         try:

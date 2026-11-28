@@ -73,10 +73,12 @@ from cellacdc import exception_handler, disableWindow
 from cellacdc import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val
 from cellacdc import graphLayoutBkgrColor, darkBkgrColor
 from cellacdc import cca_df_colnames
-from cellacdc import load, prompts, apps, workers, html_utils
-from cellacdc import core, myutils
+from cellacdc import load, prompts, html_utils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from cellacdc import core
+from cellacdc.myutils import app_info
 from cellacdc.data_prep import main_window as dataPrep
-from cellacdc import widgets
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import _warnings, issues_url
 from cellacdc import measurements, printl
 from cellacdc import colors, annotate
@@ -93,13 +95,12 @@ from cellacdc import cca_functions
 from cellacdc import exporters
 from cellacdc import preprocess
 from cellacdc import io
-from cellacdc import whitelist
+from . import whitelist_ids as gui_main_whitelist_ids
 from cellacdc import cli
 from cellacdc import is_mac
 from cellacdc import urls
 from cellacdc import path as acdc_path
 from cellacdc.cca_functions import _calc_rot_vol
-from cellacdc.myutils import setupLogger, ArgSpec
 from cellacdc.help import welcome, about
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, is_lineage_tree_annotated,
@@ -110,13 +111,15 @@ from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker
 from cellacdc import debugutils
 from cellacdc import exec_time
 from cellacdc.plot import imshow
-from cellacdc import gui_utils
-from cellacdc import gui_combine
+from . import image_processing as gui_main_image_processing
 from ..mixins import navigation as gui_navigation
 from ..mixins import annotations as gui_annotations
 from ..mixins import overlay as gui_overlay
-from cellacdc import gui_viewer_tools
-from cellacdc import gui_core
+from ..mixins import (
+    object_info as gui_object_info,
+    viewer_tools as gui_viewer_tools,
+    window_core as gui_window_core,
+)
 from ..mixins import custom_annotations as gui_custom_annotations
 from cellacdc.config import STANDARD_MOUSE_BUTTONS
 from cellacdc import rst_utils
@@ -221,9 +224,9 @@ class guiWin(
         SetMeasurementsGuiElements,
         ExportsGuiElements,
         PreprocessingGuiElements,
-        whitelist.WhitelistGUIElements,
-        gui_combine.CombineGuiElements,
-        gui_combine.CombineGUIWorker,
+        gui_main_whitelist_ids.WhitelistGUIElements,
+        gui_main_image_processing.CombineGuiElements,
+        gui_main_image_processing.CombineGUIWorker,
         gui_navigation.FramesNavigationGuiElements,
         gui_navigation.ZsliceNavigationGuiElements,
         gui_navigation.ZoomToObjGuiElements,
@@ -237,21 +240,21 @@ class guiWin(
         gui_viewer_tools.ColorSchemeGuiElements,
         gui_viewer_tools.LabelsColormapGuiElements,
         gui_viewer_tools.ImagePropertiesGuiElements,
-        gui_viewer_tools.CcaTableGuiElements,
-        gui_viewer_tools.CountObjectsGuiElements,
-        gui_viewer_tools.WorkersGuiElements,
-        gui_viewer_tools.SearchIDGuiElements,
-        gui_viewer_tools.HoverInfoGuiElements,
-        gui_viewer_tools.ShortcutsGuiElements,
+        gui_object_info.CcaTableGuiElements,
+        gui_object_info.CountObjectsGuiElements,
+        gui_window_core.WorkersGuiElements,
+        gui_object_info.SearchIDGuiElements,
+        gui_object_info.HoverInfoGuiElements,
+        gui_window_core.ShortcutsGuiElements,
         gui_viewer_tools.SlideshowGuiElements,
         gui_viewer_tools.Volume3DViewerGuiElements,
-        gui_viewer_tools.RegionPropsGuiElements,
+        gui_object_info.RegionPropsGuiElements,
         gui_viewer_tools.BottomLayoutGuiElements,
         gui_overlay.OverlayChannelsGuiElements,
         gui_overlay.OverlayLabelsGuiElements,
         gui_overlay.ChannelImageHelpersGuiElements,
-        gui_viewer_tools.DefaultSettingsGuiElements,
-        gui_core.GUICoreElements,
+        gui_window_core.DefaultSettingsGuiElements,
+        gui_window_core.GUICoreElements,
     ):
     """Main Window."""
 
@@ -280,7 +283,7 @@ class guiWin(
         self.mainWin = mainWin
         self.app = app
         self.closeGUI = False
-        self._acdc_version = myutils.read_version()
+        self._acdc_version = app_info.read_version()
 
         self.setAcceptDrops(True)
         self._appName = 'Cell-ACDC'
@@ -828,7 +831,7 @@ class guiWin(
         if ev.isAutoRepeat() and not ev.key() == Qt.Key_Z:
             if self.warnKeyPressedMsg is not None:
                 return
-            self.warnKeyPressedMsg = widgets.myMessageBox(
+            self.warnKeyPressedMsg = widgets_message_box.myMessageBox(
                 showCentered=False, wrapText=False
             )
             txt = html_utils.paragraph(f"""
@@ -908,7 +911,7 @@ class guiWin(
         self.autoSaveClose()
         
         if self.autoSaveActiveWorkers:
-            progressWin = apps.QDialogWorkerProgress(
+            progressWin = dialogs_generic.QDialogWorkerProgress(
                 title='Closing autosaving worker', parent=self,
                 pbarDesc='Closing autosaving worker...'
             )
@@ -1015,11 +1018,3 @@ class guiWin(
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):
             self.ax1.autoRange()
-
-
-# cellacdc-refactor: intermediate compat block (removed in C12)
-# Names that moved out of this module stay reachable here with a
-# DeprecationWarning (cellacdc/_compat.py, see CODEMAP.md).
-from cellacdc import _compat as _acdc_compat  # noqa: E402
-
-__getattr__, __dir__ = _acdc_compat.moved_module(__name__)

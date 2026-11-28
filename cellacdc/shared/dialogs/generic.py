@@ -29,9 +29,17 @@ from qtpy.QtWidgets import (
 from cellacdc import _window_stacking
 from cellacdc import html_utils
 from cellacdc import is_mac
-from cellacdc import myutils
+from cellacdc.myutils import filesystem
 from cellacdc import qutils
-from cellacdc import widgets
+from qtpy.QtGui import QStandardItemModel
+from ..widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc.acdc_regex import float_regex
 from cellacdc import fonts
 from . import base as dialogs_base
@@ -146,12 +154,12 @@ class QDialogWorkerProgress(QDialog):
 
         self.progressLabel = QLabel(pbarDesc)
 
-        self.mainPbar = widgets.ProgressBarWithETA(self)
+        self.mainPbar = widgets_basic_widgets.ProgressBarWithETA(self)
         self.mainPbar.setValue(0)
         pBarLayout.addWidget(self.mainPbar, 0, 0)
         pBarLayout.addWidget(self.mainPbar.ETA_label, 0, 1)
 
-        self.innerPbar = widgets.ProgressBarWithETA(self)
+        self.innerPbar = widgets_basic_widgets.ProgressBarWithETA(self)
         self.innerPbar.setValue(0)
         pBarLayout.addWidget(self.innerPbar, 1, 0)
         pBarLayout.addWidget(self.innerPbar.ETA_label, 1, 1)
@@ -160,7 +168,7 @@ class QDialogWorkerProgress(QDialog):
         else:
             self.innerPbar.hide()
 
-        self.logConsole = widgets.QLogConsole()
+        self.logConsole = widgets_basic_widgets.QLogConsole()
 
         mainLayout.addWidget(self.progressLabel)
         mainLayout.addLayout(pBarLayout)
@@ -179,7 +187,7 @@ class QDialogWorkerProgress(QDialog):
                 self.close()
 
     def askAbort(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             Aborting with <code>{self.abort_text}</code> to abort is 
             <b>not safe</b>.<br><br>
@@ -259,7 +267,7 @@ class QDialogCombobox(QDialog):
             topLayout.addWidget(label, alignment=Qt.AlignRight)
 
         if centeredCombobox:
-            combobox = widgets.QCenteredComboBox()
+            combobox = widgets_combo_boxes.QCenteredComboBox()
         else:
             combobox = QComboBox()
         combobox.addItems(ComboBoxItems)
@@ -269,9 +277,9 @@ class QDialogCombobox(QDialog):
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
@@ -340,10 +348,10 @@ class QDialogEntriesWidget(QDialog):
             formLayout.addRow(label, LE)
             self.QLEs.append(LE)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -408,12 +416,12 @@ class TreeSelectorDialog(dialogs_base.QBaseDialog):
         if infoTxt:
             self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
         
-        self.treeWidget = widgets.TreeWidget(multiSelection=multiSelection)
+        self.treeWidget = widgets_item_views.TreeWidget(multiSelection=multiSelection)
         self.treeWidget.setExpandsOnDoubleClick(expandOnDoubleClick)
         self.treeWidget.setHeaderHidden(True)
         self.mainLayout.addWidget(self.treeWidget)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -439,10 +447,10 @@ class TreeSelectorDialog(dialogs_base.QBaseDialog):
         
     def addTree(self, tree: dict):
         for topLevel, children in tree.items():
-            topLevelItem = widgets.TreeWidgetItem(self.treeWidget)
+            topLevelItem = widgets_item_views.TreeWidgetItem(self.treeWidget)
             topLevelItem.setText(0, topLevel)
             self.treeWidget.addTopLevelItem(topLevelItem)
-            childrenItems = [widgets.TreeWidgetItem([c]) for c in children]
+            childrenItems = [widgets_item_views.TreeWidgetItem([c]) for c in children]
             topLevelItem.addChildren(childrenItems)
             if not self.allItemsExpanded:
                 continue
@@ -506,7 +514,7 @@ class TreeSelectorDialog(dialogs_base.QBaseDialog):
             Please press <code>Cancel</code> to exit without selecting items. 
             Thanks! 
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'Selection is empty', txt)
     
     def ok_cb(self):
@@ -558,20 +566,20 @@ class TreesSelectorDialog(dialogs_base.QBaseDialog):
             else:
                 groupLayout.addSpacing(10)
             groupLayout.addWidget(QLabel(html_utils.paragraph(treeName)))
-            treeWidget = widgets.TreeWidget(multiSelection=True)
+            treeWidget = widgets_item_views.TreeWidget(multiSelection=True)
             treeWidget.setHeaderHidden(True)
             for topLevel, children in tree.items():
-                topLevelItem = widgets.TreeWidgetItem(treeWidget)
+                topLevelItem = widgets_item_views.TreeWidgetItem(treeWidget)
                 topLevelItem.setText(0, topLevel)
                 treeWidget.addTopLevelItem(topLevelItem)
-                childrenItems = [widgets.TreeWidgetItem([c]) for c in children]
+                childrenItems = [widgets_item_views.TreeWidgetItem([c]) for c in children]
                 topLevelItem.addChildren(childrenItems)
                 topLevelItem.setExpanded(True)
             self.treeWidgets[treeName] = treeWidget
             groupLayout.addWidget(treeWidget)
             self.mainLayout.addSpacing(20)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -685,10 +693,10 @@ class QLineEditDialog(QDialog):
             notValidLabel.setAlignment(Qt.AlignCenter)
             self.notValidLabel = notValidLabel
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         # Events
         okButton.clicked.connect(self.ok_cb)
@@ -776,7 +784,7 @@ class QLineEditDialog(QDialog):
                 self.notValidLabel.setText('')
 
     def warnValLessLastFrame(self, val):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         warn_txt = html_utils.paragraph(f"""
             WARNING: saving until a frame number below the last visited
             frame ({self.lastVisitedFrame}) will result in <b>LOSS of information</b>
@@ -791,7 +799,7 @@ class QLineEditDialog(QDialog):
         return msg.cancel
 
     def warnValMoreLastVisitedFrame(self, val):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         warn_txt = html_utils.paragraph(f"""
             The <b>last visited/validated frame is {self.lastVisitedFrame}</b>
             .<br><br>
@@ -805,7 +813,7 @@ class QLineEditDialog(QDialog):
     
     def ok_cb(self, event):
         if not self.allowEmpty and not self.entryWidget.text():
-            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+            msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
             msg.critical(
                 self, 'Empty text', 
                 html_utils.paragraph('Text entry field <b>cannot be empty</b>')
@@ -813,7 +821,7 @@ class QLineEditDialog(QDialog):
             return
         if self.allowedTextEntries is not None:
             if self.entryWidget.text() not in self.allowedTextEntries:
-                msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+                msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
                 txt = html_utils.paragraph(
                     f'"{self.entryWidget.text()}" is not a valid entry.<br><br>'
                     'Valid entries are:<br>'
@@ -880,7 +888,7 @@ class NumericEntryDialog(dialogs_base.QBaseDialog):
         self.cancel = True
         mainLayout = QVBoxLayout()
         entryLayout = QHBoxLayout()
-        cancelOkLayout = widgets.CancelOkButtonsLayout()
+        cancelOkLayout = widgets_push_buttons.CancelOkButtonsLayout()
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
         
@@ -888,7 +896,7 @@ class NumericEntryDialog(dialogs_base.QBaseDialog):
         mainLayout.addWidget(instructionsLabel)
         
         if type(currentValue) == int:
-            self.entryWidget = widgets.SpinBox()
+            self.entryWidget = widgets_numeric_inputs.SpinBox()
             self.entryWidget.setValue(currentValue)
             self.valueGetter = 'value'
             if maxValue is not None:
@@ -938,7 +946,7 @@ class QInput(dialogs_base.QBaseDialog):
         self.lineEdit = QLineEdit()
         promptLayout.addWidget(self.lineEdit)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -963,7 +971,7 @@ class QInput(dialogs_base.QBaseDialog):
     def ok_cb(self):
         self.answer = self.lineEdit.text()
         if not self.allowEmpty and not self.answer:
-            msg = widgets.myMessageBox(showCentered=False)
+            msg = widgets_message_box.myMessageBox(showCentered=False)
             msg.critical(self, 'Empty', 'Entry cannot be empty.')
             return
         self.cancel = False
@@ -991,14 +999,14 @@ class QTreeDialog(dialogs_base.QBaseDialog):
         
         infoLabel = QLabel(html_utils.paragraph(infoText))
         
-        self.treeWidget = widgets.TreeWidget()
+        self.treeWidget = widgets_item_views.TreeWidget()
         if headerLabels is not None:
             self.treeWidget.setHeaderLabels(headerLabels)
         else:
             self.treeWidget.setHeaderHidden(True)
         
         for row, texts in enumerate(items):
-            item = widgets.TreeWidgetItem(self.treeWidget)
+            item = widgets_item_views.TreeWidgetItem(self.treeWidget)
             for i, text in enumerate(texts):
                 item.setText(i, text)
             self.treeWidget.addTopLevelItem(item)
@@ -1008,7 +1016,7 @@ class QTreeDialog(dialogs_base.QBaseDialog):
         
         # self.treeWidget.header().setStretchLastSection(False)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         if cancelButtonText is not None:
             buttonsLayout.cancelButton.setText(cancelButtonText)
         buttonsLayout.okButton.setEnabled(
@@ -1021,7 +1029,7 @@ class QTreeDialog(dialogs_base.QBaseDialog):
         )
         
         if path_to_browse is not None:
-            browseButton = widgets.showInFileManagerButton(
+            browseButton = widgets_push_buttons.showInFileManagerButton(
                 setDefaultText=True
             )
             browseButton.setPathToBrowse(path_to_browse)
@@ -1105,9 +1113,9 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
         self.dates = dates
         self.multiSelection = multiSelection
 
-        self.searchModel = widgets.QStandardItemModel()
-        searchRoles = (widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,)
-        self.searchProxyModel = widgets._RecentItemsSearchCompleter(
+        self.searchModel = QStandardItemModel()
+        searchRoles = (widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,)
+        self.searchProxyModel = _RecentItemsSearchCompleter(
             searchRoles=searchRoles,
             tooltipRole=None,
         )
@@ -1119,12 +1127,12 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
 
         # add all items to the search model
         for item_text in self.allItems:
-            model_item = widgets.StandardItem(item_text)
+            model_item = StandardItem(item_text)
             model_item.setData(
                 self._normalizeSearchText(item_text),
-                widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
+                widgets_search_widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
             )
-            last_edited_item = widgets.QStandardItem('')
+            last_edited_item = QStandardItem('')
             last_edited, last_edited_tooltip = self._lastEditedDate(
                 item_text
             )
@@ -1137,7 +1145,7 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
 
         mainLayout = QVBoxLayout()
 
-        self.searchLineEdit = widgets.SearchLineEdit(
+        self.searchLineEdit = SearchLineEdit(
             text=searchLineEditText
         )
 
@@ -1177,12 +1185,12 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
         )
         self.searchItems(self.searchLineEdit.text())
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         is_any_item_path = any([os.path.exists(item) for item in items])
         if is_any_item_path:
-            showInFileManagerButton = widgets.showInFileManagerButton(
-                myutils.get_open_filemaneger_os_string()
+            showInFileManagerButton = widgets_push_buttons.showInFileManagerButton(
+                filesystem.get_open_filemaneger_os_string()
             )
             buttonsLayout.insertWidget(3, showInFileManagerButton)
             showInFileManagerButton.clicked.connect(self.showInFileManager)
@@ -1215,7 +1223,7 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
         ]
         if not valid_paths:
             print('WARNING: None of the selected items is a valid path')
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             txt = html_utils.paragraph(
                 'None of the selected items is a valid path :(.'
             )
@@ -1223,7 +1231,7 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
             return
         
         first_valid_path = valid_paths[0]
-        myutils.showInExplorer(first_valid_path)
+        filesystem.showInExplorer(first_valid_path)
 
     def _lastEditedDate(self, item_text):
         """Return a display date and tooltip for an item's modification time.
@@ -1272,7 +1280,7 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
                 source_index.row(), 1
             ).text()
             if os.path.exists(item_text):
-                tree_item = widgets.PathTreeWidgetItem(item_text, [last_edited])
+                tree_item = PathTreeWidgetItem(item_text, [last_edited])
             else:
                 tree_item = QTreeWidgetItem([item_text, last_edited])
             tree_item.setToolTip(
@@ -1307,14 +1315,14 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
             item = tree_item.text(0)
             # The proxy provides the ranking; highlight ranges are mapped back
             # onto the original display string.
-            ranges = widgets._searchHighlightRanges(
+            ranges = widgets_search_widgets._searchHighlightRanges(
                 normalized_query,
                 item,
                 self.searchProxyModel.FUZZY_THRESHOLD,
             )
 
             if ranges:
-                highlighted_text = widgets._highlightSearchText(
+                highlighted_text = widgets_search_widgets._highlightSearchText(
                     item, ranges, highlight_color
                 )
                 label = QLabel()
@@ -1333,11 +1341,11 @@ class SearchableListboxDialog(dialogs_base.QBaseDialog):
     @staticmethod
     def _normalizeSearchText(text):
         """Case-fold text and remove non-alphanumeric search separators."""
-        return widgets._normalizeSearchText(text)
+        return widgets_search_widgets._normalizeSearchText(text)
 
     def warnSelectionEmpty(self):
         """Explain that a row must be selected before confirming."""
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(
             'You need to <b>select at least one item</b> before pressing "Ok".<br><br>'
             'Otherwise, you can cancel any time with the Cancel button.<br><br>'

@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cellacdc import _types, myutils, sam_embeddings
+from cellacdc import _types, sam_embeddings
+from cellacdc.myutils import image_utils
 
 pytestmark = pytest.mark.models
 
@@ -66,7 +67,8 @@ def sam_wrapper(monkeypatch):
         type_ignores=[],
     )
     namespace = {
-        'np': np, 'pd': pd, 'cv2': cv2, 'myutils': myutils, '_types': _types,
+        'np': np, 'pd': pd, 'cv2': cv2, 'image_utils': image_utils,
+        '_types': _types,
         'skimage': skimage, 'tqdm': tqdm,
         'hashlib': hashlib, 'sam_embeddings': sam_embeddings,
         'model_types': {}, 'SamPredictor': Predictor,
@@ -349,6 +351,7 @@ def test_init_embeddings_delegates_caching_and_logging(sam_wrapper, capsys, auto
 def test_parameter_dialog_enables_embedding_reuse(monkeypatch, tmp_path, load_from_disk):
     from unittest.mock import Mock
     from cellacdc import prompts
+    from cellacdc.shared.dialogs import model_params as dialogs_model_params
 
     path = tmp_path / 'embeddings.pt'
     path.touch()
@@ -363,7 +366,7 @@ def test_parameter_dialog_enables_embedding_reuse(monkeypatch, tmp_path, load_fr
         model_kwargs={}, cancel=False, setChannelNames=Mock(), exec_=Mock(),
     )
     monkeypatch.setattr(prompts, 'askSamLoadEmbeddings', lambda *a, **kw: (True, False, False))
-    monkeypatch.setattr(prompts.apps, 'QDialogModelParams', lambda *a, **kw: window)
+    monkeypatch.setattr(dialogs_model_params, 'QDialogModelParams', lambda *a, **kw: window)
     save_prompt = Mock(side_effect=AssertionError('Already using saved embeddings'))
     monkeypatch.setattr(prompts, 'askSamSaveEmbeddings', save_prompt)
     prompts.init_segm_model_params(position, 'segment_anything', [], [])
@@ -378,7 +381,8 @@ def test_parameter_dialog_enables_embedding_reuse(monkeypatch, tmp_path, load_fr
 ])
 def test_postprocess_settings_accept_missing_legacy_option(option, value, expected):
     from unittest.mock import Mock
-    from cellacdc import apps, config
+    from cellacdc import config
+    from cellacdc.shared.dialogs import model_params as dialogs_model_params
 
     settings = config.ConfigParser()
     settings.add_section('segment_anything.postprocess')
@@ -389,5 +393,5 @@ def test_postprocess_settings_accept_missing_legacy_option(option, value, expect
         model_name='segment_anything', postProcessGroupbox=group,
         configPars=settings,
     )
-    apps.QDialogModelParams.loadLastSelectionPostProcess(window)
+    dialogs_model_params.QDialogModelParams.loadLastSelectionPostProcess(window)
     group.setChecked.assert_called_once_with(expected)

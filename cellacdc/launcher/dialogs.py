@@ -8,7 +8,12 @@ from qtpy.QtWidgets import QDoubleSpinBox
 from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QDialog
 from cellacdc import load, html_utils
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import user_profile_path
 from cellacdc import fonts
 from cellacdc.shared.dialogs import base as dialogs_base
@@ -29,7 +34,7 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
         self.setWindowTitle('Track sub-cellular objects parameters')
 
         mainLayout = QVBoxLayout()
-        entriesLayout = widgets.FormLayout()
+        entriesLayout = widgets_line_edits.FormLayout()
 
         row = 0
         infoTxt = html_utils.paragraph("""
@@ -43,9 +48,9 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
             'Delete both cells and sub-cellular objects without an assignment',
             'Only track the objects and keep all the non-tracked objects'
         )
-        combobox = widgets.QCenteredComboBox()
+        combobox = widgets_combo_boxes.QCenteredComboBox()
         combobox.addItems(options)
-        self.optionsWidget = widgets.formWidget(
+        self.optionsWidget = widgets_line_edits.formWidget(
             combobox, addInfoButton=True, labelTextLeft='Tracking mode: ',
             infoTxt=infoTxt
         )
@@ -58,8 +63,8 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
             that must be separated, or the segmentation is a <b>boolean mask</b> 
             (i.e., semantic segmentation).
         """)
-        self.relabelSubObjLab = widgets.formWidget(
-            widgets.Toggle(), addInfoButton=True, stretchWidget=False,
+        self.relabelSubObjLab = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), addInfoButton=True, stretchWidget=False,
             labelTextLeft='Re-label sub-cellular objects before tracking: ', 
             infoTxt=infoTxt
         )
@@ -70,11 +75,11 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
             Enter a <b>minimum percentage (0-1) of the sub-cellular object's area</b><br>
             that MUST overlap with the parent cell to be considered belonging to a cell:
         """)
-        spinbox = widgets.CenteredDoubleSpinbox()
+        spinbox = CenteredDoubleSpinbox()
         spinbox.setMaximum(1)
         spinbox.setValue(0.5)
         spinbox.setSingleStep(0.1)
-        self.IoAwidget = widgets.formWidget(
+        self.IoAwidget = widgets_line_edits.formWidget(
             spinbox, addInfoButton=True, labelTextLeft='IoA threshold: ',
             infoTxt=IoAtext
         )
@@ -87,8 +92,8 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
             This is useful if, for example, you need to compute measurements 
             only from the cytoplasm (i.e., the sub-cellular object is the nucleus).
         """)
-        self.createThirdSegmWidget = widgets.formWidget(
-            widgets.Toggle(), addInfoButton=True, stretchWidget=False,
+        self.createThirdSegmWidget = widgets_line_edits.formWidget(
+            widgets_push_buttons.Toggle(), addInfoButton=True, stretchWidget=False,
             labelTextLeft='Create third segmentation: ', infoTxt=infoTxt
         )
         entriesLayout.addFormWidget(self.createThirdSegmWidget, row=row)
@@ -101,10 +106,10 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
             This is useful if, for example, you need to compute measurements 
             only from the cytoplasm (i.e., the sub-cellular object is the nucleus).
         """)
-        lineEdit = widgets.alphaNumericLineEdit()
+        lineEdit = widgets_line_edits.alphaNumericLineEdit()
         lineEdit.setText('difference')
         lineEdit.setAlignment(Qt.AlignCenter)
-        self.appendTextWidget = widgets.formWidget(
+        self.appendTextWidget = widgets_line_edits.formWidget(
             lineEdit, addInfoButton=True, labelTextLeft='Text to append: ', 
             infoTxt=infoTxt
         )
@@ -116,7 +121,7 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
             self.createThirdSegmToggled
         )
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -135,7 +140,7 @@ class TrackSubCellObjectsDialog(dialogs_base.QBaseDialog):
         self.cancel = False
         if self.createThirdSegmWidget.widget.isChecked():
             if not self.appendTextWidget.widget.text():
-                msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+                msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
                 txt = html_utils.paragraph(
                     'When creating the third segmentation file, '
                     '<b>the name to append cannot be empty!</b>'
@@ -181,7 +186,7 @@ class ChangeUserProfileFolderPathDialog(dialogs_base.QBaseDialog):
         
         mainLayout.addWidget(label)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         

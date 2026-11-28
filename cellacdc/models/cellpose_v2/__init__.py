@@ -1,5 +1,5 @@
-import cellacdc.myutils as myutils
-myutils.check_install_cellpose(2)
+from cellacdc.myutils import model_installs
+model_installs.check_install_cellpose(2)
 
 class AvailableModelsv2:
     from cellpose.models import MODEL_NAMES

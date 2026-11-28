@@ -4,7 +4,17 @@ from qtpy.QtWidgets import QFileDialog
 
 from cellacdc import measurements
 
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem, installs
+from cellacdc.shared.dialogs import (
+    file_selection as dialogs_file_selection,
+    set_measurements as dialogs_set_measurements,
+)
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
@@ -24,17 +34,17 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
         )
         self.expPaths = expPaths
         if title.find('spotMAX') != -1:
-            self.worker_func = workers.ConcatSpotmaxDfsWorker
+            self.worker_func = ConcatSpotmaxDfsWorker
             self._infoText = 'spotMAX'
         else:
-            self.worker_func = workers.ConcatAcdcDfsWorker
+            self.worker_func = ConcatAcdcDfsWorker
             self._infoText = 'acdc_output'
     
     def runWorker(self, format='CSV'):
@@ -48,7 +58,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
     
     def askCopyCcaFromAcdcOutput(self, images_path):
         acdc_output_tables = []
-        for file in myutils.listdir(images_path):
+        for file in filesystem.listdir(images_path):
             if not file.endswith('.csv'):
                 continue
             
@@ -67,9 +77,9 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             'from one of the tables below?<br><br>'
             'If yes, please select from which table you want to copy from:'
         )
-        noButton = widgets.noPushButton('No, do not copy')
+        noButton = widgets_push_buttons.noPushButton('No, do not copy')
         # The empty-selection check applies only to OK: "No" needs no table
-        selectTableNameWin = widgets.QDialogListbox(
+        selectTableNameWin = widgets_item_views.QDialogListbox(
             'Copy cell cycle annotations?', txt,
             acdc_output_tables, multiSelection=False, parent=self,
             additionalButtons=(noButton,), allowEmptySelection=False
@@ -97,7 +107,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         notLoadedChNames = kwargs['notLoadedChNames']
         isZstack = kwargs['isZstack']
         isSegm3D = kwargs['isSegm3D']
-        self.setMeasurementsWin = apps.SetMeasurementsDialog(
+        self.setMeasurementsWin = dialogs_set_measurements.SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             is_concat=True, parent=self
         )
@@ -194,7 +204,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             'CSV (Comma Separated Values)', 
             'XLS (Excel)'
         )
-        selectFormatWin = widgets.QDialogListbox(
+        selectFormatWin = widgets_item_views.QDialogListbox(
             'Select output file format',
             'Select format of the output file\n',
             formats, multiSelection=False, parent=self,
@@ -208,7 +218,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             self._ext = '.csv'
         else:
             self._ext = '.xlsx'
-            myutils.check_install_package(
+            installs.check_install_package(
                 'OpenPyXL', 
                 import_pkg_name='openpyxl', 
                 pypi_name='XlsxWriter'
@@ -216,7 +226,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         self.runWorker(format=selectFormatWin.selectedItemsText[0])
     
     def askAppendName(self, basename, existingEndnames):
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             hintText='Insert a name for the <b>concatenated table</b> file:',
             existingNames=existingEndnames, 
@@ -241,14 +251,14 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             txt = f'{txt}(the filename will be <code>{allExp_filename}</code>)'
         
         txt = html_utils.paragraph(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, 'Select folder', txt)
         if msg.cancel:
             self.worker.abort = True
             self.worker.waitCond.wakeAll()
         
     
-        mostRecentPath = myutils.getMostRecentPath()
+        mostRecentPath = filesystem.getMostRecentPath()
         save_to_dir = QFileDialog.getExistingDirectory(
             self, f'Select folder where to save multiple experiments table', 
             mostRecentPath
@@ -271,7 +281,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         else:
             txt = f'Concatenating <code>{self._infoText}</code> tables completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -350,7 +360,7 @@ class ConcatAcdcDfsWorker(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
 
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
 
                 acdc_output_file = [
                     f for f in ls 
@@ -389,7 +399,7 @@ class ConcatAcdcDfsWorker(utils_base.BaseWorkerUtil):
             )
             acdc_df_allpos['experiment_folderpath'] = exp_path
             
-            basename, chNames = myutils.getBasenameAndChNames(
+            basename, chNames = filesystem.getBasenameAndChNames(
                 images_path, useExt=('.tif', '.h5')
             )
             df_metadata = load.load_metadata_df(images_path)
@@ -560,7 +570,7 @@ class ConcatSpotmaxDfsWorker(utils_base.BaseWorkerUtil):
         if self.acdcOutputEndname is None:
             return
         
-        for file in myutils.listdir(images_path):
+        for file in filesystem.listdir(images_path):
             if not file.endswith(self.acdcOutputEndname):
                 continue
             
@@ -648,7 +658,7 @@ class ConcatSpotmaxDfsWorker(utils_base.BaseWorkerUtil):
             acdc_dfs, keys=keys, names=['Position_n', 'frame_i', 'Cell_ID']
         )
         acdc_df_allpos['experiment_folderpath'] = exp_path
-        basename, chNames = myutils.getBasenameAndChNames(
+        basename, chNames = filesystem.getBasenameAndChNames(
             images_path, useExt=('.tif', '.h5')
         )
         df_metadata = load.load_metadata_df(images_path)

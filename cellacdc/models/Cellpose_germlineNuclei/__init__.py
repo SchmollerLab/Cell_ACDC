@@ -1,3 +1,3 @@
-from cellacdc import myutils
+from cellacdc.myutils import model_installs
 
-myutils.check_install_cellpose()
+model_installs.check_install_cellpose()

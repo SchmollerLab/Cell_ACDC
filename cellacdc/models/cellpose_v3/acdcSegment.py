@@ -1,6 +1,7 @@
 import os
 
-from cellacdc import myutils, printl
+from cellacdc import printl
+from cellacdc.myutils import misc, model_installs
 from cellacdc.models._cellpose_base.acdcSegment import Model as CellposeBaseModel
 from cellacdc.models._cellpose_base.acdcSegment import (BackboneOptions, GPUDirectMLGPUCPU, cpu_gpu_directml_gpu,
     check_directml_gpu_gpu, setup_gpu_direct_ml, _get_normalize_params, DealWithSecondChannelOptions)
@@ -15,7 +16,7 @@ import numpy as np
 
 class Model(CellposeBaseModel):
     def __new__(cls, *args, **kwargs):
-        myutils.check_install_cellpose(3)
+        model_installs.check_install_cellpose(3)
         return super().__new__(cls)
 
     def __init__(
@@ -99,7 +100,7 @@ class Model(CellposeBaseModel):
         self.batch_size = batch_size
         self.init_successful = False
 
-        out = myutils.translateStrNone(
+        out = misc.translateStrNone(
             model_type, model_path, device, denoise_model, denoise_model_path
         )
         model_type, model_path, device, denoise_model, denoise_model_path = out

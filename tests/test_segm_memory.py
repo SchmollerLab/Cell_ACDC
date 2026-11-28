@@ -15,7 +15,8 @@ import numpy as np
 import pytest
 import requests
 
-from cellacdc import cli, core, myutils
+from cellacdc import cli, core
+from cellacdc.myutils import segm_models
 from cellacdc.service import client as service_client
 
 pytestmark = pytest.mark.models
@@ -127,11 +128,11 @@ def test_cli_in_process_model_honours_reduce_memory_usage(
     # the `is_segment3DT_available` set by `init_args` with the model's
     # value, ignoring 'Reduce memory usage' of the workflow file
     monkeypatch.setattr(
-        myutils, 'import_segment_module', lambda name: SimpleNamespace()
+        segm_models, 'import_segment_module', lambda name: SimpleNamespace()
     )
-    monkeypatch.setattr(myutils, 'getModelArgSpec', lambda module: ([], []))
+    monkeypatch.setattr(segm_models, 'getModelArgSpec', lambda module: ([], []))
     monkeypatch.setattr(
-        myutils, 'init_segm_model',
+        segm_models, 'init_segm_model',
         lambda module, posData, kwargs: _Segment3DTModel()
     )
     kernel = _init_kernel(reduce_memory_usage)
@@ -147,7 +148,7 @@ def test_cli_worker_model_honours_reduce_memory_usage(
         monkeypatch, reduce_memory_usage
     ):
     monkeypatch.setattr(
-        myutils, 'getModelArgSpecFromEnv', lambda name, python: ([], [], None)
+        segm_models, 'getModelArgSpecFromEnv', lambda name, python: ([], [], None)
     )
     kernel = _init_kernel(reduce_memory_usage, backend_type='local')
     monkeypatch.setattr(kernel, 'verify_worker_environment', lambda: None)

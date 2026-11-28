@@ -27,9 +27,17 @@ from cellacdc import html_utils
 from cellacdc import config
 from cellacdc import preproc_recipes_path, combine_channels_recipes_path
 from cellacdc import printl
-from cellacdc import myutils
+from cellacdc.myutils import filesystem
 from cellacdc import qutils
-from cellacdc import widgets
+from ..widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    item_views as widgets_item_views,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import _types
 from . import base as dialogs_base
 from . import file_selection as dialogs_file_selection
@@ -70,14 +78,14 @@ class FunctionParamsDialog(dialogs_base.QBaseDialog):
         
         widgetsLayout, self.argsWidgets = self.getWidgetsLayout(params_argspecs)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         self.buttonsLayout = buttonsLayout
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.cancel_cb)
         
         if addApplyButton:
-            applyButton = widgets.viewPushButton('Apply')
+            applyButton = widgets_push_buttons.viewPushButton('Apply')
             applyButton.clicked.connect(self.emitValuesChanged)
             buttonsLayout.insertWidget(3, applyButton)
             self.applyButton = applyButton
@@ -179,40 +187,40 @@ class FunctionParamsDialog(dialogs_base.QBaseDialog):
                 except Exception as err:
                     pass
             elif isVectorEntry:
-                vectorLineEdit = widgets.VectorLineEdit()
+                vectorLineEdit = widgets_line_edits.VectorLineEdit()
                 self.checkIfTypeCLassHasCastDtype(ArgSpec.type)
                 vectorLineEdit.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
-                valueSetter = widgets.VectorLineEdit.setValue
-                valueGetter = widgets.VectorLineEdit.value
+                valueSetter = widgets_line_edits.VectorLineEdit.setValue
+                valueGetter = widgets_line_edits.VectorLineEdit.value
                 widget = vectorLineEdit
                 widgetsLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
                 widget.valueChangeFinished.connect(self.emitValuesChanged)
             elif isFolderPath:
-                folderPathControl = widgets.FolderPathControl()
+                folderPathControl = widgets_line_edits.FolderPathControl()
                 self.checkIfTypeCLassHasCastDtype(ArgSpec.type)
                 folderPathControl.setText(str(ArgSpec.default))
                 widget = folderPathControl
                 defaultVal = str(ArgSpec.default)
-                valueSetter = widgets.FolderPathControl.setText
-                valueGetter = widgets.FolderPathControl.path
+                valueSetter = widgets_line_edits.FolderPathControl.setText
+                valueGetter = widgets_line_edits.FolderPathControl.path
                 widgetsLayout.addWidget(folderPathControl, row, 1, 1, 2)
                 widget.sigValueChanged.connect(self.emitValuesChanged)
             elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
-                checkBox = widgets.Toggle()
+                checkBox = widgets_push_buttons.Toggle()
                 checkBox.setChecked(ArgSpec.default)
                 defaultVal = ArgSpec.default
-                valueSetter = widgets.Toggle.setChecked
-                valueGetter = widgets.Toggle.isChecked
+                valueSetter = widgets_push_buttons.Toggle.setChecked
+                valueGetter = widgets_push_buttons.Toggle.isChecked
                 widget = checkBox
                 widgetsLayout.addWidget(
                     checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
                 )
                 widget.toggled.connect(self.emitValuesChanged)
             elif ArgSpec.type == int:
-                spinBox = widgets.SpinBox()
+                spinBox = widgets_numeric_inputs.SpinBox()
                 if metadata_val is None:
                     spinBox.setValue(ArgSpec.default)
                 else:
@@ -225,7 +233,7 @@ class FunctionParamsDialog(dialogs_base.QBaseDialog):
                 widgetsLayout.addWidget(spinBox, row, 1, 1, 2)
                 widget.sigValueChanged.connect(self.emitValuesChanged)
             elif ArgSpec.type == float:
-                doubleSpinBox = widgets.FloatLineEdit()
+                doubleSpinBox = widgets_line_edits.FloatLineEdit()
                 if metadata_val is None:
                     doubleSpinBox.setValue(ArgSpec.default)
                 else:
@@ -233,28 +241,28 @@ class FunctionParamsDialog(dialogs_base.QBaseDialog):
                     doubleSpinBox.isMetadataValue = True
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
-                valueSetter = widgets.FloatLineEdit.setValue
-                valueGetter = widgets.FloatLineEdit.value
+                valueSetter = widgets_line_edits.FloatLineEdit.setValue
+                valueGetter = widgets_line_edits.FloatLineEdit.value
                 widgetsLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
                 widget.valueChanged.connect(self.emitValuesChanged)
             elif ArgSpec.type == os.PathLike:
-                filePathControl = widgets.filePathControl()
+                filePathControl = widgets_line_edits.filePathControl()
                 filePathControl.setText(str(ArgSpec.default))
                 widget = filePathControl
                 defaultVal = str(ArgSpec.default)
-                valueSetter = widgets.filePathControl.setText
-                valueGetter = widgets.filePathControl.path
+                valueSetter = widgets_line_edits.filePathControl.setText
+                valueGetter = widgets_line_edits.filePathControl.path
                 widgetsLayout.addWidget(filePathControl, row, 1, 1, 2)
                 widget.sigValueChanged.connect(self.emitValuesChanged)
             elif isCustomListType:
                 items = ArgSpec.type().values
                 ArgSpec.type.cast_dtype = _types.to_str
                 defaultVal = str(ArgSpec.default)
-                combobox = widgets.AlphaNumericComboBox()
+                combobox = widgets_combo_boxes.AlphaNumericComboBox()
                 combobox.addItems(items)
                 combobox.setCurrentValue(defaultVal)
-                valueSetter = widgets.AlphaNumericComboBox.setCurrentValue
-                valueGetter = widgets.AlphaNumericComboBox.currentValue
+                valueSetter = widgets_combo_boxes.AlphaNumericComboBox.setCurrentValue
+                valueGetter = widgets_combo_boxes.AlphaNumericComboBox.currentValue
                 widget = combobox
                 widgetsLayout.addWidget(combobox, row, 1, 1, 2)
                 widget.currentTextChanged.connect(self.emitValuesChanged)
@@ -301,7 +309,7 @@ class FunctionParamsDialog(dialogs_base.QBaseDialog):
         )
     
     def getInfoButton(self, param_name, infoText):
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         infoButton.param_name = param_name
         infoButton.setToolTip(
             f'Click to get more info about `{param_name}` parameter...'
@@ -316,7 +324,7 @@ class FunctionParamsDialog(dialogs_base.QBaseDialog):
         text = html_utils.rst_to_html(text)
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, f'Info about `{param_name}` parameter', text)
 
 
@@ -357,15 +365,15 @@ class PreProcessParamsWidget(QWidget):
         col = 0
         buttonsLayout.setColumnStretch(col, 1)
         
-        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
+        loadRecipeButton = widgets_push_buttons.OpenFilePushButton('Load saved recipe...')
         self.loadRecipeButton = loadRecipeButton
         buttonsLayout.addWidget(loadRecipeButton, row, col+2)
         
-        saveRecipeButton = widgets.savePushButton('Save current recipe...')
+        saveRecipeButton = widgets_push_buttons.savePushButton('Save current recipe...')
         self.saveRecipeButton = saveRecipeButton
         buttonsLayout.addWidget(saveRecipeButton, row+1, col+2)
         
-        loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
+        loadLastRecipeButton = widgets_push_buttons.reloadPushButton('Load last parameters')
         self.loadLastRecipeButton = loadLastRecipeButton
         buttonsLayout.addWidget(loadLastRecipeButton, row, col+1)
         
@@ -489,7 +497,7 @@ class PreProcessParamsWidget(QWidget):
         self.communicateSavingRecipeFinished(ini_filepath)
     
     def warnExistingRecipeFile(self, ini_filename):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'A file with the following name<br><br>'
             f'<code>{ini_filename}</code><br><br>'
@@ -509,7 +517,7 @@ class PreProcessParamsWidget(QWidget):
         text = html_utils.paragraph(
             'There are no recipes saved. Sorry about that :('
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'No recipes saved', text)
 
     def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
@@ -517,7 +525,7 @@ class PreProcessParamsWidget(QWidget):
         displayNameToFilenameMapper = {}
         ext = ext.lstrip('.')
         if os.path.exists(recipes_path):
-            for file in myutils.listdir(recipes_path):
+            for file in filesystem.listdir(recipes_path):
                 if not file.startswith(recipe_prefix):
                     continue
 
@@ -545,11 +553,11 @@ class PreProcessParamsWidget(QWidget):
             )[0]
             return filepath or None
         
-        browseButton = widgets.browseFileButton(
+        browseButton = widgets_push_buttons.browseFileButton(
             f'Select {ext_label} file...',
             title=f'Select {ext_label} file to load recipe',
             openFolder=False,
-            start_dir=myutils.getMostRecentPath(),
+            start_dir=filesystem.getMostRecentPath(),
             ext={ext_label: f'.{ext}'}
         )
         selectRecipeWin = dialogs_generic.QTreeDialog(
@@ -611,7 +619,7 @@ class PreProcessParamsWidget(QWidget):
             'Done!<br><br>'
             'Pre-processing recipe saved to:'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(
             self, 'Pre-processing recipe saved!', text, 
             commands=(ini_filepath,),
@@ -619,7 +627,7 @@ class PreProcessParamsWidget(QWidget):
         )
         
     def createSelector(self):
-        return widgets.PreProcessingSelector()
+        return widgets_combo_boxes.PreProcessingSelector()
 
     def addStep(self, is_first=False):
         stepWidgets = {}
@@ -635,7 +643,7 @@ class PreProcessParamsWidget(QWidget):
         self.gridLayout.addWidget(selector, self.row, 1)
         stepWidgets['selector'] = selector
         
-        setParamsButton = widgets.setPushButton()
+        setParamsButton = widgets_push_buttons.setPushButton()
         setParamsButton.setToolTip(
             'Set step parameters'
         )
@@ -645,18 +653,18 @@ class PreProcessParamsWidget(QWidget):
         )
         stepWidgets['setParamsButton'] = setParamsButton
         
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         self.gridLayout.addWidget(infoButton, self.row, 3)
         infoButton.clicked.connect(partial(self.showInfo, selector=selector))
         stepWidgets['infoButton'] = infoButton
         
         if is_first:
-            addButton = widgets.addPushButton()
+            addButton = widgets_push_buttons.addPushButton()
             self.gridLayout.addWidget(addButton, self.row, 4)
             addButton.clicked.connect(self.addStep)
             stepWidgets['addButton'] = addButton
         else:
-            delButton = widgets.delPushButton()
+            delButton = widgets_push_buttons.delPushButton()
             self.gridLayout.addWidget(delButton, self.row, 4)
             delButton.clicked.connect(self.removeStep)
             delButton.step_n = step_n
@@ -666,7 +674,7 @@ class PreProcessParamsWidget(QWidget):
         selector.row = self.row
         selector.step_n = step_n
 
-        hline = widgets.QHLine()
+        hline = widgets_basic_widgets.QHLine()
         self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
         stepWidgets['hline'] = hline
         self.row += 1
@@ -708,12 +716,12 @@ class PreProcessParamsWidget(QWidget):
         htmlText = html_utils.paragraph(htmlText)
         
         method = selector.currentText()
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, f'Info about `{method}`', htmlText)
     
     def setParamsStep(
             self, checked=False, 
-            selector: 'widgets.PreProcessingSelector'=None
+            selector: 'widgets_combo_boxes.PreProcessingSelector'=None
         ):
         step_n = selector.step_n
         stepFunctionKwargs = selector.askSetParams(
@@ -775,7 +783,7 @@ class PreProcessParamsWidget(QWidget):
         return self.groupbox.isChecked()
     
     def warnStepNotInit(self, method):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             f'The parameters for the preprocessing step <b>{method}</b> '
             'were not initialized.<br><br>'
@@ -975,13 +983,13 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         stepWidgets['maxValueSpinbox'] = self.maxValueSpinbox
 
         if is_first:
-            addButton = widgets.addPushButton()
+            addButton = widgets_push_buttons.addPushButton()
             self.gridLayout.addWidget(addButton, self.row, 8)
             addButton.clicked.connect(self.addStep)
             stepWidgets['addButton'] = addButton
             
         else:
-            delButton = widgets.delPushButton()
+            delButton = widgets_push_buttons.delPushButton()
             self.gridLayout.addWidget(delButton, self.row, 8)
             delButton.clicked.connect(self.removeStep)
             delButton.step_n = step_n
@@ -991,7 +999,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         ch_selector.row = self.row
         ch_selector.step_n = step_n
 
-        hline = widgets.QHLine()
+        hline = widgets_basic_widgets.QHLine()
         self.gridLayout.addWidget(hline, self.row, 0, 1, 8)
         stepWidgets['hline'] = hline
         self.row += 1
@@ -1125,14 +1133,14 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
         mainLayout = QVBoxLayout()
         
         keepInputDataTypeLayout = QHBoxLayout()
-        self.keepInputDataTypeToggle = widgets.Toggle()
+        self.keepInputDataTypeToggle = widgets_push_buttons.Toggle()
         self.keepInputDataTypeToggle.setChecked(True)
         self.keepInputDataTypeToggle.toggled.connect(self.emitValuesChanged)
 
         keepInputDataTypeLayout.addStretch(1)
         keepInputDataTypeLayout.addWidget(QLabel('Keep input data type: '))
         keepInputDataTypeLayout.addWidget(self.keepInputDataTypeToggle)
-        keepInputDataTypeInfoButton = widgets.infoPushButton()
+        keepInputDataTypeInfoButton = widgets_push_buttons.infoPushButton()
         keepInputDataTypeLayout.addWidget(keepInputDataTypeInfoButton)
         keepInputDataTypeInfoButton.clicked.connect(
             self.showInfoKeepInputDataType
@@ -1184,7 +1192,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
         ]
         col = 3
         row = 0
-        self.applyCurrentFrameButton = widgets.okPushButton(
+        self.applyCurrentFrameButton = widgets_push_buttons.okPushButton(
             'Apply to displayed image'
         )
         buttonsLayout.addWidget(self.applyCurrentFrameButton, row, col)
@@ -1195,7 +1203,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
         
         infoLayout = QHBoxLayout()
         buttonsHeight = self.applyCurrentFrameButton.sizeHint().height()
-        self.loadingCircle = widgets.LoadingCircleAnimation(
+        self.loadingCircle = widgets_basic_widgets.LoadingCircleAnimation(
             size=buttonsHeight
         )
         sp = self.loadingCircle.sizePolicy()
@@ -1220,7 +1228,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
 
         if isZstack:
             row += 1
-            self.applyAllZslicesButton = widgets.threeDPushButton(
+            self.applyAllZslicesButton = widgets_push_buttons.threeDPushButton(
                 'Apply to all z-slices of current image'
             )
             buttonsLayout.addWidget(self.applyAllZslicesButton, row, col)
@@ -1228,7 +1236,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
             self.allButtons.append(self.applyAllZslicesButton)
         if isTimelapse:
             row += 1
-            self.applyAllFramesButton = widgets.futurePushButton(
+            self.applyAllFramesButton = widgets_push_buttons.futurePushButton(
                 'Apply to all frames'
             )
             buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
@@ -1236,7 +1244,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
             self.allButtons.append(self.applyAllFramesButton)
         if isMultiPos:
             row += 1
-            self.applyAllPosButton = widgets.futurePushButton(
+            self.applyAllPosButton = widgets_push_buttons.futurePushButton(
                 'Apply to all Positions'
             )
             buttonsLayout.addWidget(self.applyAllPosButton, row, col)
@@ -1246,7 +1254,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
             self.allButtons.append(self.applyAllPosButton)
 
         row += 1
-        self.savePreprocButton = widgets.savePushButton(
+        self.savePreprocButton = widgets_push_buttons.savePushButton(
             'Save pre-processed data...'
         )
         buttonsLayout.addWidget(self.savePreprocButton, row, col)
@@ -1292,7 +1300,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
             increase the file size.<br><br>
             We <b>recommend keeping this option checked</b>.
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Keep input data type', txt)
 
     def emitSignalSavePreprocData(self):
@@ -1391,7 +1399,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             0, QLabel(self.selectionLabel)
         )
         self.mainLayout.insertSpacing(2, 10)
-        self.mainLayout.insertWidget(2, widgets.QHLine())
+        self.mainLayout.insertWidget(2, widgets_basic_widgets.QHLine())
         
         self.savePreprocButton.hide()
         self.previewCheckbox.hide()
@@ -1411,7 +1419,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         buttonsLayout.addItem(saveRecipeButtonItem, 0, 2)
     
     def createListSelector(self, names):
-        selector = widgets.listWidget(
+        selector = widgets_item_views.listWidget(
             isMultipleSelection=True, minimizeHeight=True
         )
         selector.addItems(names)
@@ -1424,7 +1432,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             <b>Channel selection cannot be empty</b>.<br><br>
             Thank you for your patience!
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(self, 'No channel selected', txt)
     
     def ok_cb(self):
@@ -1527,13 +1535,13 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         
         row = 0
         col = 0
-        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe')
+        loadRecipeButton = widgets_push_buttons.OpenFilePushButton('Load saved recipe')
         self.loadRecipeButtonComb = loadRecipeButton
         buttonsLayoutSaveGroup.addWidget(loadRecipeButton, row, col)
         self.loadRecipeButtonComb.clicked.connect(self.selectAndLoadRecipe)
         
         col += 1
-        saveRecipeButton = widgets.savePushButton('Save current recipe')
+        saveRecipeButton = widgets_push_buttons.savePushButton('Save current recipe')
         self.saveRecipeButtonComb = saveRecipeButton
         buttonsLayoutSaveGroup.addWidget(saveRecipeButton, row, col)
         saveRecipeButton.clicked.connect(self.saveRecipe)
@@ -1543,7 +1551,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         )
         
         col += 1
-        loadLastRecipeButton = widgets.reloadPushButton('Load last recipe')
+        loadLastRecipeButton = widgets_push_buttons.reloadPushButton('Load last recipe')
         self.loadLastRecipeButtonComb = loadLastRecipeButton
         buttonsLayoutSaveGroup.addWidget(loadLastRecipeButton, row, col)        
         self.mainLayout.addLayout(buttonsLayoutSaveGroup)
@@ -1571,7 +1579,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         label = QLabel('Save as segmentation:')
         self.saveAsSegmlabel = label
         label.setToolTip(tooltip)
-        self.saveAsSegmCheckbox = widgets.Toggle()
+        self.saveAsSegmCheckbox = widgets_push_buttons.Toggle()
         self.saveAsSegmCheckbox.setToolTip(tooltip)
         self.saveAsSegmCheckbox.setChecked(False)
         self.saveAsSegmCheckbox.setEnabled(False)
@@ -1687,7 +1695,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         
         filepath_provided = filepath is not None
         if not filepath_provided:
-            folder_content = myutils.listdir(combine_channels_recipes_path)
+            folder_content = filesystem.listdir(combine_channels_recipes_path)
             num_recipes = len(folder_content)
             default_text = f'{num_recipes + 1}'
             proceed, filepath = self.saveRecipeUI(

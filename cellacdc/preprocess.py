@@ -578,7 +578,7 @@ def _init_dummy_filter(**kwargs):
     pass
 
 def _init_basicpy_background_correction(**kwargs):
-    from . import myutils
+    from cellacdc.myutils import installs
     custom_install_requires = [
         "hyperactive>=4.4.0",
         "jax>=0.3.10,<0.4.23",
@@ -590,7 +590,7 @@ def _init_basicpy_background_correction(**kwargs):
         "scipy", # this will theoretically have the wrong version of scipy in the end
         ]
     
-    myutils.check_install_custom_dependencies(
+    installs.check_install_custom_dependencies(
         custom_install_requires, 'basicpy', parent=kwargs.get('parent')
     )
 

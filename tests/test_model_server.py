@@ -9,7 +9,8 @@ import requests
 
 from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
 from cellacdc.service.client import LocalBackend, ModelClient, RemoteBackend
-from cellacdc import cli, myutils_models
+from cellacdc import cli
+from cellacdc.myutils import model_modules
 
 pytestmark = pytest.mark.models
 
@@ -239,10 +240,10 @@ def test_environment_resolution_and_naming():
 
 
 def test_check_install_package_with_python_exec():
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
     # numpy is installed in sys.executable
-    outcome = myutils.check_install_package(
+    outcome = installs.check_install_package(
         "numpy",
         python_exec=sys.executable,
         return_outcome=True
@@ -251,7 +252,7 @@ def test_check_install_package_with_python_exec():
 
     # Nonexistent package should fail or raise ModuleNotFoundError
     with pytest.raises(ModuleNotFoundError):
-        myutils.check_install_package(
+        installs.check_install_package(
             "nonexistent_fake_package_xyz_123",
             python_exec=sys.executable,
             raise_on_cancel=True,
@@ -262,19 +263,19 @@ def test_check_install_package_with_python_exec():
 @pytest.mark.parametrize("external", [False, True])
 def test_install_failure_does_not_open_qt_dialog(monkeypatch, external):
     from unittest.mock import Mock
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
     error = RuntimeError("pip failed")
-    monkeypatch.setattr(myutils, "_check_single_package", lambda *a: (False, False))
-    monkeypatch.setattr(myutils, "_install_pip_package", Mock(side_effect=error))
-    monkeypatch.setattr(myutils, "is_gui_running", lambda: True)
+    monkeypatch.setattr(installs, "_check_single_package", lambda *a: (False, False))
+    monkeypatch.setattr(installs, "_install_pip_package", Mock(side_effect=error))
+    monkeypatch.setattr(installs, "is_gui_running", lambda: True)
     dialog = Mock(side_effect=AssertionError("CLI must not open Qt dialogs"))
-    monkeypatch.setattr(myutils, "_inform_install_package_failed", dialog)
+    monkeypatch.setattr(installs, "_inform_install_package_failed", dialog)
     # printl looks up the source file of every caller frame (0.5 s)
-    monkeypatch.setattr(myutils, "printl", Mock())
+    monkeypatch.setattr(installs, "printl", Mock())
     logger = Mock()
     with pytest.raises(RuntimeError) as raised:
-        myutils.check_install_package(
+        installs.check_install_package(
             "fake_package", auto_install=True, is_cli=not external,
             python_exec="model-python" if external else None,
             logger_func=logger,
@@ -288,18 +289,20 @@ def test_install_failure_does_not_open_qt_dialog(monkeypatch, external):
 @pytest.mark.parametrize("mac_arm", [False, True])
 def test_tensorflow_install_preserves_main_numpy(monkeypatch, external, mac_arm):
     from unittest.mock import Mock
-    from cellacdc import myutils
+    import platform
+    import subprocess
+    from cellacdc.myutils import installs
 
     python = "model-python" if external else sys.executable
     install = Mock()
     purge = Mock(side_effect=AssertionError("NumPy must not be reloaded"))
-    monkeypatch.setattr(myutils.subprocess, "check_call", install)
-    monkeypatch.setattr(myutils, "purge_module", purge)
-    monkeypatch.setattr(myutils, "is_mac", mac_arm)
-    monkeypatch.setattr(myutils.platform, "processor", lambda: "arm" if mac_arm else "x86")
-    monkeypatch.setattr(myutils, "get_pip_conda_prefix", lambda: ("conda install", "pip install"))
+    monkeypatch.setattr(subprocess, "check_call", install)
+    monkeypatch.setattr(installs, "purge_module", purge)
+    monkeypatch.setattr(installs, "is_mac", mac_arm)
+    monkeypatch.setattr(platform, "processor", lambda: "arm" if mac_arm else "x86")
+    monkeypatch.setattr(installs, "get_pip_conda_prefix", lambda: ("conda install", "pip install"))
     numpy_module = sys.modules["numpy"]
-    myutils._install_tensorflow(max_version="2.14", python_exec=python)
+    installs._install_tensorflow(max_version="2.14", python_exec=python)
     purge.assert_not_called()
     assert sys.modules["numpy"] is numpy_module
     if external or not mac_arm:
@@ -314,14 +317,15 @@ def test_tensorflow_install_preserves_main_numpy(monkeypatch, external, mac_arm)
 def test_integration_failure_prints_immediate_diagnostics(monkeypatch, capsys):
     from unittest.mock import Mock
     from tests import test_all_model_environments as integration
-    from cellacdc import myutils
+    from cellacdc.myutils import downloads
+    from cellacdc.myutils import segm_models
 
     backend = Mock(url="http://test-worker", _output=["worker diagnostic"])
     backend.start.return_value.segment.side_effect = RuntimeError("model traceback")
     monkeypatch.setattr(integration, "LocalBackend", Mock(return_value=backend))
-    monkeypatch.setattr(integration.myutils, "_model_url", lambda name: None)
+    monkeypatch.setattr(downloads, "_model_url", lambda name: None)
     spec = ("test_model", "model-python", [
-        myutils.ArgSpec("batch_size", 8, int, None, None),
+        segm_models.ArgSpec("batch_size", 8, int, None, None),
     ], [], None)
     with pytest.raises(RuntimeError, match="model traceback"):
         integration.test_model_segments_sample_tiff(spec, np.zeros((8, 8), dtype=np.uint16))
@@ -334,14 +338,14 @@ def test_integration_failure_prints_immediate_diagnostics(monkeypatch, capsys):
 
 def test_isolated_tensorflow_resolves_in_same_batch(monkeypatch):
     from unittest.mock import Mock
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
-    monkeypatch.setattr(myutils, "_check_single_package", lambda *a: (False, False))
+    monkeypatch.setattr(installs, "_check_single_package", lambda *a: (False, False))
     batch = Mock()
     special = Mock(side_effect=AssertionError("Must resolve together"))
-    monkeypatch.setattr(myutils, "_install_pip_package", batch)
-    monkeypatch.setitem(myutils._SPECIAL_INSTALLERS, "tensorflow", special)
-    myutils.check_install_package(
+    monkeypatch.setattr(installs, "_install_pip_package", batch)
+    monkeypatch.setitem(installs._SPECIAL_INSTALLERS, "tensorflow", special)
+    installs.check_install_package(
         [{"pkg_name": "tensorflow", "max_version": "2.13"}, "baby-seg"],
         python_exec="model-python", auto_install=True, is_cli=True,
     )
@@ -363,21 +367,23 @@ def test_isolated_tensorflow_resolves_in_same_batch(monkeypatch):
 def test_external_package_version_bounds(monkeypatch, installed, minimum, maximum,
                                         lower, upper, expected):
     from types import SimpleNamespace
-    from cellacdc import myutils
+    import subprocess
+    from cellacdc.myutils import installs
 
-    monkeypatch.setattr(myutils.subprocess, "run", lambda *a, **k: SimpleNamespace(
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(
         returncode=0, stdout=installed,
     ))
     spec = dict(pkg_name="test", import_pkg_name="test", exact_version="",
                 min_version=minimum, max_version=maximum,
                 include_lower_version=lower, include_higher_version=upper)
-    satisfied, _ = myutils._check_single_package(spec, False, "model-python")
+    satisfied, _ = installs._check_single_package(spec, False, "model-python")
     assert satisfied is expected
 
 
 def test_parameter_filtering_never_constructs_widgets():
     import typing
-    from cellacdc import myutils, _types
+    from cellacdc import _types
+    from cellacdc.myutils import segm_models
     from tests.test_all_model_environments import _default_kwargs
 
     class WidgetType:
@@ -387,11 +393,11 @@ def test_parameter_filtering_never_constructs_widgets():
             raise AssertionError("Metadata inspection must not create widgets")
 
     params = [
-        myutils.ArgSpec("model_type", "Phase contrast", _types.YeazV2ModelType, None, None),
-        myutils.ArgSpec("custom", "default", WidgetType, None, None),
-        myutils.ArgSpec("hidden", False, _types.NotGUIParam, None, None),
-        myutils.ArgSpec("optional_hidden", None, typing.Optional[_types.NotGUIParam], None, None),
-        myutils.ArgSpec("second_channel", None, typing.Optional[_types.SecondChannelImage], None, None),
+        segm_models.ArgSpec("model_type", "Phase contrast", _types.YeazV2ModelType, None, None),
+        segm_models.ArgSpec("custom", "default", WidgetType, None, None),
+        segm_models.ArgSpec("hidden", False, _types.NotGUIParam, None, None),
+        segm_models.ArgSpec("optional_hidden", None, typing.Optional[_types.NotGUIParam], None, None),
+        segm_models.ArgSpec("second_channel", None, typing.Optional[_types.SecondChannelImage], None, None),
     ]
     assert _default_kwargs(params) == {
         "model_type": "Phase contrast", "custom": "default",
@@ -522,9 +528,9 @@ def test_declined_optional_model_setup_step_is_skipped(monkeypatch, prompt_func)
 
 @pytest.mark.slow
 def test_get_model_arg_spec_from_env():
-    from cellacdc import myutils
+    from cellacdc.myutils import segm_models
 
-    init_params, segment_params, url = myutils.getModelArgSpecFromEnv(
+    init_params, segment_params, url = segm_models.getModelArgSpecFromEnv(
         "thresholding", python_exec=sys.executable
     )
     assert isinstance(init_params, list)
@@ -542,6 +548,7 @@ def test_get_model_arg_spec_from_env():
 def _patch_model_execution(monkeypatch, use_model_env=True, **overrides):
     from unittest.mock import Mock
     from cellacdc.service import model_execution
+    from cellacdc.myutils import segm_models
 
     mocks = dict(
         get_or_create_model_env=Mock(return_value="model-python"),
@@ -578,9 +585,9 @@ def _patch_model_execution(monkeypatch, use_model_env=True, **overrides):
             "getModelArgSpecFromEnv", "import_segment_module",
             "getModelArgSpec", "init_segm_model",
         ):
-            monkeypatch.setattr(model_execution.myutils, name, mocks[name])
+            monkeypatch.setattr(segm_models, name, mocks[name])
     monkeypatch.setattr(
-        model_execution.myutils, "resolve_segm_model_init_data",
+        segm_models, "resolve_segm_model_init_data",
         lambda posData, init_kwargs: None,
     )
     return mocks
@@ -1024,7 +1031,8 @@ def test_magic_labeller_reinitialization_releases_ownership(monkeypatch, scenari
     from contextlib import nullcontext
     from types import MethodType, SimpleNamespace
     from unittest.mock import Mock
-    from cellacdc import gui
+    from cellacdc.gui.main_window import window as gui_window
+    from cellacdc.shared.dialogs import model_selection as dialogs_model_selection
     from cellacdc.service.model_execution import ModelExecution
 
     def make_backend(**kwargs):
@@ -1048,10 +1056,10 @@ def test_magic_labeller_reinitialization_releases_ownership(monkeypatch, scenari
         getModelExecution=lambda name: execution,
         modelExecutionBusy=lambda text: nullcontext(),
     )
-    window.initSegmModel = MethodType(gui.guiWin.initSegmModel, window)
-    window.releaseSegmModel = MethodType(gui.guiWin.releaseSegmModel, window)
+    window.initSegmModel = MethodType(gui_window.guiWin.initSegmModel, window)
+    window.releaseSegmModel = MethodType(gui_window.guiWin.releaseSegmModel, window)
     dialog = SimpleNamespace(cancel=False, selectedModel='test_model', exec_=Mock())
-    monkeypatch.setattr(gui.apps, 'QDialogSelectModel', lambda **kwargs: dialog)
+    monkeypatch.setattr(dialogs_model_selection, 'QDialogSelectModel', lambda **kwargs: dialog)
 
     def repeat(**kwargs):
         if scenario == 'cancelled':
@@ -1072,7 +1080,7 @@ def test_magic_labeller_reinitialization_releases_ownership(monkeypatch, scenari
     values = [0]
     window.repeatSegm = repeat
     for _ in range(4 if scenario == 'changed' else 1):
-        assert gui.guiWin.initLabelRoiModel(window) is (scenario == 'cancelled')
+        assert gui_window.guiWin.initLabelRoiModel(window) is (scenario == 'cancelled')
     old_worker = next(
         (w for w in execution._workers if w.model is old), None
     )
@@ -1132,8 +1140,8 @@ def test_main_model_detection_without_imports(monkeypatch, installed_version, ex
 
     monkeypatch.setattr(importlib.metadata, "version", version)
     import_model = Mock(side_effect=AssertionError("Must not import model"))
-    from cellacdc import myutils
-    monkeypatch.setattr(myutils, "import_segment_module", import_model)
+    from cellacdc.myutils import segm_models
+    monkeypatch.setattr(segm_models, "import_segment_module", import_model)
     assert environment.model_installed_in_main_env("test") is expected
     import_model.assert_not_called()
 
@@ -1247,15 +1255,16 @@ def test_gui_isolated_mode_never_falls_back(monkeypatch, failure_stage):
 def test_model_param_types_roundtrip():
     import json
     import typing
-    from cellacdc import myutils, _types
+    from cellacdc import _types
+    from cellacdc.myutils import segm_models
 
     for original in (
             bool, int, float, str, os.PathLike, type(None), _types.Vector,
             _types.FolderPath, _types.SecondChannelImage, _types.NotGUIParam,
             _types.YeazV2ModelType, _types.CsvFilePath,
         ):
-        encoded = myutils_models._serialize_model_param_type(original)
-        restored = myutils._deserialize_model_param_type(json.loads(json.dumps(encoded)))
+        encoded = model_modules._serialize_model_param_type(original)
+        restored = segm_models._deserialize_model_param_type(json.loads(json.dumps(encoded)))
         assert restored is original
 
     class Choices:
@@ -1263,22 +1272,30 @@ def test_model_param_types_roundtrip():
         is_exclusive_with = ['model_path']
         default_exclusive = 'Using custom model'
 
-    encoded = myutils_models._serialize_model_param_type(Choices)
-    restored = myutils._deserialize_model_param_type(json.loads(json.dumps(encoded)))
+    encoded = model_modules._serialize_model_param_type(Choices)
+    restored = segm_models._deserialize_model_param_type(json.loads(json.dumps(encoded)))
     assert restored().values == Choices.values
     assert restored().is_exclusive_with == Choices.is_exclusive_with
     assert restored().default_exclusive == Choices.default_exclusive
     assert restored.cast_dtype('cyto3') == 'cyto3'
-    optional = myutils_models._serialize_model_param_type(typing.Optional[_types.SecondChannelImage])
-    assert _types.is_second_channel_type(myutils._deserialize_model_param_type(optional))
-    literal = myutils_models._serialize_model_param_type(typing.Literal['cpu', 'gpu'])
-    assert myutils._deserialize_model_param_type(literal)().values == ['cpu', 'gpu']
+    optional = model_modules._serialize_model_param_type(typing.Optional[_types.SecondChannelImage])
+    assert _types.is_second_channel_type(segm_models._deserialize_model_param_type(optional))
+    literal = model_modules._serialize_model_param_type(typing.Literal['cpu', 'gpu'])
+    assert segm_models._deserialize_model_param_type(literal)().values == ['cpu', 'gpu']
 
 
 def test_model_param_metadata_creates_typed_gui_widgets():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from qtpy.QtWidgets import QApplication
-    from cellacdc import apps, myutils, widgets, _types
+    from cellacdc import _types
+    from cellacdc.myutils import segm_models
+    from cellacdc.shared.dialogs import model_params as dialogs_model_params
+    from cellacdc.shared.widgets import (
+        combo_boxes as widgets_combo_boxes,
+        line_edits as widgets_line_edits,
+        numeric_inputs as widgets_numeric_inputs,
+        push_buttons as widgets_push_buttons,
+    )
 
     app = QApplication.instance() or QApplication([])
 
@@ -1286,20 +1303,20 @@ def test_model_param_metadata_creates_typed_gui_widgets():
         values = ['cpu', 'gpu']
 
     definitions = [
-        ('enabled', False, bool, widgets.Toggle),
-        ('batch_size', 8, int, widgets.SpinBox),
-        ('diameter', 0.0, float, widgets.FloatLineEdit),
-        ('model_path', '', os.PathLike, widgets.filePathControl),
-        ('device_type', 'cpu', Choices, widgets.AlphaNumericComboBox),
+        ('enabled', False, bool, widgets_push_buttons.Toggle),
+        ('batch_size', 8, int, widgets_numeric_inputs.SpinBox),
+        ('diameter', 0.0, float, widgets_line_edits.FloatLineEdit),
+        ('model_path', '', os.PathLike, widgets_line_edits.filePathControl),
+        ('device_type', 'cpu', Choices, widgets_combo_boxes.AlphaNumericComboBox),
     ]
     params = [
-        myutils.ArgSpec(name, default, myutils._deserialize_model_param_type(
-            myutils_models._serialize_model_param_type(param_type)
+        segm_models.ArgSpec(name, default, segm_models._deserialize_model_param_type(
+            model_modules._serialize_model_param_type(param_type)
         ), None, None)
         for name, default, param_type, _ in definitions
     ]
-    params.append(myutils.ArgSpec('hidden', False, _types.NotGUIParam, None, None))
-    dialog = apps.QDialogModelParams(
+    params.append(segm_models.ArgSpec('hidden', False, _types.NotGUIParam, None, None))
+    dialog = dialogs_model_params.QDialogModelParams(
         params, [], 'test_model', initLastParams=False,
         addPreProcessParams=False, addPostProcessParams=False,
     )
@@ -1409,15 +1426,22 @@ class NoQt(MetaPathFinder):
             raise ModuleNotFoundError('Qt disabled for headless regression')
 
 sys.meta_path.insert(0, NoQt())
+import importlib
+import pkgutil
 import cellacdc
-from cellacdc import myutils
+import cellacdc.myutils
+# every module of the myutils package (the code of the old myutils.py)
+for module_info in pkgutil.iter_modules(cellacdc.myutils.__path__):
+    importlib.import_module('cellacdc.myutils.' + module_info.name)
+from cellacdc.myutils import segm_models
 assert not cellacdc.GUI_INSTALLED
 assert cellacdc.RUNNING_AS_SERVER == ('--server' in sys.argv)
-assert hasattr(myutils, 'config') == cellacdc.RUNNING_AS_SERVER
-assert 'cellacdc.widgets' not in sys.modules
-assert 'cellacdc.apps' not in sys.modules
+assert hasattr(segm_models, 'config') == cellacdc.RUNNING_AS_SERVER
+gui_modules = ('cellacdc.gui', 'cellacdc.shared.widgets',
+               'cellacdc.shared.dialogs')
+assert not [name for name in sys.modules if name.startswith(gui_modules)]
 if cellacdc.RUNNING_AS_SERVER:
-    assert myutils.config.ConfigParser().sections() == []
+    assert segm_models.config.ConfigParser().sections() == []
 """
     args = ["--server"] if server_mode else []
     # The old environment variable must have no effect any more
@@ -1455,12 +1479,12 @@ def test_qt_handler_from_worker_thread(monkeypatch):
     import threading
     from qtpy.QtWidgets import QApplication
     from qtpy.QtCore import QEventLoop, QTimer
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     from cellacdc.service import prompts
 
     app = QApplication.instance() or QApplication([])
     _click_after_exec(
-        monkeypatch, widgets.myMessageBox,
+        monkeypatch, widgets_message_box.myMessageBox,
         lambda self: self.clickButtonFromText("CPU"),
     )
     handler = prompts.QtHandler()
@@ -1482,7 +1506,8 @@ def test_qt_handler_from_worker_thread(monkeypatch):
 def test_qt_handler_uses_acdc_dialogs(monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from qtpy.QtWidgets import QApplication, QLineEdit
-    from cellacdc import apps, widgets
+    from cellacdc.shared.dialogs import generic as dialogs_generic
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     from cellacdc.service import prompts
 
     app = QApplication.instance() or QApplication([])
@@ -1490,14 +1515,14 @@ def test_qt_handler_uses_acdc_dialogs(monkeypatch):
 
     # Few choices -> buttons; cancelling returns None
     _click_after_exec(
-        monkeypatch, widgets.myMessageBox,
+        monkeypatch, widgets_message_box.myMessageBox,
         lambda self: self.clickButtonFromText("Cancel"),
     )
     assert handler.ask(prompts.choice("T", "x", ["A", "B"])) is None
 
     # Confirm -> ok button
     _click_after_exec(
-        monkeypatch, widgets.myMessageBox,
+        monkeypatch, widgets_message_box.myMessageBox,
         lambda self: self.clickButtonFromText("Yes"),
     )
     assert handler.ask(prompts.confirm("T", "x", ok_text="Yes")) is True
@@ -1508,7 +1533,7 @@ def test_qt_handler_uses_acdc_dialogs(monkeypatch):
         seen["default"] = self.ComboBox.currentText()
         self.ComboBox.setCurrentText("D")
         self.ok_cb()
-    _click_after_exec(monkeypatch, apps.QDialogCombobox, pick)
+    _click_after_exec(monkeypatch, dialogs_generic.QDialogCombobox, pick)
     choices = ["A", "B", "C", "D"]
     assert handler.ask(prompts.choice("T", "x", choices, default="C")) == "D"
     assert seen["default"] == "C"
@@ -1518,13 +1543,13 @@ def test_qt_handler_uses_acdc_dialogs(monkeypatch):
         seen["echo"] = self.entryWidget.echoMode()
         self.entryWidget.setText("tok")
         self.ok_cb(None)
-    _click_after_exec(monkeypatch, apps.QLineEditDialog, type_token)
+    _click_after_exec(monkeypatch, dialogs_generic.QLineEditDialog, type_token)
     prompt = prompts.text_input("T", "token:", extra={"secret": True})
     assert handler.ask(prompt) == "tok"
     assert seen["echo"] == QLineEdit.EchoMode.Password
 
     _click_after_exec(
-        monkeypatch, apps.QLineEditDialog, lambda self: self.cancel_cb(None)
+        monkeypatch, dialogs_generic.QLineEditDialog, lambda self: self.cancel_cb(None)
     )
     assert handler.ask(prompts.text_input("T", "x")) is None
 
@@ -1967,7 +1992,7 @@ def test_worker_accepts_arguments_larger_than_form_fields(monkeypatch):
     /add_prompt and SAM embeddings.
     """
     import types
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import payload, worker
     from cellacdc.service.client import post_init
 
@@ -1987,7 +2012,7 @@ def test_worker_accepts_arguments_larger_than_form_fields(monkeypatch):
             received['add_prompt'] = (prompt, prompt_id, image, points_df)
 
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module',
+        model_modules, 'import_segment_module',
         lambda name: types.SimpleNamespace(Model=Model),
     )
     df = _points_df(200_000)
@@ -2054,7 +2079,7 @@ def test_worker_rejects_clients_of_other_protocol_versions(monkeypatch):
     shutdown and FastAPI's documentation."""
     import threading
     import cellacdc
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import protocol, worker
 
     version = protocol.PROTOCOL_VERSION
@@ -2062,7 +2087,7 @@ def test_worker_rejects_clients_of_other_protocol_versions(monkeypatch):
     # /shutdown stops the worker process after answering: not this one
     monkeypatch.setattr(worker.os, 'kill', lambda pid, sig: killed.set())
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module',
+        model_modules, 'import_segment_module',
         lambda name: _fake_segment_module(requires_segm=False),
     )
     url, stop = _serve_app(worker.create_app('fake', defer_init=True))
@@ -3094,7 +3119,7 @@ def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
     import gc
     import types
     from pathlib import Path
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import payload, worker
 
     class Model:
@@ -3114,7 +3139,7 @@ def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
 
     module = types.SimpleNamespace(Model=Model)
     monkeypatch.setattr(
-        myutils_models, 'model_init_requires_segm_data', lambda _: False
+        model_modules, 'model_init_requires_segm_data', lambda _: False
     )
     model = worker.instantiate_model(module, {
         'model_path': payload.ModelFile('weights.pt', b'model'),
@@ -3159,7 +3184,8 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
     import types
     from pathlib import Path
     from fastapi import BackgroundTasks
-    from cellacdc import _types, myutils_models
+    from cellacdc import _types
+    from cellacdc.myutils import model_modules
     from cellacdc.service import client as client_module, worker
 
     worker_paths = []
@@ -3178,11 +3204,11 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
             return np.full(image.shape, self.model_path.read_bytes()[0])
 
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module',
+        model_modules, 'import_segment_module',
         lambda _: types.SimpleNamespace(Model=Model)
     )
     monkeypatch.setattr(
-        myutils_models, 'model_init_requires_segm_data', lambda _: False
+        model_modules, 'model_init_requires_segm_data', lambda _: False
     )
     app = worker.create_app('fake', defer_init=True)
     shutdown = next(
@@ -3247,7 +3273,7 @@ def test_worker_passes_uploaded_files_to_model_calls(monkeypatch, tmp_path):
     import time
     import types
     from pathlib import Path
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import worker
 
     calls = []
@@ -3275,7 +3301,7 @@ def test_worker_passes_uploaded_files_to_model_calls(monkeypatch, tmp_path):
             record('add_prompt', weights)
 
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module',
+        model_modules, 'import_segment_module',
         lambda name: types.SimpleNamespace(Model=Model),
     )
     monkeypatch.setattr(worker, '_jobs', {})
@@ -3432,7 +3458,7 @@ def _segment_request(arr, kwargs=None, path='/segment'):
 
 def _jobs_app(monkeypatch, segment, **extra_methods):
     import types
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import worker
 
     class Model:
@@ -3447,7 +3473,7 @@ def _jobs_app(monkeypatch, segment, **extra_methods):
 
     module = types.SimpleNamespace(Model=Model)
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module', lambda name: module
+        model_modules, 'import_segment_module', lambda name: module
     )
     executor = _CapturingExecutor()
     monkeypatch.setattr(worker, '_executor', executor)
@@ -3463,7 +3489,8 @@ def _jobs_app(monkeypatch, segment, **extra_methods):
 def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch, tmp_path):
     import types
     from pathlib import Path
-    from cellacdc import _types, myutils_models
+    from cellacdc import _types
+    from cellacdc.myutils import model_modules
     from cellacdc.service import payload, worker
 
     class Model:
@@ -3479,7 +3506,7 @@ def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch, tmp_pat
 
     module = types.SimpleNamespace(Model=Model)
     monkeypatch.setattr(
-        myutils_models, 'model_init_requires_segm_data', lambda _: False
+        model_modules, 'model_init_requires_segm_data', lambda _: False
     )
 
     with pytest.raises(ValueError, match='model_path'):
@@ -3656,7 +3683,7 @@ def test_worker_runs_model_specific_methods(monkeypatch):
 def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
     import asyncio
     import types
-    from cellacdc import myutils, myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import worker
 
     image = np.zeros((1024, 1024), dtype=np.uint8)
@@ -3676,7 +3703,7 @@ def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
 
     expected_lab = lab.copy()
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module',
+        model_modules, 'import_segment_module',
         lambda name: types.SimpleNamespace(Model=Model),
     )
     executor = _CapturingExecutor()
@@ -3884,7 +3911,7 @@ def test_model_client_receives_responses_larger_than_one_socket_write(
     import uvicorn
     from fastapi.responses import Response
     from uvicorn.protocols.http.h11_impl import H11Protocol
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import protocol, worker
     from cellacdc.service.client import _find_free_port
 
@@ -3923,7 +3950,7 @@ def test_model_client_receives_responses_larger_than_one_socket_write(
             return result
 
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module',
+        model_modules, 'import_segment_module',
         lambda name: types.SimpleNamespace(Model=Model),
     )
     app = worker.create_app('fake')
@@ -3981,7 +4008,7 @@ def test_model_client_receives_responses_larger_than_one_socket_write(
 def test_worker_runs_promptable_model_protocol(monkeypatch):
     import asyncio
     import types
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import payload, worker
 
     models = []
@@ -4000,7 +4027,7 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
 
     module = types.SimpleNamespace(Model=Model)
     monkeypatch.setattr(
-        myutils_models, 'import_promptable_segment_module', lambda name: module
+        model_modules, 'import_promptable_segment_module', lambda name: module
     )
     app = worker.create_app('fake', model_kind='promptable')
     endpoints = {
@@ -4035,11 +4062,11 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
 
 def _promptable_endpoints(monkeypatch, Model):
     import types
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import worker
 
     monkeypatch.setattr(
-        myutils_models, 'import_promptable_segment_module',
+        model_modules, 'import_promptable_segment_module',
         lambda name: types.SimpleNamespace(Model=Model),
     )
     app = worker.create_app('fake', model_kind='promptable')
@@ -4501,7 +4528,7 @@ def test_worker_roundtrips_sam_embeddings(
     import asyncio
     import http.client
     import types
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import payload, worker
 
     class Predictor:
@@ -4539,7 +4566,7 @@ def test_worker_roundtrips_sam_embeddings(
             return np.ones_like(image, dtype=np.uint32)
 
     module = types.SimpleNamespace(Model=Model)
-    monkeypatch.setattr(myutils_models, 'import_segment_module', lambda name: module)
+    monkeypatch.setattr(model_modules, 'import_segment_module', lambda name: module)
     monkeypatch.setitem(
         sys.modules, 'torch',
         types.SimpleNamespace(as_tensor=lambda value, device=None: value),
@@ -4808,7 +4835,7 @@ def test_worker_serializes_inference_calls(monkeypatch):
 
 def test_worker_exposes_argument_specs_to_client(monkeypatch):
     import types
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     from cellacdc.service import client as client_module
     from cellacdc.service import worker
 
@@ -4821,7 +4848,7 @@ def test_worker_exposes_argument_specs_to_client(monkeypatch):
 
     module = types.SimpleNamespace(Model=Model, url_help=lambda: "https://model-help")
     monkeypatch.setattr(
-        myutils_models, 'import_segment_module', lambda _: module
+        model_modules, 'import_segment_module', lambda _: module
     )
     app = worker.create_app('fake')
     endpoints = {
@@ -4913,19 +4940,19 @@ def test_model_client_forwards_model_specific_methods(monkeypatch):
 @pytest.mark.parametrize('backend_type', ['remote', 'local'])
 def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
     """Workers (local and remote) get the loaded data and the init kwargs."""
-    from cellacdc import myutils
+    from cellacdc.myutils import segm_models
     from cellacdc.service import client as client_module
 
     argspecs = [
-        myutils.ArgSpec('diameter', 0, int, '', ''),
+        segm_models.ArgSpec('diameter', 0, int, '', ''),
     ]
-    segment_argspecs = [myutils.ArgSpec('threshold', 0.0, float, '', '')]
+    segment_argspecs = [segm_models.ArgSpec('threshold', 0.0, float, '', '')]
     monkeypatch.setattr(
         client_module, 'get_model_arg_spec',
         lambda url: (argspecs, segment_argspecs),
     )
     monkeypatch.setattr(
-        myutils, 'getModelArgSpecFromEnv',
+        segm_models, 'getModelArgSpecFromEnv',
         lambda *args: (argspecs, segment_argspecs, None),
     )
 
@@ -4956,7 +4983,7 @@ def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
         client_module, 'check_worker_version',
         lambda url, timeout=10.0, session=None: checked.append(url),
     )
-    monkeypatch.setattr(myutils, 'resolve_segm_model_init_data', fake_resolve)
+    monkeypatch.setattr(segm_models, 'resolve_segm_model_init_data', fake_resolve)
     monkeypatch.setattr(client_module, 'RemoteBackend', FakeRemote)
     monkeypatch.setattr(client_module, 'LocalBackend', FakeLocal)
 
@@ -4984,16 +5011,16 @@ def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
 
 
 def test_pkg_spec_accepts_distribution_name():
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
-    specs = myutils._normalize_pkg_specs(
+    specs = installs._normalize_pkg_specs(
         [{'pkg_name': 'foo', 'distribution_name': 'foo-dist'}], '', '',
-        {key: None for key in myutils._PKG_SPEC_KEYS},
+        {key: None for key in installs._PKG_SPEC_KEYS},
     )
     assert specs[0]['distribution_name'] == 'foo-dist'
     assert specs[0]['pkg_name'] == 'foo'
     with pytest.raises(TypeError, match='Unknown'):
-        myutils._normalize_pkg_specs([{'pkg_name': 'foo', 'bad': 1}], '', '', {})
+        installs._normalize_pkg_specs([{'pkg_name': 'foo', 'bad': 1}], '', '', {})
 
 
 def test_failed_torch_or_cellacdc_install_aborts_setup(monkeypatch):

@@ -48,7 +48,7 @@ from qtpy.QtWidgets import (
 
 import pyqtgraph as pg
 
-from cellacdc import widgets, core, load, myutils, colors, transformation, qutils
+from cellacdc import core, load, colors, transformation, qutils
 from cellacdc import urls
 from cellacdc import cellacdc_path
 from cellacdc import (
@@ -59,23 +59,16 @@ from cellacdc import regionprops as acdc_regionprops
 from cellacdc.gui.mixins import (
     navigation as gui_navigation, annotations as gui_annotations
 )
-from cellacdc import gui_viewer_tools
+from cellacdc.gui.mixins import (
+    object_info as gui_object_info,
+    viewer_tools as gui_viewer_tools,
+    window_core as gui_window_core,
+)
 from cellacdc.gui.mixins import overlay as gui_overlay
 from cellacdc.config import STANDARD_MOUSE_BUTTONS
-from cellacdc import gui_core
-from cellacdc import apps
 from cellacdc import html_utils
-from cellacdc import workers
 from cellacdc import timepoint_predictors
 from .. import custom_annotation_predictors
-from cellacdc import apps_measurements_viewer
-from cellacdc.apps_measurements_viewer import (
-    ChannelPlaceholderMappingDialog,
-    ConditionalFormattingDialog,
-    _FormattingConditionDialog,
-    formatting_color,
-    is_formatting_color,
-)
 from .. import phase_translator
 from cellacdc import measurement_processing, background_values
 from cellacdc.gui.mixins import custom_annotations as gui_custom_annotations
@@ -87,21 +80,7 @@ from cellacdc.timepoint_predictors import (
     TimepointIdentifier, TIMEPOINT_PREFIX, parse_flags
 )
 from cellacdc import disableWindow
-from cellacdc.measurements_viewer_utils import (
-    MeasurementsViewerUtils, RESCALE_INTENS_HOW_TEXTS, VISITED_COLUMN,
-    PREMADE_TEMPLATE_KEYS, SIGNAL_COLORS, LIGHT_BACKGROUND_SIGNAL_COLORS,
-    EXTRA_SIGNAL_COLORS, _SIGNAL_FALLBACK_HUES, signal_color, LOGGER_NAME,
-    _StdoutLogHandler, _LogFormatter, get_logger, get_images_paths,
-    get_channels_and_segm_endnames, get_channel_from_filepath, load_position,
-    normalize_loaded_acdc_df, LAST_ANALYZED_CCA, LAST_ANALYZED_TRACKED,
-    last_analyzed_frame, analysis_last_frame, mask_frames, min_frame,
-    float_if_bool, position_key, blank_unanalyzed_outputs,
-    flag_column_conflicts, flag_column_conflicts_text,
-    evaluate_masked_cell_equation, update_last_analyzed_frame,
-    acdc_df_file_stamp, acdc_df_snapshot, position_name, load_positions,
-    precompute_position_regionprops, preload_overlay_channels,
-    load_display_positions, loaded_data_status,
-)
+from ..viewer_utils import MeasurementsViewerUtils, get_logger
 from .. import widgets as viewer_widgets
 from . import navigation as viewer_navigation
 from .ui_setup import ViewerSetupGuiElements
@@ -148,21 +127,21 @@ class MeasurementsViewerWin(
         gui_viewer_tools.ColorSchemeGuiElements,
         gui_viewer_tools.LabelsColormapGuiElements,
         gui_viewer_tools.ImagePropertiesGuiElements,
-        gui_viewer_tools.CcaTableGuiElements,
-        gui_viewer_tools.CountObjectsGuiElements,
-        gui_viewer_tools.WorkersGuiElements,
-        gui_viewer_tools.SearchIDGuiElements,
-        gui_viewer_tools.HoverInfoGuiElements,
-        gui_viewer_tools.ShortcutsGuiElements,
+        gui_object_info.CcaTableGuiElements,
+        gui_object_info.CountObjectsGuiElements,
+        gui_window_core.WorkersGuiElements,
+        gui_object_info.SearchIDGuiElements,
+        gui_object_info.HoverInfoGuiElements,
+        gui_window_core.ShortcutsGuiElements,
         gui_viewer_tools.SlideshowGuiElements,
         gui_viewer_tools.Volume3DViewerGuiElements,
-        gui_viewer_tools.RegionPropsGuiElements,
+        gui_object_info.RegionPropsGuiElements,
         gui_viewer_tools.BottomLayoutGuiElements,
-        gui_viewer_tools.DefaultSettingsGuiElements,
+        gui_window_core.DefaultSettingsGuiElements,
         gui_overlay.OverlayChannelsGuiElements,
         gui_overlay.OverlayLabelsGuiElements,
         gui_overlay.ChannelImageHelpersGuiElements,
-        gui_core.GUICoreElements,
+        gui_window_core.GUICoreElements,
     ):
     """Window to view images, navigate cells and plot their measurements.
 
@@ -671,14 +650,6 @@ def run(folderpath=None):
     if folderpath:
         win.openFolder(folderpath=folderpath)
     app.exec_()
-
-
-# cellacdc-refactor: intermediate compat block (removed in C12)
-# Names that moved out of this module stay reachable here with a
-# DeprecationWarning (cellacdc/_compat.py, see CODEMAP.md).
-from cellacdc import _compat as _acdc_compat  # noqa: E402
-
-__getattr__, __dir__ = _acdc_compat.moved_module(__name__)
 
 
 if __name__ == '__main__':

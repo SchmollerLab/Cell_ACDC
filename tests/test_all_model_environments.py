@@ -17,7 +17,8 @@ import numpy as np
 import pytest
 import tifffile
 
-from cellacdc import myutils, _types
+from cellacdc import _types
+from cellacdc.myutils import downloads, segm_models
 from cellacdc.service.client import LocalBackend
 from cellacdc.service.environment import (
     get_or_create_model_env, missing_required_env,
@@ -62,7 +63,7 @@ def model_spec(request):
         )
         assert python, f"No isolated environment returned for {name}"
         print(f"[{name}] Retrieving argument specs using {python}", flush=True)
-        init, segment, url = myutils.getModelArgSpecFromEnv(name, python)
+        init, segment, url = segm_models.getModelArgSpecFromEnv(name, python)
     except Exception:
         print(f"\n[{name}] Environment/spec retrieval failed:\n"
               f"{traceback.format_exc()}", flush=True)
@@ -84,7 +85,7 @@ def test_model_argument_specs(model_spec):
         assert isinstance(params, list)
         assert len({p.name for p in params}) == len(params)
         for param in params:
-            assert isinstance(param, myutils.ArgSpec)
+            assert isinstance(param, segm_models.ArgSpec)
             assert not isinstance(param.type, str), (
                 f"{name}.{param.name}: type metadata is still plain text"
             )
@@ -130,9 +131,9 @@ def test_model_segments_sample_tiff(model_spec, sample_image):
         if "gpu" in params:
             params["gpu"] = False
 
-    if myutils._model_url(name) is not None:
+    if downloads._model_url(name) is not None:
         print(f"[{name}] Downloading weights if needed", flush=True)
-        assert myutils.download_model(name), f"Weight download failed for {name}"
+        assert downloads.download_model(name), f"Weight download failed for {name}"
 
     backend = LocalBackend(
         name, env_python=python, init_model_kwargs=init_kwargs,

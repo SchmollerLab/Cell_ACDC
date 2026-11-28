@@ -22,13 +22,13 @@ from . import GUI_INSTALLED
 
 if GUI_INSTALLED:
     from qtpy import QtGui
-    from . import widgets
+    from cellacdc.shared.widgets import imshow_window as widgets_imshow_window
     import pyqtgraph as pg
     
     
 from . import printl
 from . import _core, error_below, error_close
-from . import _run, core, myutils
+from . import _run, core
 
 VisPyMarkerSymbols = Literal[
     'disc', 
@@ -204,7 +204,7 @@ def imshow(
         casted_images.append(image)
 
     app = _run._setup_app()
-    win = widgets.ImShow(
+    win = widgets_imshow_window.ImShow(
         parent=parent, 
         link_scrollbars=link_scrollbars,
         infer_rgb=infer_rgb,

@@ -5,13 +5,13 @@ import subprocess
 try:
     import detectron2
 except ModuleNotFoundError:
-    from cellacdc import myutils
-    if myutils.is_server_mode():
-        myutils._raise_server_missing('detectron2 (YeastMate setup_steps)')
+    from cellacdc.myutils import installs
+    if installs.is_server_mode():
+        installs._raise_server_missing('detectron2 (YeastMate setup_steps)')
     if sys.platform.startswith("win"):
         from qtpy.QtWidgets import QMessageBox, QApplication
         from qtpy.QtCore import QCoreApplication
-        from cellacdc.widgets import warnVisualCppRequired
+        from cellacdc.shared.widgets.message_box import warnVisualCppRequired
 
         if QCoreApplication.instance() is None:
             app = QApplication(sys.argv)
@@ -38,17 +38,16 @@ except ModuleNotFoundError:
 try:
     import yeastmatedetector
 except ModuleNotFoundError:
-    from cellacdc import myutils
-    if myutils.is_server_mode():
-        myutils._raise_server_missing('yeastmatedetector (YeastMate setup_steps)')
+    from cellacdc.myutils import installs
+    if installs.is_server_mode():
+        installs._raise_server_missing('yeastmatedetector (YeastMate setup_steps)')
     from qtpy.QtWidgets import QMessageBox, QApplication
     from qtpy.QtCore import QCoreApplication
 
     if QCoreApplication.instance() is None:
         app = QApplication(sys.argv)
 
-    from cellacdc import myutils
-    cancel = myutils._install_package_msg('YeastMate')
+    cancel = installs._install_package_msg('YeastMate')
     if cancel:
         raise ModuleNotFoundError(
             'User aborted YeastMate installation'

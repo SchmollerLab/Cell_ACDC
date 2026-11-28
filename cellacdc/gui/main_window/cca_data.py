@@ -17,9 +17,11 @@ from qtpy.QtWidgets import QPushButton, QCheckBox, QMessageBox
 from cellacdc import exception_handler, disableWindow
 from cellacdc import base_cca_dict
 from cellacdc import cca_df_colnames
-from cellacdc import load, apps, workers, html_utils
+from cellacdc import load, html_utils
+from ..dialogs import editing as gui_dialogs_editing
+from ..workers import annotation_checks as gui_workers_annotation_checks
 from cellacdc import core
-from cellacdc import widgets
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import _warnings, issues_url
 from cellacdc import printl
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import has_lineage_tree_values
@@ -112,7 +114,7 @@ class CcaIntegrityCheckerGuiElements:
             Please, <b>include the log file when reporting the issue</b>.<br><br>
             Log file location:
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.warning(
             self, 'Experimental feature error', txt,
             commands=(self.log_path,),
@@ -177,7 +179,7 @@ class CcaIntegrityCheckerGuiElements:
         self.ccaCheckerMutex = QMutex()
         self.ccaCheckerWaitCond = QWaitCondition()
         
-        worker = workers.CcaIntegrityCheckerWorker(
+        worker = gui_workers_annotation_checks.CcaIntegrityCheckerWorker(
             self.ccaCheckerMutex, self.ccaCheckerWaitCond
         )
         self.ccaIntegrityCheckerWorker = worker
@@ -324,7 +326,7 @@ class CcaDataGuiElements:
                 'To annotate future frames again you will have to revisit them.<br><br>'
                 'Do you want to continue?'
             )
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                self, 'Re-initialize annnotations?', txt, 
                buttonsTexts=('Cancel', 'Yes')
@@ -427,7 +429,7 @@ class CcaDataGuiElements:
         self.navigateScrollBar.setDisabled(True)
         self.navSpinBox.setDisabled(True)
 
-        self.editCcaWidget = apps.editCcaTableWidget(
+        self.editCcaWidget = gui_dialogs_editing.editCcaTableWidget(
             posData.cca_df, posData.SizeT, parent=self,
             title='Initialize cell cycle annotations'
         )
@@ -469,7 +471,7 @@ class CcaDataGuiElements:
         return curr_df is not None and 'cell_cycle_stage' in curr_df.columns
 
     def warnScellsGone(self, ScellsIDsGone, frame_i):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         text = html_utils.paragraph(f"""
             In the next frame the followning cells' IDs in S/G2/M
             (highlighted with a yellow contour) <b>will disappear</b>:<br><br>
@@ -1018,7 +1020,7 @@ class CcaDataGuiElements:
                 'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
                 'with cell cycle analysis.')
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.critical(
                 self, 'Tracking was never checked', txt
             )
@@ -1036,7 +1038,7 @@ class CcaDataGuiElements:
         
         if posData.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             # Cell cycle analysis cannot start from a frame that was never
             # checked in "Segmentation and Tracking" mode (e.g., after
             # visiting it in "Viewer" mode) --> do not offer to stay
@@ -1100,7 +1102,7 @@ class CcaDataGuiElements:
                 return
         elif posData.frame_i < last_cca_frame_i:
             # Prompt user to go to last annotated frame
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph(f"""
                 The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
                 Do you want to restart cell cycle analysis from frame
@@ -1905,7 +1907,7 @@ class AnnotationsAfterEditsGuiElements:
             annot_names.append('lineage tree')
         warn_type = f'{" and ".join(annot_names)} annotations'
 
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             f'You modified a frame that <b>has {warn_type}</b>.<br><br>'
             f'The change <b>"{editTxt}"</b> most likely makes the '

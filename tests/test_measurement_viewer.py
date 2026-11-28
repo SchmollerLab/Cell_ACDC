@@ -19,9 +19,29 @@ from qtpy.QtWidgets import (
     QLineEdit, QWidget,
 )
 
-from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc import annotate, measurements_viewer, qutils, widgets
-from cellacdc import measurements_viewer_utils
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
+from cellacdc import annotate, qutils
+from cellacdc.gui.mixins import viewer_tools as gui_viewer_tools_mod
+from cellacdc.measurements_viewer import (
+    annotation_data as viewer_annotation_data,
+    viewer_utils,
+    widgets as viewer_widgets,
+)
+from cellacdc.measurements_viewer.dialogs import conditional_formatting as viewer_dialogs_conditional_formatting
+from cellacdc.measurements_viewer.main_window import (
+    columns as viewer_columns,
+    configuration as viewer_configuration,
+    data_io as viewer_data_io,
+    image_panel as viewer_image_panel,
+    window as viewer_window,
+)
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+)
+from qtpy.QtGui import QCursor
+from qtpy.QtWidgets import QFileDialog
 from cellacdc import cellacdc_path
 
 pytestmark = pytest.mark.viewer
@@ -302,13 +322,13 @@ def test_right_click_does_not_navigate(viewer, app):
 
 
 def test_hardcoded_shortcuts_are_listed_and_conflict_in_editor(viewer):
-    from cellacdc import apps
+    from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
     hardShortcuts = viewer.getHardcodedShortcuts()
     # Same format as guiWin: {key sequence: (name, widget)}
     name, widget = hardShortcuts['Ctrl+O']
     assert widget is viewer.openFolderAction
     assert name == 'Load Folder'
-    dialog = apps.ShortcutEditorDialog(
+    dialog = gui_mixin_dialogs.ShortcutEditorDialog(
         viewer.widgetsWithShortcut, zoomOutKeyValue=viewer.zoomOutKeyValue,
         mouseBindings=viewer.mouseBindings, hard_shortcuts=hardShortcuts,
         show_delete_object_shortcut=False, parent=viewer
@@ -318,7 +338,7 @@ def test_hardcoded_shortcuts_are_listed_and_conflict_in_editor(viewer):
         for shortcut in shortcuts.values()
     ]
     # The editor shows macOS key names on macOS ('Command+O')
-    assert widgets.windowsShortcutToMac('Ctrl+O') in hardTexts
+    assert widgets_line_edits.windowsShortcutToMac('Ctrl+O') in hardTexts
     lineEdit = dialog.shortcutLineEdits['Next']
     lineEdit.setText('Ctrl+O')
     assert 'Conflict with' in lineEdit.warnConflictLabel.text()
@@ -337,7 +357,7 @@ def test_change_and_reset_signal_color(viewer, monkeypatch):
         return returned[0]
 
     monkeypatch.setattr(
-        measurements_viewer, 'QColorDialog', SimpleNamespace(getColor=getColor)
+        viewer_columns, 'QColorDialog', SimpleNamespace(getColor=getColor)
     )
     col, = viewer.checkedColumns()
 
@@ -735,7 +755,7 @@ def mock_filename_dialog(monkeypatch, folder, *filenames):
     """Answer the save dialogs with `filenames` (None cancels) in `folder`,
     which replaces the configurations folder of the settings."""
     monkeypatch.setattr(
-        measurements_viewer, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(folder)
+        viewer_configuration, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(folder)
     )
     answers = iter(filenames)
 
@@ -747,7 +767,7 @@ def mock_filename_dialog(monkeypatch, folder, *filenames):
         )
 
     dialog = Mock(side_effect=create_dialog)
-    monkeypatch.setattr(measurements_viewer.apps, 'filenameDialog', dialog)
+    monkeypatch.setattr(dialogs_file_selection, 'filenameDialog', dialog)
     return dialog
 
 
@@ -776,10 +796,19 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     viewer.measurementsAxes = {'X': '', 'Y': ''}
     viewer.normalizeCheckbox.setChecked(False)
     load_position = Mock(return_value=viewer.data[0])
-    monkeypatch.setattr(measurements_viewer_utils, 'load_position', load_position)
+    monkeypatch.setattr(viewer_utils, 'load_position', load_position)
+    # moved: get_channels_and_segm_endnames is read in each of these modules
     monkeypatch.setattr(
-        measurements_viewer, 'get_channels_and_segm_endnames',
+        viewer_configuration, 'get_channels_and_segm_endnames',
         Mock(return_value=(['phase'], ['segm_custom']))
+    )
+    monkeypatch.setattr(
+        viewer_data_io, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_image_panel, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
     )
     monkeypatch.setattr(
         viewer, 'selectConfigurationInput',
@@ -831,12 +860,21 @@ def test_loading_failure_preserves_current_data(
         configuration['images_paths'] = [str(tmp_path / 'missing')]
     channels = [] if failure == 'missing_channel' else ['phase']
     segmentations = [] if failure == 'missing_segmentation' else ['segm_custom']
+    # moved: get_channels_and_segm_endnames is read in each of these modules
     monkeypatch.setattr(
-        measurements_viewer, 'get_channels_and_segm_endnames',
+        viewer_configuration, 'get_channels_and_segm_endnames',
         Mock(return_value=(channels, segmentations))
     )
     monkeypatch.setattr(
-        measurements_viewer_utils, 'load_position', Mock(side_effect=OSError('Cannot read'))
+        viewer_data_io, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_image_panel, 'get_channels_and_segm_endnames',
+        viewer_configuration.get_channels_and_segm_endnames
+    )
+    monkeypatch.setattr(
+        viewer_utils, 'load_position', Mock(side_effect=OSError('Cannot read'))
     )
     error = Mock()
     set_data = Mock()
@@ -931,7 +969,7 @@ def test_run_with_folder_skips_startup_prompt(app, tmp_path, monkeypatch, folder
         created.append(self)
 
     monkeypatch.setattr(MeasurementsViewerWin, '__init__', recordInit)
-    measurements_viewer.run(str(tmp_path) if folder else None)
+    viewer_window.run(str(tmp_path) if folder else None)
     QTest.qWait(20)
     if folder:
         openFolder.assert_called_once_with(folderpath=str(tmp_path))
@@ -949,26 +987,26 @@ def test_run_with_folder_skips_startup_prompt(app, tmp_path, monkeypatch, folder
 @pytest.mark.parametrize('choice', ['skip', 'select', 'browse'])
 def test_configuration_picker_buttons(
         viewer, tmp_path, monkeypatch, has_configuration, choice):
-    from cellacdc import apps
+    from cellacdc.shared.dialogs import generic as dialogs_generic
     from qtpy.QtWidgets import QPushButton
 
     premade = tmp_path / 'premade'
     premade.mkdir()
     monkeypatch.setattr(
-        measurements_viewer, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(tmp_path)
+        viewer_configuration, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(tmp_path)
     )
     monkeypatch.setattr(
-        measurements_viewer, 'PREMADE_CONFIGURATIONS_PATH', str(premade)
+        viewer_configuration, 'PREMADE_CONFIGURATIONS_PATH', str(premade)
     )
     path = tmp_path / 'saved.json'
     if has_configuration:
         path.write_text('{}')
     external = str(tmp_path / 'external.json')
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getOpenFileName',
+        QFileDialog, 'getOpenFileName',
         Mock(return_value=(external, ''))
     )
-    original_dialog = apps.QTreeDialog
+    original_dialog = dialogs_generic.QTreeDialog
     # OK-button state seen while the dialog is open. Asserted after it
     # returns: an AssertionError raised inside the Qt slot would abort the
     # whole pytest process instead of failing this test
@@ -998,10 +1036,10 @@ def test_configuration_picker_buttons(
             else:
                 skip.click()
 
-        measurements_viewer.QTimer.singleShot(0, interact)
+        QTimer.singleShot(0, interact)
         return dialog
 
-    monkeypatch.setattr(apps, 'QTreeDialog', create_dialog)
+    monkeypatch.setattr(dialogs_generic, 'QTreeDialog', create_dialog)
     expected = (
         external if choice == 'browse'
         else str(path) if choice == 'select' and has_configuration else None
@@ -1026,7 +1064,7 @@ def test_close_prompts_and_respects_cancel(
         'cancel': buttons[0], 'dismiss': None,
         'discard': buttons[1], 'save': buttons[2]
     }[choice]
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', lambda **kw: msg)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', lambda **kw: msg)
     save = Mock(return_value=saved)
     monkeypatch.setattr(viewer, 'saveConfiguration', save)
     cleanup = Mock()
@@ -1170,7 +1208,7 @@ def real_viewer(app, monkeypatch):
 
 def load_real(window, paths, **kwargs):
     window.setData(
-        measurements_viewer.load_positions(paths, 'phase'), **kwargs
+        viewer_utils.load_positions(paths, 'phase'), **kwargs
     )
 
 
@@ -1400,7 +1438,7 @@ def test_loading_channel_shorter_than_segmentation(real_viewer, tmp_path):
         np.zeros((3, 30, 30), dtype=np.uint16)
     )
     real_viewer.setData(
-        measurements_viewer.load_display_positions([images], 'short')
+        viewer_utils.load_display_positions([images], 'short')
     )
     posData = real_viewer.posData()
     assert posData.SizeT == 3
@@ -1556,7 +1594,7 @@ def test_loaded_data_status_lists_what_is_displayed():
         user_ch_name='phase',
         segm_npz_path=os.path.join(images, 'test_segm_custom.npz')
     )
-    status = measurements_viewer_utils.loaded_data_status
+    status = viewer_utils.loaded_data_status
     text, tooltip = status(posData)
     assert text == (
         'Experiment: exp || Position_2 || Basename: test_ || '
@@ -1599,7 +1637,7 @@ def test_loaded_data_status_breaks_long_paths_after_separators():
         images_path=images, pos_foldername='Position_2', basename='test_',
         user_ch_name='phase'
     )
-    _, tooltip = measurements_viewer_utils.loaded_data_status(
+    _, tooltip = viewer_utils.loaded_data_status(
         posData, configuration_filepath=config
     )
     assert_tooltip_lines_fit(tooltip)
@@ -1620,7 +1658,7 @@ def test_loaded_data_status_breaks_long_paths_after_separators():
     assert f'Images folder: {images}' in unwrap_tooltip(tooltip)
     assert f'Configuration file: {config}' in unwrap_tooltip(tooltip)
     # Items that fit stay on one line
-    path_lines = measurements_viewer_utils.path_tooltip_lines
+    path_lines = viewer_utils.path_tooltip_lines
     assert path_lines('Images folder', os.path.join('exp', 'Images')) == [
         f'Images folder: {os.path.join("exp", "Images")}'
     ]
@@ -1694,7 +1732,7 @@ def test_status_bar_lists_overlay_channels_and_keeps_the_loaded_data(
     # Exporting reports the file in a temporary message
     export = tmp_path / 'export.csv'
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         Mock(return_value=(str(export), 'CSV (*.csv)'))
     )
     real_viewer.exportMeasurements()
@@ -1702,7 +1740,7 @@ def test_status_bar_lists_overlay_channels_and_keeps_the_loaded_data(
     assert label.text() == loaded
     assert str(export) in real_viewer.statusBar().currentMessage()
     # The mixin writes the color scheme restart notice into the label
-    gui_viewer_tools = measurements_viewer.gui_viewer_tools
+    gui_viewer_tools = gui_viewer_tools_mod
     monkeypatch.setattr(
         gui_viewer_tools._warnings, 'warnRestartCellACDCcolorModeToggled',
         Mock()
@@ -1766,7 +1804,7 @@ def test_status_bar_shows_the_configuration_file(
 def test_cca_table_on_frames_without_annotations(
         real_viewer, tmp_path, monkeypatch
     ):
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
 
     path = make_timelapse_position(tmp_path, cca_frames=[0])
     load_real(real_viewer, [path])
@@ -1782,7 +1820,7 @@ def test_cca_table_on_frames_without_annotations(
     
     warnings = []
     monkeypatch.setattr(
-        widgets.myMessageBox, 'warning', 
+        widgets_message_box.myMessageBox, 'warning', 
         lambda self, *args, **kwargs: warnings.append(args)
     )
     real_viewer.viewCcaTable()
@@ -1944,7 +1982,7 @@ def test_restore_default_settings_un_inverts_black_white(
     path = make_timelapse_position(tmp_path, SizeT=2)
     load_real(real_viewer, [path])
     real_viewer._defaultSignalColorIndices['area'] = (
-        measurements_viewer_utils.SIGNAL_COLORS.index('#F0E442')
+        viewer_utils.SIGNAL_COLORS.index('#F0E442')
     )
     column(real_viewer, 'area').setCheckState(Qt.Checked)
     real_viewer.invertBwAction.setChecked(True)
@@ -2064,7 +2102,7 @@ def test_opening_folder_keeps_saved_annotations_of_visited_cells(
     tablepath = os.path.join(second, 'test_acdc_output.csv')
     table = pd.read_csv(tablepath)
     table['Flag'] = 0
-    table[measurements_viewer.VISITED_COLUMN] = table['Cell_ID'] == 1
+    table[viewer_annotation_data.VISITED_COLUMN] = table['Cell_ID'] == 1
     table.to_csv(tablepath, index=False)
     real_viewer.loadImagesPaths([first], channel='phase')
     real_viewer.setCustomAnnotations([annotation_state(
@@ -2124,10 +2162,10 @@ def test_on_demand_ax1_items_stay_above_overlays_after_reload(
         real_viewer, tmp_path, monkeypatch
     ):
     import tifffile
-    from cellacdc import apps
+    from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
 
-    monkeypatch.setattr(apps.ScaleBarPropertiesDialog, 'exec_', Mock())
-    monkeypatch.setattr(apps.TimestampPropertiesDialog, 'exec_', Mock())
+    monkeypatch.setattr(gui_mixin_dialogs.ScaleBarPropertiesDialog, 'exec_', Mock())
+    monkeypatch.setattr(gui_mixin_dialogs.TimestampPropertiesDialog, 'exec_', Mock())
     paths = []
     for folder in ('A', 'B'):
         path = make_timelapse_position(tmp_path / folder, SizeT=3)
@@ -2163,9 +2201,9 @@ def test_on_demand_ax1_items_stay_above_overlays_after_reload(
 
 
 def accept_scale_bar_and_timestamp_dialogs(monkeypatch):
-    from cellacdc import apps
+    from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
 
-    dialogs = (apps.ScaleBarPropertiesDialog, apps.TimestampPropertiesDialog)
+    dialogs = (gui_mixin_dialogs.ScaleBarPropertiesDialog, gui_mixin_dialogs.TimestampPropertiesDialog)
     for dialog in dialogs:
         monkeypatch.setattr(
             dialog, 'exec_', lambda self, *args, **kwargs: self.ok_cb()
@@ -2209,7 +2247,7 @@ def test_loading_data_while_scale_bar_and_timestamp_dialogs_are_open(
         real_viewer, tmp_path, monkeypatch
     ):
     # Their dialogs are not modal: data can be loaded while one is open
-    from cellacdc import apps
+    from cellacdc.gui.mixins import dialogs as gui_mixin_dialogs
 
     paths = [
         make_timelapse_position(tmp_path / folder, SizeT=3)
@@ -2223,7 +2261,7 @@ def test_loading_data_while_scale_bar_and_timestamp_dialogs_are_open(
         closedByLoad.append(not dialog.isVisible())
         dialog.ok_cb()
 
-    dialogs = (apps.ScaleBarPropertiesDialog, apps.TimestampPropertiesDialog)
+    dialogs = (gui_mixin_dialogs.ScaleBarPropertiesDialog, gui_mixin_dialogs.TimestampPropertiesDialog)
     for dialog in dialogs:
         monkeypatch.setattr(dialog, 'exec_', loadWhileOpen)
     real_viewer.addScaleBarAction.setChecked(True)
@@ -2323,7 +2361,7 @@ def test_time_point_shortcut_over_plot_without_data(app, monkeypatch):
         plot = window.measurementsPlot
         assert plot.isVisible()
         center = plot.mapToGlobal(plot.rect().center())
-        monkeypatch.setattr(measurements_viewer.QCursor, 'pos', lambda: center)
+        monkeypatch.setattr(QCursor, 'pos', lambda: center)
         window.timepointActionTriggered(identifier.uid)
         assert window.statusBar().currentMessage() == (
             'Load data to add time points.'
@@ -2339,14 +2377,14 @@ def test_formatting_dialog_warning_escapes_condition_and_error(
     ):
     # Threshold conditions contain '<': the rich-text warning must escape the
     # condition and the error so that neither is cut off as a fake tag.
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
 
     def validateCondition(condition):
         raise TypeError("'<' not supported between 'str' and 'int'")
 
     warning = Mock()
-    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
-    dialog = measurements_viewer.ConditionalFormattingDialog(
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'warning', warning)
+    dialog = viewer_dialogs_conditional_formatting.ConditionalFormattingDialog(
         'area', [{'condition': 'area < 500', 'color': '#ff0000'}],
         validateCondition=validateCondition
     )
@@ -2364,7 +2402,7 @@ def test_formatting_dialog_is_disabled_while_condition_editor_runs(app):
     # The condition editor is not modal: removing or moving rules meanwhile
     # made editRule raise IndexError (aborting the app) or edit another rule
     states = []
-    dialog = measurements_viewer.ConditionalFormattingDialog(
+    dialog = viewer_dialogs_conditional_formatting.ConditionalFormattingDialog(
         'x', [{'condition': 'a > 1', 'color': 'lighter'},
               {'condition': 'b > 1', 'color': 'darker'}],
         editCondition=lambda text: states.append(dialog.isEnabled()) or 'b > 5'
@@ -2858,7 +2896,7 @@ def test_log_mode_applies_to_extra_y_axes(viewer):
 def test_other_transforms_autoscale_extra_y_axes(app):
     # Plot item alone, with plain curves: the viewer disables the transforms
     # that change the number of points (`disableUnsupportedPlotTransforms`)
-    widget = pg.PlotWidget(plotItem=measurements_viewer._TimeCoursePlotItem())
+    widget = pg.PlotWidget(plotItem=viewer_widgets._TimeCoursePlotItem())
     try:
         plotItem = widget.getPlotItem()
         frames = [1, 2, 3, 4]

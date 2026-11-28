@@ -725,7 +725,8 @@ graphLayoutBkgrColor = (235, 235, 235)
 darkBkgrColor = [255-v for v in graphLayoutBkgrColor]
 
 def _critical_exception_gui(self, func_name):
-    from . import widgets, html_utils
+    from . import html_utils
+    from cellacdc.shared.widgets import message_box as widgets_message_box
     result = None
     traceback_str = traceback.format_exc()
     
@@ -743,7 +744,7 @@ def _critical_exception_gui(self, func_name):
     except Exception as e:
         pass
     
-    msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+    msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
     if hasattr(self, 'logs_path'):
         msg.addShowInFileManagerButton(
             self.logs_path, txt='Show log file...'

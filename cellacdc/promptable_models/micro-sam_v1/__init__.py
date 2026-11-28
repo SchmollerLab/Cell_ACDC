@@ -1,3 +1,3 @@
-import cellacdc.myutils as myutils
+from cellacdc.myutils import model_installs
 
-myutils.check_install_microsam()
+model_installs.check_install_microsam()

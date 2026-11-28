@@ -18,7 +18,10 @@ from natsort import natsorted
 from qtpy.QtCore import QThread
 from qtpy.QtWidgets import QFileDialog
 
-from cellacdc import apps, html_utils, myutils, printl, widgets, workers
+from cellacdc import html_utils, printl
+from cellacdc.myutils import filesystem, image_utils
+from cellacdc.shared.workers import base as workers_base
+from .dialogs import setup as data_structure_dialogs_setup
 from cellacdc import exception_handler
 
 if TYPE_CHECKING:
@@ -326,7 +329,7 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
     positionFolders = {}
     posNumberShift = 0
     if create_new_positions:
-        pos_foldernames = myutils.get_pos_foldernames(destinationFolder)
+        pos_foldernames = filesystem.get_pos_foldernames(destinationFolder)
         last_pos_n = int(pos_foldernames[-1].split('_')[-1])
         posNumberShift = last_pos_n
 
@@ -529,13 +532,13 @@ def _log(mainWin, text):
 
 @exception_handler
 def run(mainWin: '_main.mainWin'):
-    setupWindow = apps.ReStructTiffDataStructureSetupDialogue(parent=mainWin)
+    setupWindow = data_structure_dialogs_setup.ReStructTiffDataStructureSetupDialogue(parent=mainWin)
     setupWindow.exec_()
     if setupWindow.cancel:
         return False
 
     mainWin._restructure_thread = QThread()
-    mainWin._restructure_worker = workers.SimpleWorker(
+    mainWin._restructure_worker = workers_base.SimpleWorker(
         None, create_datastruct_from_restruct_tiff_dialogue_options,
         func_args=(setupWindow.selectedOptions,),
     )
@@ -575,6 +578,6 @@ def run(mainWin: '_main.mainWin'):
     return True
 
 def saveTiff(filePath, data, waitCond):
-    myutils.to_tiff(filePath, data)
+    image_utils.to_tiff(filePath, data)
     waitCond.wakeAll()
     del data

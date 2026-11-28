@@ -4,7 +4,15 @@ from functools import partial
 import pandas as pd
 
 from .. import exception_handler
-from .. import myutils, apps, widgets, html_utils, printl, workers
+from .. import html_utils, printl
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from ..utils import base
 
 from qtpy.QtWidgets import QFileDialog
@@ -26,7 +34,7 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
             self, app, title: str, infoText: str, parent=None,
             callbackOnFinished=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             app, title, module, infoText, parent
         )
@@ -36,7 +44,7 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
 
     @exception_handler
     def run(self):        
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             'After clicking "Ok" you will be asked to <b>select the input table '
             'file</b> (.csv) containing <b>pedigree information</b>.'
@@ -50,18 +58,18 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
             parent=self, 
             caption='Select CSV file to load', 
             filters='CSV (*.csv);;All Files (*)',
-            basedir=myutils.getMostRecentPath()
+            basedir=filesystem.getMostRecentPath()
         )[0]
         if input_csv_filepath is None or not input_csv_filepath:
             return False
 
-        myutils.addToRecentPaths(os.path.dirname(input_csv_filepath))
+        filesystem.addToRecentPaths(os.path.dirname(input_csv_filepath))
         
         self.logger.info(f'Reading column names in table "{input_csv_filepath}"...')
 
         df = pd.read_csv(input_csv_filepath, nrows=2)
 
-        win = apps.GenerateMotherBudTotalTableSelectColumnsDialog(
+        win = GenerateMotherBudTotalTableSelectColumnsDialog(
             df, parent=self
         )
         win.exec_()
@@ -72,7 +80,7 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
         
         csv_filename = os.path.basename(input_csv_filepath)
         csv_filename_noext, ext = os.path.splitext(csv_filename)
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             ext='.csv',
             basename=f'{csv_filename_noext}_',
             hintText='Insert a <b>filename for the output table</b> file:',
@@ -88,7 +96,7 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
             os.path.dirname(input_csv_filepath), out_csv_filename
         )
         
-        self.worker = workers.GenerateMotherBudTotalTableWorker(
+        self.worker = GenerateMotherBudTotalTableWorker(
             self, input_csv_filepath, selected_options, out_csv_filepath
         )
         if self.callbackOnFinished is not None:
@@ -146,23 +154,23 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         settingsLayout = QGridLayout()    
         
         row = 0
-        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2)  
+        settingsLayout.addWidget(widgets_basic_widgets.QHLine(), row, 0, 1, 2)  
         
         row += 1
         settingsLayout.addWidget(
             QLabel('Copy all non-selected columns from mother cell'), row, 0
         )
-        self.copyAllColsToggle = widgets.Toggle()
+        self.copyAllColsToggle = widgets_push_buttons.Toggle()
         settingsLayout.addWidget(
             self.copyAllColsToggle, row, 1, alignment=Qt.AlignLeft
         )
         
         row += 1
-        settingsLayout.addWidget(widgets.QHLine(), row, 0, 1, 2) 
+        settingsLayout.addWidget(widgets_basic_widgets.QHLine(), row, 0, 1, 2) 
         
         self.mainLayout.addLayout(settingsLayout)
         
-        scrollArea = widgets.ScrollArea()
+        scrollArea = widgets_basic_widgets.ScrollArea()
         scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         scrollWidget = QWidget()
         scrollArea.setWidget(scrollWidget)
@@ -174,19 +182,19 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         self.centralLayout.addWidget(QLabel('Operation'), 0, 2)
         self.centralLayout.setRowStretch(0, 0)
         
-        self.groupingColsListWidget = widgets.listWidget(
+        self.groupingColsListWidget = widgets_item_views.listWidget(
             isMultipleSelection=True, 
         )
         self.groupingColsListWidget.addItems(self.columns)
         self.centralLayout.addWidget(self.groupingColsListWidget, 1, 0, 2, 1)
         
-        selector = widgets.ComboBox(self)
+        selector = widgets_combo_boxes.ComboBox(self)
         selector.addItems(self.columns)
-        operationCombobox = widgets.ComboBox(self)
+        operationCombobox = widgets_combo_boxes.ComboBox(self)
         operationCombobox.addItems(self.operations)
-        self.addSelectorButton = widgets.addPushButton()
+        self.addSelectorButton = widgets_push_buttons.addPushButton()
         
-        dummyButton = widgets.delPushButton()
+        dummyButton = widgets_push_buttons.delPushButton()
         dummyButton.setRetainSizeWhenHidden(True)
         dummyButton.hide()
         self.centralLayout.addWidget(dummyButton, 1, 4)
@@ -200,19 +208,19 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         
         self.selectors = {1: (selector, operationCombobox)}
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
-        saveSelectionButton = widgets.savePushButton(
+        saveSelectionButton = widgets_push_buttons.savePushButton(
             'Save current selection'
         )
         buttonsLayout.insertWidget(3, saveSelectionButton)
         
-        loadDefaultColsButton = widgets.reloadPushButton(
+        loadDefaultColsButton = widgets_push_buttons.reloadPushButton(
             'Load default summable columns'
         )
         buttonsLayout.insertWidget(4, loadDefaultColsButton)
         
-        loadPreviousSelButton = widgets.OpenFilePushButton(
+        loadPreviousSelButton = widgets_push_buttons.OpenFilePushButton(
             'Load previous selection'
         )
         buttonsLayout.insertWidget(5, loadPreviousSelButton)
@@ -254,7 +262,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         saved_selections[name] = self.selectedOptions()
         io.save_moth_bud_tot_selected_options(saved_selections)
         
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
             Current selection saved with name <code>{name}</code>.
         """)
@@ -286,7 +294,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
     def loadPreviousSelection(self):
         saved_selections = io.get_saved_moth_bud_tot_selections()
         if not saved_selections:
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             txt = html_utils.paragraph("""
                 There are no saved selections.
             """)
@@ -295,7 +303,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         
         existing_names = natsorted(saved_selections.keys(), key=str.casefold)
         
-        selectNameWin = widgets.QDialogListbox(
+        selectNameWin = widgets_item_views.QDialogListbox(
             'Choose selection to load',
             'Choose selection to load:\n',
             existing_names,
@@ -392,12 +400,12 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
     def addSelector(self):
         row = len(self.selectors) + 1
         
-        selector = widgets.ComboBox(self)
+        selector = widgets_combo_boxes.ComboBox(self)
         selector.addItems(self.columns)
         selector.setCurrentIndex(len(self.selectors))
-        operationCombobox = widgets.ComboBox(self)
+        operationCombobox = widgets_combo_boxes.ComboBox(self)
         operationCombobox.addItems(self.operations)
-        delButton = widgets.delPushButton()
+        delButton = widgets_push_buttons.delPushButton()
         selector.delButton = delButton
         delButton._row = row
         
@@ -462,7 +470,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
     def sizeHint(self):
         width = super().sizeHint().width()
         height = super().sizeHint().height()
-        groupingColsWidth = widgets.get_min_width_for_no_scrollbar(
+        groupingColsWidth = get_min_width_for_no_scrollbar(
             self.groupingColsListWidget
         )
         width += groupingColsWidth
@@ -502,7 +510,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         self.setWarningStyleSelector(selector1)
         self.setWarningStyleSelector(selector2)
         
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
             The following column has been selected more than once 
             (highlighted in orange).<br><br>
@@ -520,7 +528,7 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         return self.warnGroupingColumnsNotSelected()
     
     def warnGroupingColumnsNotSelected(self):
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
             Are you sure you do not want to select any grouping column?<br><br>
             Grouping columns are those needed to identify each unique 

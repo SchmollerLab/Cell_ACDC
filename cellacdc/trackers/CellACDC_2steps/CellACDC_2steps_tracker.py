@@ -9,7 +9,7 @@ import scipy.optimize
 
 import skimage.measure
 
-import cellacdc.workers
+from cellacdc.shared.workers import base as workers_base
 import cellacdc.core
 
 from ..CellACDC import CellACDC_tracker
@@ -78,7 +78,7 @@ class tracker:
             overlap_threshold=0.4,
             search_range_unit: SearchRangeUnits='pixels',
             lost_IDs_search_range=10,
-            signals: cellacdc.workers.signals=None,
+            signals: workers_base.signals=None,
             export_to_extension='.csv', 
             export_to: os.PathLike=None,
         ):

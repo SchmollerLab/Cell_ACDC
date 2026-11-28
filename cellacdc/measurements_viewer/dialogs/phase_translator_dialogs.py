@@ -11,7 +11,11 @@ from qtpy.QtWidgets import (
 )
 from cellacdc import html_utils
 from .. import phase_translator
-from cellacdc import qutils, urls, widgets
+from cellacdc import qutils, urls
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from . import predictor_editors as viewer_dialogs_predictor_editors
 
@@ -83,8 +87,8 @@ class PhaseTranslatorRuleDialog(QDialog):
         columns.addWidget(requirementsScroll)
         columns.addWidget(intervalsScroll)
         buttons = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
-        self.okButton = widgets.okPushButton('  OK  ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        self.okButton = widgets_push_buttons.okPushButton('  OK  ')
         buttons.addStretch(1)
         buttons.addWidget(cancelButton)
         buttons.addWidget(self.okButton)
@@ -158,8 +162,8 @@ class PhaseTranslatorRuleDialog(QDialog):
             rowLayout.setContentsMargins(0, 0, 0, 0)
             rowLayout.addWidget(QLabel(column[len(TIMEPOINT_PREFIX):]), stretch=1)
             for label, offset, buttonClass in (
-                    ('Up', -1, widgets.arrowUpPushButton),
-                    ('Down', 1, widgets.arrowDownPushButton)):
+                    ('Up', -1, widgets_push_buttons.arrowUpPushButton),
+                    ('Down', 1, widgets_push_buttons.arrowDownPushButton)):
                 button = buttonClass(label)
                 button.setEnabled(0 <= index + offset < len(self.boundaries))
                 button.clicked.connect(
@@ -197,7 +201,7 @@ class PhaseTranslatorRuleDialog(QDialog):
             phase_translator.validate_rules([self.rule])
         except Exception as err:
             traceback.print_exc()
-            widgets.myMessageBox(wrapText=False).warning(
+            widgets_message_box.myMessageBox(wrapText=False).warning(
                 self, 'Invalid phase rule',
                 html_utils.paragraph(html.escape(str(err)))
             )
@@ -273,11 +277,11 @@ class PhaseTranslatorDialog(QDialog):
         self.rulesList.itemDoubleClicked.connect(lambda *_: self.editRule())
         controls = QHBoxLayout()
         for text, callback, buttonClass in (
-            ('Add...', self.addRule, widgets.addPushButton),
-            ('Edit...', self.editRule, widgets.editPushButton),
-            ('Remove...', self.removeRule, widgets.delPushButton),
-            ('Up', partial(self.moveRule, -1), widgets.arrowUpPushButton),
-            ('Down', partial(self.moveRule, 1), widgets.arrowDownPushButton)
+            ('Add...', self.addRule, widgets_push_buttons.addPushButton),
+            ('Edit...', self.editRule, widgets_push_buttons.editPushButton),
+            ('Remove...', self.removeRule, widgets_push_buttons.delPushButton),
+            ('Up', partial(self.moveRule, -1), widgets_push_buttons.arrowUpPushButton),
+            ('Down', partial(self.moveRule, 1), widgets_push_buttons.arrowDownPushButton)
         ):
             button = buttonClass(text)
             button.clicked.connect(callback)
@@ -297,10 +301,10 @@ class PhaseTranslatorDialog(QDialog):
         applyButtons = QHBoxLayout()
         # Same icons as the "Apply" / "Apply to all Positions..." buttons
         # of the post-processing dialog in apps.py
-        self.applyCellButton = widgets.okPushButton(
+        self.applyCellButton = widgets_push_buttons.okPushButton(
             'Apply phase evaluation on displayed cell', isDefault=False
         )
-        self.applyAllButton = widgets.futurePushButton(
+        self.applyAllButton = widgets_push_buttons.futurePushButton(
             'Apply phase evaluation on all cells'
         )
         for button, allCells in (
@@ -309,14 +313,14 @@ class PhaseTranslatorDialog(QDialog):
             button.clicked.connect(lambda checked=False, batch=allCells: self.apply(batch))
             applyButtons.addWidget(button)
         buttons = QHBoxLayout()
-        self.helpButton = widgets.infoPushButton('Help...')
+        self.helpButton = widgets_push_buttons.infoPushButton('Help...')
         self.helpButton.setToolTip(
             'How to translate time points into phases (with a link to the '
             'user guide)'
         )
         self.helpButton.clicked.connect(self.showHelp)
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton('  OK  ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton('  OK  ')
         buttons.addWidget(self.helpButton)
         buttons.addStretch(1)
         buttons.addWidget(cancelButton)
@@ -374,7 +378,7 @@ class PhaseTranslatorDialog(QDialog):
     def showHelp(self, checked=False):
         """How-to of the translator with a link to its user guide section
         (`urls.measurements_viewer_phase_translator_docs_url`)."""
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(
             self, 'Time point to phase translator: help',
             html_utils.paragraph(PHASE_TRANSLATOR_HELP),
@@ -413,7 +417,7 @@ class PhaseTranslatorDialog(QDialog):
         colors = self.currentPhaseColors()
         columns = 4
         for i, (name, color) in enumerate(colors.items()):
-            button = widgets.myColorButton(color=color)
+            button = widgets_push_buttons.myColorButton(color=color)
             toolTip = f'Color of phase "{name}"'
             if name in self.annotationOverrides:
                 toolTip += ' (custom annotation overriding phases)'

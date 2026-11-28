@@ -11,12 +11,23 @@ import numpy as np
 from qtpy.QtCore import QTimer, QThread, QMutex, QWaitCondition
 from qtpy.QtWidgets import QAction
 from cellacdc import exception_handler
-from cellacdc import prompts, apps, workers, html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc import prompts, html_utils
+from cellacdc.shared.dialogs import (
+    generic as dialogs_generic,
+    image_tools as dialogs_image_tools,
+    model_params as dialogs_model_params,
+    model_selection as dialogs_model_selection,
+)
+from ..dialogs import segmentation as gui_dialogs_segmentation
+from ..workers import segmentation_tracking as gui_workers_segmentation_tracking
+from cellacdc.myutils import model_installs, segm_models, table_utils
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+)
 from cellacdc import printl
 from cellacdc import seg_for_lost_IDs_settings_path
-from cellacdc.myutils import ArgSpec
+from cellacdc.myutils.segm_models import ArgSpec
 from cellacdc.plot import imshow
 
 
@@ -71,7 +82,7 @@ class SegForLostIDsGuiElements:
             'Tip: if you want to run the same model twice with different '
             'parameters, add it twice and configure each step independently.'
         )
-        win = apps.QDialogSelectModel(
+        win = dialogs_model_selection.QDialogSelectModel(
             parent=self,
             allowMultiSelection=True,
             lastSelection=prev_models,
@@ -269,7 +280,7 @@ class SegForLostIDsGuiElements:
 
             initLastParams = True
             if model_name == 'thresholding':
-                win_thresh = apps.QDialogAutomaticThresholding(
+                win_thresh = dialogs_model_params.QDialogAutomaticThresholding(
                     parent=self, isSegm3D=self.isSegm3D
                 )
                 win_thresh.exec_()
@@ -282,10 +293,10 @@ class SegForLostIDsGuiElements:
                 self.model_kwargs = win_thresh.segment_kwargs
                 thresh_method = self.model_kwargs['threshold_method']
                 gauss_sigma = self.model_kwargs['gauss_sigma']
-                segment_params = myutils.insertModelArgSpec(
+                segment_params = segm_models.insertModelArgSpec(
                     segment_params, 'threshold_method', thresh_method
                 )
-                segment_params = myutils.insertModelArgSpec(
+                segment_params = segm_models.insertModelArgSpec(
                     segment_params, 'gauss_sigma', gauss_sigma
                 )
                 initLastParams = False
@@ -414,7 +425,7 @@ class SegForLostIDsGuiElements:
             return
 
         self.storeUndoRedoStates(False)
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Segmenting for lost IDs', parent=self,
             pbarDesc=f'Segmenting for lost IDs...'
         )
@@ -447,7 +458,7 @@ class SegForLostIDsGuiElements:
         self._thread = QThread()
 
         # Initialize the worker with mutex and wait condition
-        self.SegForLostIDsWorker = workers.SegForLostIDsWorker(
+        self.SegForLostIDsWorker = gui_workers_segmentation_tracking.SegForLostIDsWorker(
             self, self.SegForLostIDsMutex, self.SegForLostIDsWaitCond
         )
 
@@ -545,10 +556,10 @@ class SegForLostIDsGuiElements:
                 worker.dont_force_cpu = cached['dont_force_cpu']
                 return
 
-            result = myutils.check_gpu_available(
+            result = model_installs.check_gpu_available(
                 model_name, use_gpu, qparent=self, python_exec=python_exec
             )
-            dont_force_cpu = myutils.check_gpu_available(
+            dont_force_cpu = model_installs.check_gpu_available(
                 model_name, use_gpu, do_not_warn=True, python_exec=python_exec
             )
             worker.gpu_go = result
@@ -670,7 +681,7 @@ class SegmentationGuiElements:
             customPostProcessFeatures
         ):
         self.thread = QThread()
-        self.postProcessWorker = workers.PostProcessSegmWorker(
+        self.postProcessWorker = gui_workers_segmentation_tracking.PostProcessSegmWorker(
             postProcessKwargs, customPostProcessGroupedFeatures, 
             customPostProcessFeatures, self
         )
@@ -703,8 +714,8 @@ class SegmentationGuiElements:
         if checked:
             self.askSegmParam = True
             # Ask which model
-            models = myutils.get_list_of_models()
-            win = widgets.QDialogListbox(
+            models = segm_models.get_list_of_models()
+            win = widgets_item_views.QDialogListbox(
                 'Select model',
                 'Select model to use for segmentation: ',
                 models,
@@ -732,7 +743,7 @@ class SegmentationGuiElements:
             SizeZ = None
         if checked:
             posData = self.data[self.pos_i]
-            self.postProcessSegmWin = apps.PostProcessSegmDialog(
+            self.postProcessSegmWin = gui_dialogs_segmentation.PostProcessSegmDialog(
                 posData, mainWin=self
             )
             self.postProcessSegmWin.sigClosed.connect(
@@ -765,7 +776,7 @@ class SegmentationGuiElements:
             self.logger.info('Post-processing segmentation cancelled.')
             return
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Post-processing segmentation', parent=self,
             pbarDesc=f'Post-processing segmentation masks...'
         )
@@ -862,7 +873,7 @@ class SegmentationGuiElements:
             return
 
         posData = self.data[self.pos_i]
-        win = apps.startStopFramesDialog(
+        win = gui_dialogs_segmentation.startStopFramesDialog(
             posData.SizeT, currentFrameNum=posData.frame_i+1
         )
         win.exec_()
@@ -876,7 +887,7 @@ class SegmentationGuiElements:
 
     def segmentToolActionTriggered(self):
         if self.segmModelName is None:
-            win = apps.QDialogSelectModel(parent=self)
+            win = dialogs_model_selection.QDialogSelectModel(parent=self)
             win.exec_()
             if win.cancel:
                 self.logger.info('Repeat segmentation cancelled.')
@@ -1077,7 +1088,7 @@ class SegmentationGuiElements:
         if not askSegmParams:
             askSegmParams = self.model_kwargs is None
 
-        self.downloadWin = apps.downloadModel(model_name, parent=self)
+        self.downloadWin = dialogs_model_selection.downloadModel(model_name, parent=self)
         self.downloadWin.download()
 
         # Store undo state before modifying stuff
@@ -1105,7 +1116,7 @@ class SegmentationGuiElements:
             self.preproc_recipe = None
             initLastParams = True
             if model_name == 'thresholding':
-                win = apps.QDialogAutomaticThresholding(
+                win = dialogs_model_params.QDialogAutomaticThresholding(
                     parent=self, isSegm3D=self.isSegm3D
                 )
                 win.exec_()
@@ -1115,10 +1126,10 @@ class SegmentationGuiElements:
                 self.model_kwargs = win.segment_kwargs
                 thresh_method = self.model_kwargs['threshold_method']
                 gauss_sigma = self.model_kwargs['gauss_sigma']
-                segment_params = myutils.insertModelArgSpec(
+                segment_params = segm_models.insertModelArgSpec(
                     segment_params, 'threshold_method', thresh_method
                 )
-                segment_params = myutils.insertModelArgSpec(
+                segment_params = segm_models.insertModelArgSpec(
                     segment_params, 'gauss_sigma', gauss_sigma
                 )
                 initLastParams = False
@@ -1140,7 +1151,7 @@ class SegmentationGuiElements:
             self.secondChannelName = win.secondChannelName
             self.preproc_recipe = win.preproc_recipe
             
-            myutils.log_segm_params(
+            segm_models.log_segm_params(
                 model_name, win.init_kwargs, win.model_kwargs, 
                 logger_func=self.logger.info, 
                 preproc_recipe=win.preproc_recipe, 
@@ -1149,8 +1160,8 @@ class SegmentationGuiElements:
                 custom_postprocess_features=self.customPostProcessFeatures
             )
 
-            use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
-            proceed = myutils.check_gpu_available(
+            use_gpu = model_installs.check_gpu_requested_segm_model(win.init_kwargs)
+            proceed = model_installs.check_gpu_available(
                 model_name, use_gpu, qparent=self,
                 python_exec=self.getModelExecution(model_name).env_python,
             )
@@ -1204,7 +1215,7 @@ class SegmentationGuiElements:
         if self.askRepeatSegment3D:
             self.segment3D = False
         if self.isSegm3D and self.askRepeatSegment3D:
-            msg = widgets.myMessageBox(showCentered=False)
+            msg = widgets_message_box.myMessageBox(showCentered=False)
             msg.addDoNotShowAgainCheckbox(text='Do not ask again')
             txt = html_utils.paragraph(
                 'Do you want to segment the <b>entire z-stack</b> or only the '
@@ -1232,7 +1243,7 @@ class SegmentationGuiElements:
                 orignal_z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
             except ValueError as e:
                 orignal_z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
-            selectZtool = apps.QCropZtool(
+            selectZtool = dialogs_image_tools.QCropZtool(
                 posData.SizeZ, parent=self, cropButtonText='Ok',
                 addDoNotShowAgain=True, title='Select z-slice range to segment'
             )
@@ -1266,7 +1277,7 @@ class SegmentationGuiElements:
         self.segmWorkerMutex = QMutex()
         self.segmWorkerWaitCond = QWaitCondition()
         self.thread = QThread()
-        self.worker = workers.segmWorker(
+        self.worker = gui_workers_segmentation_tracking.segmWorker(
             self, 
             secondChannelData=secondChannelData,
             mutex=self.segmWorkerMutex, 
@@ -1305,7 +1316,7 @@ class SegmentationGuiElements:
 
         idx = self.modelNames.index(model_name)
 
-        self.downloadWin = apps.downloadModel(model_name, parent=self)
+        self.downloadWin = dialogs_model_selection.downloadModel(model_name, parent=self)
         self.downloadWin.download()
 
         if model_name == 'Automatic thresholding':
@@ -1322,7 +1333,7 @@ class SegmentationGuiElements:
         init_params, segment_params, url = model_spec
         
         if model_name == 'thresholding':
-            autoThreshWin = apps.QDialogAutomaticThresholding(
+            autoThreshWin = dialogs_model_params.QDialogAutomaticThresholding(
                 parent=self, isSegm3D=self.isSegm3D
             )
             autoThreshWin.exec_()
@@ -1344,7 +1355,7 @@ class SegmentationGuiElements:
         self.applyPostProcessing = win.applyPostProcessing
         self.preproc_recipe = win.preproc_recipe
         
-        myutils.log_segm_params(
+        segm_models.log_segm_params(
             model_name, win.init_kwargs, win.model_kwargs, 
             logger_func=self.logger.info, 
             preproc_recipe=win.preproc_recipe, 
@@ -1357,8 +1368,8 @@ class SegmentationGuiElements:
         if win.secondChannelName is not None:
             secondChannelData = self.getSecondChannelData()
 
-        use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
-        proceed = myutils.check_gpu_available(
+        use_gpu = model_installs.check_gpu_requested_segm_model(win.init_kwargs)
+        proceed = model_installs.check_gpu_available(
             model_name, use_gpu, qparent=self,
             python_exec=self.getModelExecution(model_name).env_python,
         )
@@ -1396,7 +1407,7 @@ class SegmentationGuiElements:
             '(check progress in terminal/console)', color=self.titleColor
         )
 
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Segmenting video', parent=self,
             pbarDesc=f'Segmenting from frame n. {startFrameNum} to {stopFrameNum}...'
         )
@@ -1404,7 +1415,7 @@ class SegmentationGuiElements:
         self.progressWin.mainPbar.setMaximum(stopFrameNum-startFrameNum)
 
         self.thread = QThread()
-        self.worker = workers.segmVideoWorker(
+        self.worker = gui_workers_segmentation_tracking.segmVideoWorker(
             posData, win, model, startFrameNum, stopFrameNum
         )
         self.worker.secondChannelData = secondChannelData
@@ -1541,7 +1552,7 @@ class SegmentationGuiElements:
             f'NOTE: you can automatically segment all {txt} using the<br>'
             '    segmentation module.'
         )
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         noButton, yesButton = msg.question(
             self, 'Automatic segmentation?', questionTxt,
             buttonsTexts=('No', 'Yes')
@@ -1568,12 +1579,12 @@ class SegmentationGuiElements:
         self.repeatSegm(model_name=self.segmModelName)
 
     def showInstructionsCustomModel(self):
-        modelFilePath = apps.addCustomModelMessages(self)
+        modelFilePath = dialogs_model_selection.addCustomModelMessages(self)
         if modelFilePath is None:
             self.logger.info('Adding custom model process stopped.')
             return
         
-        myutils.store_custom_model_path(modelFilePath)
+        segm_models.store_custom_model_path(modelFilePath)
         modelName = os.path.basename(os.path.dirname(modelFilePath))
         customModelAction = QAction(modelName)
         self.segmSingleFrameMenu.addAction(customModelAction)
@@ -1588,7 +1599,7 @@ class SegmentationGuiElements:
             current_frame_n = self.navigateScrollBar.value()
         else:
             current_frame_n = frame_n
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(f"""
             Are you sure you want to <b>re-initialize the last visited and 
             validated</b> frame to number {current_frame_n}?<br><br>
@@ -1608,7 +1619,7 @@ class SegmentationGuiElements:
             return
         numFramesToAdd = stopFrameNum - segmSizeT
         posData.allData_li.extend(
-            [myutils.get_empty_stored_data_dict() for i in range(numFramesToAdd)]
+            [table_utils.get_empty_stored_data_dict() for i in range(numFramesToAdd)]
         )
         lab_shape = posData.segm_data[0].shape
         shapeToAdd = (numFramesToAdd, *lab_shape)
@@ -1647,7 +1658,7 @@ class SegmentationGuiElements:
             
             posData.segm_data[i] = posData.allData_li[i]['labels']
             rp_old = posData.allData_li[i]['regionprops']
-            posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+            posData.allData_li[i] = table_utils.get_empty_stored_data_dict()
             posData.allData_li[i]['regionprops'] = rp_old
             
             posData.tracked_lost_centroids[i] = set()

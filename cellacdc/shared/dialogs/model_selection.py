@@ -16,7 +16,7 @@ from qtpy.QtWidgets import (
     QLabel, QHBoxLayout, QApplication, QWidget, QVBoxLayout, QPushButton,
     QSpacerItem, QListView, QAbstractItemView, QListWidgetItem
 )
-from cellacdc import myutils
+from cellacdc.myutils import downloads, filesystem, installs, segm_models
 from cellacdc import fonts
 from ..widgets import item_views as widgets_item_views
 from ..widgets import style as widgets_style
@@ -34,9 +34,13 @@ from cellacdc import _window_stacking
 from cellacdc import html_utils
 from cellacdc import is_mac, is_win
 from cellacdc import is_conda_env
-from cellacdc import _torch_utils
-from cellacdc._torch_utils import torch_requirement
-from cellacdc import widgets
+from cellacdc.myutils import torch_utils
+from cellacdc.myutils.torch_utils import torch_requirement
+from ..widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import models_path
 from cellacdc import urls
 from . import generic as dialogs_generic
@@ -495,7 +499,7 @@ class ModelSelectionWidget(QWidget):
 
         self.allowMultiSelection = allowMultiSelection
 
-        models = myutils.get_list_of_models()
+        models = segm_models.get_list_of_models()
         if customFirst:
             try:
                 models.insert(0, models.pop(models.index(customFirst)))
@@ -577,13 +581,13 @@ class ModelSelectionWidget(QWidget):
 
 def addCustomModelMessages(QParent=None):
     modelFilePath = None
-    msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+    msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph("""
     Do you <b>already have</b> the <code>acdcSegment.py</code> file for your code 
     or do you <b>need instructions</b> on how to set-up your custom model?<br>
     """)
-    infoButton = widgets.infoPushButton(' I need instructions')
-    browseButton = widgets.browseFileButton(' I have the model, let me select it')
+    infoButton = widgets_push_buttons.infoPushButton(' I need instructions')
+    browseButton = widgets_push_buttons.browseFileButton(' I have the model, let me select it')
     msg.information(
         QParent, 'Add custom model', txt, 
         buttonsTexts=('Cancel', infoButton, browseButton),
@@ -595,8 +599,8 @@ def addCustomModelMessages(QParent=None):
     if msg.cancel:
         return
     if msg.clickedButton == infoButton:           
-        txt = myutils.get_add_custom_model_instructions()
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = segm_models.get_add_custom_model_instructions()
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.information(
             QParent, 'Custom model instructions', txt, buttonsTexts=('Ok',),
             path_to_browse=models_path,
@@ -667,7 +671,7 @@ class QDialogSelectModel(QDialog):
         label.setStyleSheet("padding:0px 0px 3px 0px;")
         titleLayout.addWidget(label, 0, 0, Qt.AlignCenter)
         if info_label:
-            moreInfoButton = widgets.infoPushButton()
+            moreInfoButton = widgets_push_buttons.infoPushButton()
             moreInfoButton.clicked.connect(self.showInfoLabel)
             moreInfoButton.setSizePolicy(
                 QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
@@ -675,7 +679,7 @@ class QDialogSelectModel(QDialog):
             titleLayout.addWidget(moreInfoButton, 0, 0, Qt.AlignTop | Qt.AlignRight)
         mainLayout.addWidget(titleContainer)
 
-        self.modelSelector = widgets.ModelSelectionWidget(
+        self.modelSelector = ModelSelectionWidget(
             parent=self,
             customFirst=customFirst,
             allowMultiSelection=allowMultiSelection,
@@ -689,7 +693,7 @@ class QDialogSelectModel(QDialog):
             saveLayout = QGridLayout()
 
             saveNameLabel = QLabel('Save recipe as (optional):')
-            self.saveSelectionNameLineEdit = widgets.alphaNumericLineEdit(
+            self.saveSelectionNameLineEdit = widgets_line_edits.alphaNumericLineEdit(
                 onlyWarn=True, formatter=self.formattedSaveSelectionName,
                 ignore_file_ext=f".{recipe_ext}"
             )
@@ -718,35 +722,35 @@ class QDialogSelectModel(QDialog):
             self.listBox.itemDoubleClicked.connect(self.ok_cb)
 
         bottomLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         okButton.setShortcut(Qt.Key_Enter)
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
         bottomLayout.addSpacing(20)
         if addSkipSegmButton:
-            skipSegmButton = widgets.SkipPushButton('Skip segmentation')
+            skipSegmButton = widgets_push_buttons.SkipPushButton('Skip segmentation')
             bottomLayout.addWidget(skipSegmButton)
             skipSegmButton.clicked.connect(self.skipSegm)
         if addSelectLastSelectionButton:
-            selectLastSelButton = widgets.reloadPushButton('Load last selection...')
+            selectLastSelButton = widgets_push_buttons.reloadPushButton('Load last selection...')
             selectLastSelButton.clicked.connect(self.selectLastSelection)
             selectLastSelButton.setEnabled(bool(self.lastSelection))
             bottomLayout.addWidget(selectLastSelButton)
         if addSelectLastRecipeButton:
-            selectLastRecipeButton = widgets.reloadPushButton('Load last recipe...')
+            selectLastRecipeButton = widgets_push_buttons.reloadPushButton('Load last recipe...')
             selectLastRecipeButton.clicked.connect(self.selectLastRecipe)
             selectLastRecipeButton.setEnabled(bool(self.lastSelection))
             bottomLayout.addWidget(selectLastRecipeButton)
         if addSelectSavedRecipeButton:
-            selectSavedRecipeButton = widgets.OpenFilePushButton(
+            selectSavedRecipeButton = widgets_push_buttons.OpenFilePushButton(
                 'Choose from saved recipes...'
             )
             selectSavedRecipeButton.clicked.connect(self.selectSavedRecipe)
             bottomLayout.addWidget(selectSavedRecipeButton)
         if allowMultiSelection:
-            addCustomModelButton = widgets.addPushButton('Add custom model...')
+            addCustomModelButton = widgets_push_buttons.addPushButton('Add custom model...')
             addCustomModelButton.clicked.connect(self.addCustomModel)
             bottomLayout.addWidget(addCustomModelButton)
         bottomLayout.addWidget(okButton)
@@ -799,7 +803,7 @@ class QDialogSelectModel(QDialog):
         displayNameToFilenameMapper = {}
         ext = ext.lstrip('.')
         if os.path.exists(recipes_path):
-            for file in myutils.listdir(recipes_path):
+            for file in filesystem.listdir(recipes_path):
                 if not file.startswith(recipe_prefix):
                     continue
 
@@ -827,11 +831,11 @@ class QDialogSelectModel(QDialog):
             )[0]
             return filepath or None
 
-        browseButton = widgets.browseFileButton(
+        browseButton = widgets_push_buttons.browseFileButton(
             f'Select {ext_label} file...',
             title=f'Select {ext_label} file to load recipe',
             openFolder=False,
-            start_dir=myutils.getMostRecentPath(),
+            start_dir=filesystem.getMostRecentPath(),
             ext={ext_label: f'.{ext}'}
         )
         selectRecipeWin = dialogs_generic.QTreeDialog(
@@ -887,7 +891,7 @@ class QDialogSelectModel(QDialog):
         if modelFilePath is None:
             return None
 
-        myutils.store_custom_model_path(modelFilePath)
+        segm_models.store_custom_model_path(modelFilePath)
         modelName = os.path.basename(os.path.dirname(modelFilePath))
         self.modelSelector.registerCustomModel(modelName)
         return modelName
@@ -907,7 +911,7 @@ class QDialogSelectModel(QDialog):
     def showInfoLabel(self):
         if not self.info_label:
             return
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(self.info_label)
         msg.information(self, 'More info', txt)
 
@@ -929,14 +933,14 @@ class QDialogSelectModel(QDialog):
         )
         layout.addWidget(QLabel(infoTxt))
 
-        modelOrderView = widgets.ReorderableListView(
+        modelOrderView = ReorderableListView(
             selected_models, parent=dialog, isSingleSelection=True
         )
         layout.addWidget(modelOrderView)
 
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton('Ok')
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
@@ -1141,15 +1145,15 @@ class downloadModel:
         self._parent = parent
 
     def download(self):
-        model_url = myutils._model_url(self.model_name)
+        model_url = downloads._model_url(self.model_name)
         if model_url is None:
             return
         
-        _, model_path = myutils.get_model_path(
+        _, model_path = downloads.get_model_path(
             self.model_name, create_temp_dir=False
         )
         model_name = self.model_name
-        model_exists = myutils.check_model_exists(model_path, model_name)
+        model_exists = downloads.check_model_exists(model_path, model_name)
         if not model_exists:
             self.warnDownloadModel(model_path, self.model_name)
         try:
@@ -1159,7 +1163,7 @@ class downloadModel:
         except Exception as err:
             pass
         
-        success = myutils.download_model(self.model_name)
+        success = downloads.download_model(self.model_name)
         if not success:
             self.criticalDowloadFailed()
         
@@ -1171,7 +1175,7 @@ class downloadModel:
             f'<code>{model_path}</code><br><br>'
             '<b>Progress</b> will be displayed in the <b>terminal</b>.<br>'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(self._parent, 'Download model', txt)
 
     def criticalDowloadFailed(self):
@@ -1179,12 +1183,12 @@ class downloadModel:
         model_name = self.model_name
         m = model_name.lower()
         weights_filenames = getattr(cellacdc, f'{m}_weights_filenames')
-        url, alternative_url = myutils._model_url(
+        url, alternative_url = downloads._model_url(
             model_name, return_alternative=True
         )
         url_href = f'<a href="{url}">this link</a>'
         alternative_url_href = f'<a href="{alternative_url}">this link</a>'
-        _, model_path = myutils.get_model_path(model_name, create_temp_dir=False)
+        _, model_path = downloads.get_model_path(model_name, create_temp_dir=False)
         txt = html_utils.paragraph(f"""
             Automatic download of {model_name} failed.<br><br>
             Please, <b>manually download</b> the model weights from {url_href} or
@@ -1204,7 +1208,7 @@ class downloadModel:
             f'Files that {model_name} requires:\n\n'
             f'{weights}'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.critical(
             self._parent, f'Download of {model_name} failed', txt, 
             detailsText=detailsText
@@ -1257,7 +1261,7 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
         innerLayout.addWidget(iconLabel, 0, 0, alignment=Qt.AlignTop)
 
         if found_cuda_version is None:
-            found_cuda_version = _torch_utils.get_driver_cuda_version()
+            found_cuda_version = torch_utils.get_driver_cuda_version()
 
         if possible_links is None:
             options_kwargs = {'driver_cuda_version': found_cuda_version}
@@ -1265,7 +1269,7 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
                 options_kwargs['exec_path'] = target_python
             if torch_version:
                 options_kwargs['torch_version'] = torch_version
-            possible_links = _torch_utils.get_torch_options_safe(**options_kwargs)
+            possible_links = torch_utils.get_torch_options_safe(**options_kwargs)
         self._options, self._preferred = possible_links
         self._detectedOnMac = sys.platform == 'darwin'
 
@@ -1285,7 +1289,7 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
                 f'Current CUDA UMD Version: {found_cuda_version[0]}.{found_cuda_version[1]}'
             )
 
-        self.commandWidgetSMI = widgets.CopiableCommandWidget(
+        self.commandWidgetSMI = widgets_message_box.CopiableCommandWidget(
             command='nvidia-smi'
         )
         infoText2 = html_utils.paragraph(f"""
@@ -1350,8 +1354,8 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
         preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
 
         row += 1
-        _, pip_prefix = myutils.get_pip_conda_prefix(exec_path=target_python)
-        self.commandWidget = widgets.CopiableCommandWidget(
+        _, pip_prefix = installs.get_pip_conda_prefix(exec_path=target_python)
+        self.commandWidget = widgets_message_box.CopiableCommandWidget(
             command=f'{pip_prefix} torch'
         )
         preferencesLayout.addWidget(QLabel('Run this command: '), row, 0)
@@ -1362,7 +1366,7 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
 
         innerLayout.addLayout(preferencesLayout, 4, 1)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -1386,7 +1390,7 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
             return [('Default (CPU / Apple GPU)', None)], 0
         if self._detectedOnMac:
             # Options were detected on a Mac, so there is no CUDA info
-            return [('CPU', f'{_torch_utils.BASE_PYTORCH_LINK}cpu')], 0
+            return [('CPU', f'{torch_utils.BASE_PYTORCH_LINK}cpu')], 0
         return self._options, self._preferred
 
     def populatePlatforms(self, *args, **kwargs):
@@ -1405,7 +1409,7 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
 
     def updateCommand(self, *args, **kwargs):
         indexUrl = self._urls.get(self.cmptPlatformCombobox.currentText())
-        _, pip_prefix = myutils.get_pip_conda_prefix(
+        _, pip_prefix = installs.get_pip_conda_prefix(
             exec_path=self._targetPython
             )
         torch_spec = torch_requirement(self._torchVersion, quoted=True)

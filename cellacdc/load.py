@@ -3,6 +3,7 @@ import sys
 
 from io import StringIO
 from typing import List
+from typing import TYPE_CHECKING
 import traceback
 import tempfile
 import re
@@ -34,7 +35,8 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from . import prompts
-from . import myutils, measurements, config
+from . import measurements, config
+from cellacdc.myutils import filesystem, segm_models, table_utils
 from . import base_cca_dict, base_acdc_df, html_utils, settings_folderpath
 from . import cca_df_colnames, printl, lineage_tree_cols
 from . import ignore_exception, cellacdc_path
@@ -57,12 +59,17 @@ if GUI_INSTALLED:
     )
     import pyqtgraph as pg
     pg.setConfigOption('imageAxisOrder', 'row-major')
-    from . import apps
-    from . import widgets
+    from cellacdc.shared.widgets import (
+        message_box as widgets_message_box,
+        push_buttons as widgets_push_buttons,
+    )
     from . import qrc_resources_path, qrc_resources_light_path
     from . import qrc_resources_dark_path
     from . import whitelist
     from pyqtgraph import Point
+
+if TYPE_CHECKING:
+    from cellacdc.shared.widgets import plot_items as widgets_plot_items
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -157,7 +164,7 @@ def to_csv_through_temp(df, csv_path):
         shutil.copy2(tmp_filepath, csv_path)
 
 def get_all_acdc_folders(user_profile_path):
-    models = myutils.get_list_of_models()
+    models = segm_models.get_list_of_models()
     acdc_folders = [f'acdc-{model}' for model in models]
     acdc_folders.append('acdc-java')
     acdc_folders.append('.acdc-logs')
@@ -199,7 +206,7 @@ def write_last_selected_set_measurements(last_selected_meas: dict[str, dict]):
         configPars.write(configfile)
 
 def migrate_models_paths(dst_path):
-    models = myutils.get_list_of_models()
+    models = segm_models.get_list_of_models()
     user_profile_path = dst_path.replace('\\', '/')
     for model in models:
         model_path = os.path.join(models_path, model, 'model')
@@ -305,10 +312,10 @@ def read_segm_workflow_from_config(filepath) -> dict:
     return ini_items
 
 def get_images_paths(folder_path):
-    folder_type = myutils.determine_folder_type(folder_path)     
+    folder_type = filesystem.determine_folder_type(folder_path)     
     is_pos_folder, is_images_folder, folder_path = folder_type     
     if not is_pos_folder and not is_images_folder:
-        pos_foldernames = myutils.get_pos_foldernames(folder_path)
+        pos_foldernames = filesystem.get_pos_foldernames(folder_path)
         images_paths = [
             os.path.join(folder_path, pos, 'Images') for pos in pos_foldernames
         ]
@@ -388,7 +395,7 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
         end_name_segm_file = f'{end_name_segm_file}.npz'
     
     found_files = [
-        file for file in myutils.listdir(images_path) 
+        file for file in filesystem.listdir(images_path) 
         if file.endswith(end_name_segm_file)
     ]
     try:
@@ -428,7 +435,7 @@ def get_tzyx_shape(images_path):
     return (SizeT, SizeZ, *YX)
     
 def load_metadata_df(images_path):
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         if not file.endswith('metadata.csv'):
             continue
         filepath = os.path.join(images_path, file)
@@ -653,7 +660,7 @@ def load_acdc_df_file(
         end_name_acdc_df_file = f'{end_name_acdc_df_file}.csv'
     
     found_files = [
-        file for file in myutils.listdir(images_path) 
+        file for file in filesystem.listdir(images_path) 
         if file.endswith(end_name_acdc_df_file)
     ]
     if len(found_files) == 0:
@@ -806,7 +813,7 @@ def store_unsaved_acdc_df(recovery_folderpath, df, log_func=printl):
     if not os.path.exists(unsaved_recovery_folderpath):
         os.mkdir(unsaved_recovery_folderpath)
     
-    files = myutils.listdir(unsaved_recovery_folderpath)
+    files = filesystem.listdir(unsaved_recovery_folderpath)
     csv_files = [file for file in files if file.endswith('.csv')]
     if len(files) > 20:
         csv_files = natsorted(csv_files)
@@ -827,7 +834,7 @@ def get_last_stored_unsaved_acdc_df_filepath(recovery_folderpath):
     if not os.path.exists(unsaved_recovery_folderpath):
         return
     
-    files = myutils.listdir(unsaved_recovery_folderpath)
+    files = filesystem.listdir(unsaved_recovery_folderpath)
     csv_files = [file for file in files if file.endswith('.csv')]
     if not csv_files:
         return
@@ -847,7 +854,7 @@ def get_last_stored_unsaved_acdc_df(recovery_folderpath):
     if not os.path.exists(unsaved_recovery_folderpath):
         return
     
-    files = myutils.listdir(unsaved_recovery_folderpath)
+    files = filesystem.listdir(unsaved_recovery_folderpath)
     csv_files = [file for file in files if file.endswith('.csv')]
     if not csv_files:
         return
@@ -888,7 +895,7 @@ def get_user_ch_paths(images_paths, user_ch_name):
     return user_ch_file_paths
 
 def get_acdc_output_files(images_path):
-    ls = myutils.listdir(images_path)
+    ls = filesystem.listdir(images_path)
 
     acdc_output_files = [
         file for file in ls 
@@ -917,7 +924,7 @@ def get_linked_acdc_df_columns(images_path, basename, end_filename_segm):
         return []
 
 def get_segm_files(images_path):
-    ls = myutils.listdir(images_path)
+    ls = filesystem.listdir(images_path)
 
     segm_files = [
         file for file in ls if file.endswith('segm.npz')
@@ -930,16 +937,16 @@ def get_segm_files(images_path):
 
 def get_segm_endnames_from_exp_path(exp_path, pos_foldernames=None):
     if pos_foldernames is None:
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         
     existingEndNames = set()
     for p, pos in enumerate(pos_foldernames):
         pos_path = os.path.join(exp_path, pos)
         images_path = os.path.join(pos_path, 'Images')
-        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        basename, chNames = filesystem.getBasenameAndChNames(images_path)
         # Use first found channel, it doesn't matter for metrics
         for chName in chNames:
-            filePath = myutils.getChannelFilePath(images_path, chName)
+            filePath = filesystem.getChannelFilePath(images_path, chName)
             if filePath:
                 break
         else:
@@ -962,7 +969,7 @@ def get_files_with(
         with_text: str, 
         ext: str | tuple[str]=None
     ):
-    ls = myutils.listdir(images_path)
+    ls = filesystem.listdir(images_path)
     found_files = []
     for file in ls:
         if file.find(with_text) == -1:
@@ -985,7 +992,7 @@ def get_files_with(
 
 def load_segmInfo_df(pos_path):
     images_path = os.path.join(pos_path, 'Images')
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         if file.endswith('segmInfo.csv'):
             csv_path = os.path.join(images_path, file)
             df = pd.read_csv(csv_path)
@@ -1010,7 +1017,7 @@ def get_filename_from_channel(
     h5_path = ''
     npz_aligned_path = ''
     tif_path = ''
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         isValidEnd = True
         for not_allowed_end in not_allowed_ends:
             if file.endswith(not_allowed_end):
@@ -1154,11 +1161,11 @@ def get_filepath_from_endname(images_path, endname):
     if channel_filepath:
         return channel_filepath
     
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         if file.endswith(endname):
             return os.path.join(images_path, file) 
 
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         file_noext, ext = os.path.splitext(file)
         if file_noext.endswith(endname):
             return os.path.join(images_path, file) 
@@ -1166,7 +1173,7 @@ def get_filepath_from_endname(images_path, endname):
     return ''
 
 def get_exp_path(path):
-    folder_type = myutils.determine_folder_type(path)
+    folder_type = filesystem.determine_folder_type(path)
     is_pos_folder, is_images_folder, _ = folder_type
     if is_pos_folder:
         exp_path = os.path.dirname(path)
@@ -1194,7 +1201,7 @@ def get_endname_from_filepath(filepath, allow_empty=False):
     
     filename = os.path.basename(filepath)
     filename_noext, ext = os.path.splitext(filename)
-    images_files = myutils.listdir(parent_folderpath)
+    images_files = filesystem.listdir(parent_folderpath)
     basename = os.path.commonprefix(images_files)
     endname = filename_noext[len(basename):]
     if not endname:
@@ -1207,21 +1214,21 @@ def get_endnames_from_basename(basename, filenames):
 
 def get_path_from_endname(end_name, images_path, ext=None):
     if ext is None:
-        end_name, ext = myutils.remove_known_extension(end_name)
+        end_name, ext = filesystem.remove_known_extension(end_name)
 
     if os.path.exists(os.path.join(images_path, f'{end_name}{ext}')):
         return os.path.join(images_path, f'{end_name}{ext}')
 
-    basename = os.path.commonprefix(myutils.listdir(images_path))
+    basename = os.path.commonprefix(filesystem.listdir(images_path))
     searched_file = f'{basename}{end_name}{ext}'
-    for file in myutils.listdir(images_path, include_directories=False):
+    for file in filesystem.listdir(images_path, include_directories=False):
         filename, ext = os.path.splitext(file)
         if file == searched_file:
             return os.path.join(images_path, file), file
         elif filename == searched_file:
             return os.path.join(images_path, file), file
     
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         filename, ext = os.path.splitext(file)
         if file.endswith(end_name):
             return os.path.join(images_path, file), file
@@ -1395,7 +1402,7 @@ def parse_metadata_csv_file(csv_filepath):
 
 def get_posData_metadata(images_path, basename):
     # First check if metadata.csv already has the channel names
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         if file.endswith('metadata.csv'):
             metadata_csv_path = os.path.join(images_path, file)
             parse_metadata_csv_file(metadata_csv_path)
@@ -1420,7 +1427,7 @@ EDITABLE_METADATA_KEYS = (
 def get_metadata_csv_filepath(images_path):
     """Return the path of the metadata.csv file in `images_path` or None
     if not found."""
-    for file in myutils.listdir(images_path):
+    for file in filesystem.listdir(images_path):
         if file.endswith('metadata.csv'):
             return os.path.join(images_path, file)
     return None
@@ -1453,7 +1460,7 @@ def get_editable_metadata_values(df_metadata):
     return values
 
 def is_pos_prepped(images_path):
-    filenames = myutils.listdir(images_path)
+    filenames = filesystem.listdir(images_path)
     for filename in filenames:
         if filename.endswith('dataPrepROIs_coords.csv'):
             return True
@@ -1468,7 +1475,7 @@ def is_pos_prepped(images_path):
     return False
 
 def is_bkgrROIs_present(images_path):
-    filenames = myutils.listdir(images_path)
+    filenames = filesystem.listdir(images_path)
     for filename in filenames:
         if filename.endswith('dataPrep_bkgrROIs.json'):
             return True
@@ -1521,7 +1528,7 @@ class loadData:
         self.non_aligned_ext = '.tif'
         self.segmMetadata = None
         if filename_ext.endswith('aligned.npz'):
-            for file in myutils.listdir(self.images_path):
+            for file in filesystem.listdir(self.images_path):
                 if file.endswith(f'{user_ch_name}.h5'):
                     self.non_aligned_ext = '.h5'
                     break
@@ -1538,7 +1545,7 @@ class loadData:
         '''
 
         try:
-            ls = myutils.listdir(self.images_path)
+            ls = filesystem.listdir(self.images_path)
             for file in ls:
                 if file.endswith('metadata.csv'):
                     metadata_csv_path = os.path.join(self.images_path, file)
@@ -1553,7 +1560,7 @@ class loadData:
             except Exception as e:
                 return
             
-            numPos = len(myutils.get_pos_foldernames(self.exp_path))
+            numPos = len(filesystem.get_pos_foldernames(self.exp_path))
             numPosDigits = len(str(numPos))
             s0p = str(self.pos_num+1).zfill(numPosDigits)
 
@@ -1686,7 +1693,7 @@ class loadData:
         self.acdc_df.to_csv(self.acdc_output_csv_path)
     
     def getBasenameAndChNames(self, useExt=None, qparent=None):
-        ls = myutils.listdir(self.images_path)
+        ls = filesystem.listdir(self.images_path)
         selector = prompts.select_channel_name()
         self.chNames, _ = selector.get_available_channels(
             ls, self.images_path, useExt=useExt
@@ -1719,7 +1726,7 @@ class loadData:
                     )
                 )
                 html_error_text = html_utils.paragraph(html_error_text)
-                msg = widgets.myMessageBox(wrapText=False)
+                msg = widgets_message_box.myMessageBox(wrapText=False)
                 msg.warning(qparent, 'Rename files', html_error_text)
             
             raise FileNameError(f'\n\n{sep}\n[ERROR]: {error_text}')
@@ -1827,7 +1834,7 @@ class loadData:
         )
         if NO_segmInfo and self.SizeZ > 1:
             filename = self.filename
-            df = myutils.getDefault_SegmInfo_df(self, filename)
+            df = table_utils.getDefault_SegmInfo_df(self, filename)
             if self.segmInfo_df is None:
                 self.segmInfo_df = df
             else:
@@ -2167,7 +2174,7 @@ class loadData:
         self.dataPrepFreeRoiPoints = []
         self.labelBoolSegm = labelBoolSegm
         self.bkgrDataExists = False
-        ls = myutils.listdir(self.images_path)
+        ls = filesystem.listdir(self.images_path)
         
         if end_filename_segm:
             end_filename_segm = end_filename_segm.replace('.npz', '')
@@ -2425,7 +2432,7 @@ class loadData:
     
     def saveDataPrepFreeRoi(
             self, 
-            roiItem: 'widgets.PlotCurveItem', 
+            roiItem: 'widgets_plot_items.PlotCurveItem', 
             logger_func=print,
             local_mask=None, bbox=None
         ):
@@ -2503,7 +2510,7 @@ class loadData:
     
     def getSpotmaxSingleSpotsfiles(self):
         from spotmax import DFs_FILENAMES
-        spotmax_files = myutils.listdir(self.spotmax_out_path)
+        spotmax_files = filesystem.listdir(self.spotmax_out_path)
         patterns = [
             filename.replace('*rn*', '').replace('*desc*', '')
             for filename in DFs_FILENAMES.values()
@@ -2526,7 +2533,7 @@ class loadData:
 
     def askBooleanSegm(self):
         segmFilename = os.path.basename(self.segm_npz_path)
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             f'The loaded segmentation file<br><br>'
             f'"{segmFilename}"<br><br> '
@@ -3268,7 +3275,7 @@ class loadData:
         if not os.path.exists(unsaved_recovery_folderpath):
             return
         
-        files = myutils.listdir(unsaved_recovery_folderpath)
+        files = filesystem.listdir(unsaved_recovery_folderpath)
         csv_files = [file for file in files if file.endswith('.csv')]
         if not csv_files:
             return
@@ -3406,7 +3413,7 @@ class loadData:
         npy_paths = []
         npz_paths = []
         basename = self.basename[0:-1]
-        for filename in myutils.listdir(self.images_path):
+        for filename in filesystem.listdir(self.images_path):
             file_path = os.path.join(self.images_path, filename)
             f, ext = os.path.splitext(filename)
             m = re.match(fr'{basename}.*\.tif', filename)
@@ -3417,7 +3424,7 @@ class loadData:
                 npz = f'{f}_aligned.npz'
                 npy_found = False
                 npz_found = False
-                for name in myutils.listdir(self.images_path):
+                for name in filesystem.listdir(self.images_path):
                     _path = os.path.join(self.images_path, name)
                     if name == npy:
                         npy_paths.append(_path)
@@ -3454,7 +3461,7 @@ class loadData:
             and you need to correct them.<br><br>
             Do you want to proceed?
         """)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         _, noButton, yesButton = msg.warning(
             self.parent, 'WARNING: Edinting saved metadata', txt, 
             buttonsTexts=('Cancel', 'No, stop the process', 'Yes, proceed anyway')
@@ -3472,7 +3479,7 @@ class loadData:
             forceEnableAskSegm3D=False,
             warnMultiPos=False
         ):
-        from . import apps
+        from cellacdc.shared.dialogs import metadata as dialogs_metadata
         SizeZ_metadata = None
         SizeT_metadata = None
         if hasattr(self, 'metadataFound'):
@@ -3487,7 +3494,7 @@ class loadData:
         basename = ''
         if hasattr(self, 'basename'):
             basename = self.basename
-        metadataWin = apps.QDialogMetadata(
+        metadataWin = dialogs_metadata.QDialogMetadata(
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
@@ -3566,7 +3573,7 @@ class loadData:
                 'Close file and then press "Ok".'
             )
             if signals is None:
-                msg = widgets.myMessageBox(self.parent)
+                msg = widgets_message_box.myMessageBox(self.parent)
                 msg.warning(
                     self, 'Permission denied', permissionErrorTxt
                 )
@@ -3841,7 +3848,7 @@ class loadData:
                 f'{self.tracked_lost_centroids_json_path}<br><br>'
                 'Close file and then press "Ok", or press "Cancel" to abort.'
             )
-            msg = widgets.myMessageBox(self.parent)
+            msg = widgets_message_box.myMessageBox(self.parent)
             msg.warning(
                 self, 'Permission denied', permissionErrorTxt, buttonsTexts=('Cancel', 'Ok')
             )
@@ -3869,7 +3876,7 @@ class loadData:
                 f'{self.tracked_lost_centroids_json_path}<br><br>'
                 'Close file and then press "Ok", or press "Cancel" to abort.'
             )
-            msg = widgets.myMessageBox(self.parent)
+            msg = widgets_message_box.myMessageBox(self.parent)
             msg.warning(
                 self, 'Permission denied', permissionErrorTxt, buttonsTexts=('Cancel', 'Ok')
             )
@@ -4012,10 +4019,10 @@ class select_exp_folder:
         ):
         # NOTE: `toggleMulti` is kept for backward compatibility but it is
         # not used anymore since the items are always shown in a list widget
-        from . import apps
+        from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
         font = QtGui.QFont()
         font.setPixelSize(13)
-        win = apps.SelectPositionFoldersDialogue(
+        win = dialogs_file_selection.SelectPositionFoldersDialogue(
             title, values, informativeText, CbLabel=CbLabel,
             parent=parentQWidget,
             showInFileManagerPath=self.exp_path,
@@ -4025,7 +4032,7 @@ class select_exp_folder:
         win.setFont(font)
         self.doNotAskAgain = False
         if addDoNotAskAgain:
-            doNotAskAgainButton = widgets.SkipPushButton(
+            doNotAskAgainButton = widgets_push_buttons.SkipPushButton(
                 'Select all Positions for next experiment folders'
             )
             win.buttonsLayout.insertWidget(3, doNotAskAgainButton)
@@ -4064,14 +4071,14 @@ class select_exp_folder:
     
     def get_values_segmGUI(self, exp_path):
         self.exp_path = exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
             last_tracked_i_found = False
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
-            filenames = myutils.listdir(images_path)
+            filenames = filesystem.listdir(images_path)
             for filename in filenames:
                 if filename.find('acdc_output.csv') != -1:
                     last_tracked_i_found = True
@@ -4091,7 +4098,7 @@ class select_exp_folder:
 
     def get_values_dataprep(self, exp_path):
         self.exp_path = exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
@@ -4102,7 +4109,7 @@ class select_exp_folder:
             are_zslices_selected = False
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
-            filenames = myutils.listdir(images_path)
+            filenames = filesystem.listdir(images_path)
             for filename in filenames:
                 if filename.endswith('dataPrepROIs_coords.csv'):
                     is_roi_info_present = True
@@ -4145,25 +4152,25 @@ class select_exp_folder:
 
     def get_values_spotmax_exists(self, exp_path):
         self.exp_path = exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
             pos_path = os.path.join(exp_path, pos)
-            pos_status = myutils.get_pos_status_spotmax(pos_path)
+            pos_status = filesystem.get_pos_status_spotmax(pos_path)
             values.append(f'{pos}{pos_status}')
         self.values = values
         return values
     
     def get_values_acdc_and_spotmax(self, exp_path):
         self.exp_path = exp_path
-        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        pos_foldernames = filesystem.get_pos_foldernames(exp_path)
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
             pos_path = os.path.join(exp_path, pos)
-            pos_status_smax = myutils.get_pos_status_spotmax(pos_path)
-            pos_status_acdc = myutils.get_pos_status_acdc(pos_path)
+            pos_status_smax = filesystem.get_pos_status_spotmax(pos_path)
+            pos_status_acdc = filesystem.get_pos_status_acdc(pos_path)
             value = (
                 f'{pos}{pos_status_acdc}{pos_status_smax}'
                 .replace(') (', ' - ')
@@ -4194,14 +4201,14 @@ def load_shifts(parent_path, basename=None):
     shifts_found = False
     shifts = None
     if basename is None:
-        for filename in myutils.listdir(parent_path):
+        for filename in filesystem.listdir(parent_path):
             if filename.find('align_shift.npy')>0:
                 shifts_found = True
                 shifts_path = os.path.join(parent_path, filename)
                 shifts = np.load(shifts_path)
     else:
         align_shift_fn = f'{basename}_align_shift.npy'
-        if align_shift_fn in myutils.listdir(parent_path):
+        if align_shift_fn in filesystem.listdir(parent_path):
             shifts_found = True
             shifts_path = os.path.join(parent_path, align_shift_fn)
             shifts = np.load(shifts_path)
@@ -4557,7 +4564,7 @@ def search_filepath_in_pos_path_from_endname(
             if endname == sm_file:
                 return os.path.join(spotmax_out_path, sm_file)
     
-    images_files = myutils.listdir(images_path)
+    images_files = filesystem.listdir(images_path)
     sample_filepath = os.path.join(images_path, images_files[0])
     posData = loadData(sample_filepath, '')
     posData.getBasenameAndChNames()
@@ -4567,15 +4574,15 @@ def search_filepath_in_pos_path_from_endname(
             return os.path.join(images_path, file)
 
 def get_basename(images_path):
-    basename, _ = myutils.getBasenameAndChNames(images_path)
+    basename, _ = filesystem.getBasenameAndChNames(images_path)
     return basename
 
 def get_channel_names(images_path):
-    _, chNames = myutils.getBasenameAndChNames(images_path)
+    _, chNames = filesystem.getBasenameAndChNames(images_path)
     return chNames
 
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
-    pos_foldernames = myutils.get_pos_foldernames(exp_path)
+    pos_foldernames = filesystem.get_pos_foldernames(exp_path)
     for pos in pos_foldernames:
         pos_path = os.path.join(exp_path, pos)
         filepath = search_filepath_in_pos_path_from_endname(
@@ -4589,7 +4596,7 @@ def askOpenCsvFile(
         qparent=None
     ):
     if start_dir is None:
-        start_dir = myutils.getMostRecentPath()
+        start_dir = filesystem.getMostRecentPath()
     
     file_types = f'CSV files (*.csv);;All Files (*)'
     
@@ -4746,7 +4753,7 @@ def create_symlinked_pos_folder(
     
     basename = get_basename(src_images_path)
     channel_names = get_channel_names(src_images_path)
-    for file in myutils.listdir(src_images_path):
+    for file in filesystem.listdir(src_images_path):
         filepath = os.path.join(src_images_path, file)
         dst_filepath = os.path.join(dst_images_path, file)
         if file.endswith('_symlink.ini'):

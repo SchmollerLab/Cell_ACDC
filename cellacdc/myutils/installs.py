@@ -27,7 +27,7 @@ from cellacdc import printl
 from cellacdc import try_input_install_package
 if GUI_INSTALLED:
     from qtpy.QtCore import QCoreApplication
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
 
 
 def testQcoreApp():
@@ -55,7 +55,7 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
             NOTE: in the text box in napari you will need to write the full name 
             <code>{plugin_name}</code> becasue it is NOT A SEARCH BOX.
         """)
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
@@ -908,7 +908,7 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
         {install_command}<br><br>
         Thank you for your patience.
     """)
-    msg = widgets.myMessageBox()
+    msg = widgets_message_box.myMessageBox()
     msg.critical(parent, f'{pkg_name} installation failed', txt)
     print('*'*50)
     print(
@@ -1054,7 +1054,7 @@ def _install_package_gui_msg(
         installer: Literal['pip', 'conda']='pip',
         pkg_commands=None
     ):
-    msg = widgets.myMessageBox(parent=parent)
+    msg = widgets_message_box.myMessageBox(parent=parent)
     if upgrade:
         install_text = 'upgrade'
     else:

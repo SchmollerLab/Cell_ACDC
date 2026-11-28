@@ -35,9 +35,9 @@ from qtpy.QtWidgets import (
 from cellacdc import _window_stacking
 from cellacdc import load
 from cellacdc import issues_url
-from cellacdc import myutils
+from cellacdc.myutils import filesystem
 from cellacdc import qutils
-from cellacdc import widgets
+from ..widgets import item_views as widgets_item_views
 from cellacdc import io
 from cellacdc import fonts
 from . import base as dialogs_base
@@ -855,7 +855,7 @@ def askDeleteUncheckedExistingMeasurements(
     (number of Positions checked) show which Positions have a column, when
     not all of them. `exp_foldername` is the experiment folder of the tables.
     """
-    msg = widgets.myMessageBox()
+    msg = widgets_message_box.myMessageBox()
     msg.setWidth(500)
     if acdc_df_path:
         msg.addShowInFileManagerButton(acdc_df_path)
@@ -886,7 +886,7 @@ def askDeleteUncheckedExistingMeasurements(
         if is_partial:
             colname = f'{colname}   (only in {", ".join(positions)})'
         items.append(colname)
-    listView = widgets.readOnlyQList(msg)
+    listView = widgets_item_views.readOnlyQList(msg)
     listView.addItems(items)
     _, delButton, keepButton = msg.warning(
         parent, 'Unchecked existing measurements', txt,
@@ -946,13 +946,13 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         
         topLayout = QHBoxLayout()
         
-        self.doNotAskAgainToggle = widgets.Toggle(
+        self.doNotAskAgainToggle = widgets_push_buttons.Toggle(
             label_text='Use the same selection for all following selected experiment folders'
         )
         self.doNotAskAgainToggle.setVisible(addDoNotAskAgainCheckbox)
         topLayout.addWidget(self.doNotAskAgainToggle)
         
-        self.searchWidget = widgets.ButtonSearchWidget(loadingType=None)
+        self.searchWidget = widgets_search_widgets.ButtonSearchWidget(loadingType=None)
         self.searchWidget.search_input.setPlaceholderText('Search measurements...')
         self.searchWidget.search_input.setToolTip(
             'Search measurement names and descriptions, including typos and '
@@ -966,7 +966,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         topLayout.setStretch(0, 0)
         topLayout.setStretch(2, 3)
                 
-        mainScrollArea = widgets.ScrollArea()
+        mainScrollArea = widgets_basic_widgets.ScrollArea()
         self.mainScrollArea = mainScrollArea
         mainScrollAreaWidget = QWidget()
         mainScrollArea.setWidget(mainScrollAreaWidget)
@@ -983,7 +983,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
 
         col = 0
         for col, chName in enumerate(loadedChNames):
-            channelGBox = widgets.channelMetricsQGBox(
+            channelGBox = channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
                 posData=posData, is_concat=is_concat
             )
@@ -998,7 +998,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
 
         current_col = col+1
         for col, chName in enumerate(notLoadedChNames):
-            channelGBox = widgets.channelMetricsQGBox(
+            channelGBox = channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
                 posData=posData, is_concat=is_concat,
             )
@@ -1029,7 +1029,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
             }
         
         row = 0
-        sizeMetricsQGBox = widgets._metricsQGBox(
+        sizeMetricsQGBox = _metricsQGBox(
             size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack,
             addCalcForEachZsliceToggle=isSegm3D,
@@ -1048,7 +1048,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
             isSegm3D=isSegm3D
         )
         rp_desc = props_info_txt_mapper
-        regionPropsQGBox = widgets._metricsQGBox(
+        regionPropsQGBox = _metricsQGBox(
             rp_desc, 'Morphological properties',
             favourite_funcs=favourite_funcs, isZstack=isZstack
         )
@@ -1067,7 +1067,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         )
         ch_indipend_custom_metrics_desc = out
         if ch_indipend_custom_metrics_desc:
-            self.chIndipendCustomeMetricsQGBox = widgets._metricsQGBox(
+            self.chIndipendCustomeMetricsQGBox = _metricsQGBox(
                 ch_indipend_custom_metrics_desc, 
                 'Channel indipendent custom measurements',
                 favourite_funcs=favourite_funcs, isZstack=isZstack,
@@ -1084,7 +1084,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         )
         self.mixedChannelsCombineMetricsQGBox = None
         if desc:
-            self.mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
+            self.mixedChannelsCombineMetricsQGBox = _metricsQGBox(
                 desc, 'Mixed channels combined measurements',
                 favourite_funcs=favourite_funcs, isZstack=isZstack,
                 equations=equations, addDelButton=True
@@ -1115,23 +1115,23 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         self.last_row = row
         self.last_col = current_col
 
-        okButton = widgets.okPushButton('   Ok   ')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton('   Ok   ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
         if addCombineMetricCallback is not None:
-            addCombineMetricButton = widgets.addPushButton(
+            addCombineMetricButton = widgets_push_buttons.addPushButton(
                 'Add combined measurement...'
             )
             addCombineMetricButton.clicked.connect(addCombineMetricCallback)
         self.okButton = okButton
 
-        loadLastSelButton = widgets.reloadPushButton('Load last selection...')
-        self.selectAllButton = widgets.selectAllPushButton()
+        loadLastSelButton = widgets_push_buttons.reloadPushButton('Load last selection...')
+        self.selectAllButton = widgets_push_buttons.selectAllPushButton()
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         if isSegm3D:
-            selectAll3DButton = widgets.selectAllPushButton(
+            selectAll3DButton = widgets_push_buttons.selectAllPushButton(
                 suffix_text_select='only 3D metrics',
                 suffix_text_deselect='all 3D metrics'
             )
@@ -1145,7 +1145,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
             buttonsLayout.addWidget(addCombineMetricButton)
             buttonsLayout.addSpacing(20)
         
-        saveCurrentSelectionButton = widgets.savePushButton(
+        saveCurrentSelectionButton = widgets_push_buttons.savePushButton(
             'Save current selection...'
         )
         saveCurrentSelectionButton.clicked.connect(
@@ -1154,7 +1154,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         
         buttonsLayout.addWidget(saveCurrentSelectionButton)
         
-        loadSavedSelectionButton = widgets.OpenFilePushButton(
+        loadSavedSelectionButton = widgets_push_buttons.OpenFilePushButton(
             'Load saved selection...'
         )
         loadSavedSelectionButton.clicked.connect(self.loadSavedSelectionClicked)
@@ -1226,7 +1226,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
     
     def measurementSearchGroups(
         self,
-    ) -> 'Generator[Tuple[widgets._metricsQGBox, str], None, None]':
+    ) -> 'Generator[Tuple[_metricsQGBox, str], None, None]':
         for chNameGroupbox in self.chNameGroupboxes:
             for groupbox in chNameGroupbox.groupboxes:
                 yield groupbox, chNameGroupbox.chName
@@ -1444,7 +1444,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
 
             Thank you for you patience!
         """)
-        msg = widgets.myMessageBox(showCentered=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False)
         msg.warning(self, 'Physical measurement required', txt)
 
     def checkAll3D(self, button, checked):
@@ -1669,7 +1669,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         ini_filepath = io.save_measurements_selections(
             filename, current_selection_mapper)
         
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(f"""
             Done!<br><br>
             Current selection saved with name <code>{filename}</code> at 
@@ -1686,7 +1686,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         
         saved_selections = io.get_saved_measurements_selections()
         
-        selectNameWin = widgets.QDialogListbox(
+        selectNameWin = widgets_item_views.QDialogListbox(
             'Choose selection to load',
             'Choose selection to load:\n',
             saved_selections,
@@ -1865,7 +1865,7 @@ class SetMeasurementsDialog(dialogs_base.QBaseDialog):
         )
         if not additionalCols:
             return
-        self.nonMeasurementsGroupbox = widgets.CheckboxesGroupBox(
+        self.nonMeasurementsGroupbox = CheckboxesGroupBox(
             additionalCols, title='Additional columns', checkable=True
         )
         self.groupsLayout.addWidget(
@@ -2111,22 +2111,22 @@ class ComputeMetricsErrorsDialog(dialogs_base.QBaseDialog):
         layout.addWidget(scrollArea, 1, 1)
 
         buttonsLayout = QHBoxLayout()
-        showLogButton = widgets.showInFileManagerButton('Show log file...')
+        showLogButton = widgets_push_buttons.showInFileManagerButton('Show log file...')
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(showLogButton)
 
-        copyButton = widgets.copyPushButton('Copy error message')
+        copyButton = widgets_push_buttons.copyPushButton('Copy error message')
         copyButton.clicked.connect(self.copyErrorMessage)
         buttonsLayout.addWidget(copyButton)
         self.copyButton = copyButton
         self.copyButton.text = 'Copy error message'
         self.copyButton.icon = self.copyButton.icon()
         
-        okButton = widgets.okPushButton(' Ok ')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
-        showLogButton.clicked.connect(partial(myutils.showInExplorer, log_path))
+        showLogButton.clicked.connect(partial(filesystem.showInExplorer, log_path))
         okButton.clicked.connect(self.close)
         layout.setVerticalSpacing(10)
         layout.addLayout(buttonsLayout, 2, 1)

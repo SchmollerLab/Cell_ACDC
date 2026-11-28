@@ -20,7 +20,8 @@ from tqdm import tqdm
 from qtpy.QtCore import (
     Signal, QObject, QMutex, QWaitCondition
 )
-from cellacdc import load, myutils
+from cellacdc import load
+from cellacdc.myutils import model_installs
 from cellacdc import transformation
 from cellacdc import features
 from cellacdc import core
@@ -236,7 +237,7 @@ class SegForLostIDsWorker(QObject):
                 customPostProcessFeatures = win.customPostProcessFeatures
                 customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
 
-            use_gpu = myutils.check_gpu_requested_segm_model(effective_init_kwargs)
+            use_gpu = model_installs.check_gpu_requested_segm_model(effective_init_kwargs)
             use_gpu = use_gpu or effective_init_kwargs.get('device_type', 'cpu').lower() != 'cpu'
 
             # self.logger.info('[SegForLostIDs] Checking GPU availability...')

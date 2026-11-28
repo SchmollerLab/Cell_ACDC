@@ -2,7 +2,7 @@
 import pytest
 from qtpy.QtWidgets import QApplication, QToolButton
 
-from cellacdc import gui
+from cellacdc.gui.main_window import window as gui_window
 
 pytestmark = [pytest.mark.gui, pytest.mark.slow]
 
@@ -14,7 +14,7 @@ def app():
 
 @pytest.mark.smoke
 def test_gui_launches_with_right_click_menus(app):
-    win = gui.guiWin(app)
+    win = gui_window.guiWin(app)
     try:
         win.run()
 

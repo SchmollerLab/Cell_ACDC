@@ -54,7 +54,17 @@ from qtpy.QtWidgets import QAction
 
 import pyqtgraph as pg
 
-from cellacdc import widgets, apps, html_utils, myutils, load, qutils
+from cellacdc import html_utils, load, qutils
+from cellacdc.shared.widgets import (
+    item_views as widgets_item_views,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    toolbars as widgets_toolbars,
+)
+from . import (
+    dialogs as gui_mixin_dialogs,
+    widgets as gui_mixin_widgets,
+)
 from cellacdc import settings_folderpath
 
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
@@ -110,7 +120,7 @@ class CustomAnnotationsGuiElements:
     def gui_createAnnotateToolbar(
             self, area=Qt.LeftToolBarArea, visible=False
         ):
-        self.annotateToolbar = widgets.ToolBar("Custom annotations", self)
+        self.annotateToolbar = widgets_toolbars.ToolBar("Custom annotations", self)
         self.annotateToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(area, self.annotateToolbar)
         self.annotateToolbar.addAction(self.loadCustomAnnotationsAction)
@@ -148,7 +158,7 @@ class CustomAnnotationsGuiElements:
         return ''
 
     def customAnnotToolTip(self, state):
-        return myutils.getCustomAnnotTooltip(state)
+        return getCustomAnnotTooltip(state)
     
     def setCustomAnnotShortcut(self, button, shortcut):
         """Set the shortcut to activate the button. `shortcut` can be a 
@@ -156,7 +166,7 @@ class CustomAnnotationsGuiElements:
         if not shortcut:
             shortcut = QKeySequence()
         elif isinstance(shortcut, str):
-            shortcut = widgets.KeySequenceFromText(shortcut)
+            shortcut = widgets_line_edits.KeySequenceFromText(shortcut)
         button.setShortcut(shortcut)
         # The button may be hidden by an overflowing toolbar
         self.annotateToolbar.updateOverflowShortcuts()
@@ -353,7 +363,7 @@ class CustomAnnotationsGuiElements:
         ):
         # The user's "Hide annotations" choice wins over the saved state
         isHideChecked = self.customAnnotHiddenSetting(annotName, isHideChecked)
-        toolButton = widgets.CustomAnnotToolButton(
+        toolButton = gui_mixin_widgets.CustomAnnotToolButton(
             symbol, symbolColor, parent=self, keepToolActive=keepActive,
             isHideChecked=isHideChecked
         )
@@ -377,7 +387,7 @@ class CustomAnnotationsGuiElements:
         ):
         symbolColorBrush = [0, 0, 0, 50]
         symbolColorBrush[:3] = symbolColor.getRgb()[:3]
-        scatterPlotItem = widgets.CustomAnnotationScatterPlotItem()
+        scatterPlotItem = gui_mixin_widgets.CustomAnnotationScatterPlotItem()
         scatterPlotItem.setData(
             [], [], symbol=symbol, pxMode=False,
             brush=pg.mkBrush(symbolColorBrush), size=15,
@@ -438,7 +448,7 @@ class CustomAnnotationsGuiElements:
         self.readSavedCustomAnnot()
         items = list(self.savedCustomAnnot.keys())
         if len(items) == 0:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph("""
             There are no custom annotations saved.<br><br>
             Click on "Add custom annotation" button to start adding new 
@@ -451,7 +461,7 @@ class CustomAnnotationsGuiElements:
             ('Delete selected annnotations', )
             if self.canDeleteSavedCustomAnnot() else ()
         )
-        self.selectAnnotWin = widgets.QDialogListbox(
+        self.selectAnnotWin = widgets_item_views.QDialogListbox(
             'Load previously used custom annotation(s)',
             'Select annotations to load:', items,
             additionalButtons=additionalButtons,
@@ -507,7 +517,7 @@ class CustomAnnotationsGuiElements:
         (`customAnnotColumnConflict`)."""
         for name, reason in conflicts.items():
             self.logger.info(f'Custom annotation "{name}" not added: {reason}')
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'These custom annotations were <b>not added</b>, because their '
             'name cannot be used as an annotation column:'
@@ -538,7 +548,7 @@ class CustomAnnotationsGuiElements:
         (`customAnnotationDialogKwargs`)."""
         # The hook may give the initial state of a new annotation
         stateKwargs = {} if state is None else {'state': state}
-        dialog = apps.customAnnotationDialog(
+        dialog = gui_mixin_dialogs.customAnnotationDialog(
             self.savedCustomAnnot, parent=self,
             allowDeleteSaved=self.canDeleteSavedCustomAnnot(),
             **stateKwargs, **self.customAnnotationDialogKwargs(state=state)
@@ -590,7 +600,7 @@ class CustomAnnotationsGuiElements:
         return button
 
     def askCustomAnnotationNameExists(self, name):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             The annotationa called <code>{name}</code> already exists in the 
             acdc_output CSV file.<br><br>
@@ -813,7 +823,7 @@ class CustomAnnotationsGuiElements:
 
     def removeCustomAnnotButton(self, button, askHow=True, save=True):
         if askHow:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             txt = html_utils.paragraph("""
                 Do you want to <b>remove also the column with annotations</b> or
                 only the annotation button?<br>

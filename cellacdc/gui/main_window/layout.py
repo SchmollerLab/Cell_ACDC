@@ -18,9 +18,20 @@ from qtpy.QtWidgets import (
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from cellacdc import graphLayoutBkgrColor, darkBkgrColor
-from cellacdc import apps
-from cellacdc import core, myutils
-from cellacdc import widgets
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from ..dialogs import data_io as gui_dialogs_data_io
+from cellacdc import core
+from cellacdc import qutils
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    lut_items as widgets_lut_items,
+    numeric_inputs as widgets_numeric_inputs,
+    plot_items as widgets_plot_items,
+    push_buttons as widgets_push_buttons,
+)
+from ..mixins import widgets as gui_mixin_widgets
+from ..widgets import main_window_items as gui_widgets_main_window_items
 from cellacdc import colors
 from . import constants as gui_main_constants
 
@@ -65,7 +76,7 @@ class LayoutGuiElements:
 
         col = 2
         row += 1
-        self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
+        self.resizeBottomLayoutLine = widgets_basic_widgets.VerticalResizeHline()
         mainLayout.addWidget(self.resizeBottomLayoutLine, row, col, 1, 2)
         self.resizeBottomLayoutLine.dragged.connect(
             self.resizeBottomLayoutLineDragged
@@ -85,7 +96,7 @@ class LayoutGuiElements:
 
     def gui_createQuickSettingsWidgets(self):
         self.quickSettingsLayout = QVBoxLayout()
-        self.quickSettingsGroupbox = widgets.GroupBox()
+        self.quickSettingsGroupbox = gui_widgets_main_window_items.GroupBox()
         self.quickSettingsGroupbox.setTitle('Quick settings')
 
         layout = QFormLayout()
@@ -94,7 +105,7 @@ class LayoutGuiElements:
         )
         layout.setFormAlignment(Qt.AlignRight | Qt.AlignVCenter)
         
-        self.viewPreprocDataToggle = widgets.Toggle()
+        self.viewPreprocDataToggle = widgets_push_buttons.Toggle()
         viewPreprocDataToggleTooltip = (
             'View pre-processed data. See menu `Image --> Pre-processing...`\n'
             'on the top menubar.'
@@ -105,7 +116,7 @@ class LayoutGuiElements:
         viewPreprocDataToggleLabel.setToolTip(viewPreprocDataToggleTooltip)
         layout.addRow(viewPreprocDataToggleLabel, self.viewPreprocDataToggle)
 
-        self.viewCombineChannelDataToggle = widgets.Toggle()
+        self.viewCombineChannelDataToggle = widgets_push_buttons.Toggle()
         viewCombineChannelDataToggleTooltip = (
             'View combined channel. See menu `Image --> combing channels...`\n'
             'on the top menubar.'
@@ -123,7 +134,7 @@ class LayoutGuiElements:
             self.viewCombineChannelDataToggle
         )
 
-        self.autoSaveToggle = widgets.Toggle()
+        self.autoSaveToggle = widgets_push_buttons.Toggle()
         autoSaveTooltip = (
             'Automatically store a copy of the segmentation data '
             'in the `.recovery` folder after every edit.'
@@ -134,7 +145,7 @@ class LayoutGuiElements:
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
         
-        self.autoSaveAnnotToggle = widgets.Toggle()
+        self.autoSaveAnnotToggle = widgets_push_buttons.Toggle()
         autoSaveAnnotTooltip = (
             'Automatically store a copy of the annotations (acdc_output CSV file) '
             'in the `.recovery` folder after every edit.'
@@ -145,7 +156,7 @@ class LayoutGuiElements:
         autoSaveAnnotLabel.setToolTip(autoSaveAnnotTooltip)
         layout.addRow(autoSaveAnnotLabel, self.autoSaveAnnotToggle)
         
-        self.autoSaveIntervalEditButton = widgets.editPushButton(
+        self.autoSaveIntervalEditButton = widgets_push_buttons.editPushButton(
             flat=True, hoverable=True
         )
         self.autoSaveIntervalLabel = QLabel('Autosave interval')        
@@ -154,10 +165,10 @@ class LayoutGuiElements:
             self.autoSaveIntervalLabel, self.autoSaveIntervalEditButton
         )
         
-        self.autoSaveIntervalDialog = apps.AutoSaveIntervalDialog(parent=self)
+        self.autoSaveIntervalDialog = gui_dialogs_data_io.AutoSaveIntervalDialog(parent=self)
         self.autoSaveIntervalDialog.setValues(*self.autoSaveIntevalValueUnit)
         
-        self.ccaIntegrCheckerToggle = widgets.Toggle()
+        self.ccaIntegrCheckerToggle = widgets_push_buttons.Toggle()
         ccaIntegrCheckerToggleTooltip = (
             'Toggle background cell cycle annotations integrity checker ON/OFF'
         )
@@ -171,7 +182,7 @@ class LayoutGuiElements:
             val = int(self.df_settings.at[idx, 'value'])
             self.ccaIntegrCheckerToggle.setChecked(bool(val))
         
-        self.annotLostObjsToggle = widgets.Toggle()
+        self.annotLostObjsToggle = widgets_push_buttons.Toggle()
         annotLostObjsToggleTooltip = (
             'Toggle annotation of lost objects mode ON/OFF'
         )
@@ -181,7 +192,7 @@ class LayoutGuiElements:
         label.setToolTip(annotLostObjsToggleTooltip)
         layout.addRow(label, self.annotLostObjsToggle)
 
-        self.realTimeTrackingToggle = widgets.Toggle()
+        self.realTimeTrackingToggle = widgets_push_buttons.Toggle()
         self.realTimeTrackingToggle.setChecked(True)
         self.realTimeTrackingToggle.setDisabled(True)
         label = QLabel('Real-time tracking')
@@ -189,7 +200,7 @@ class LayoutGuiElements:
         self.realTimeTrackingToggle.label = label
         layout.addRow(label, self.realTimeTrackingToggle)
         
-        self.showAllContoursToggle = widgets.Toggle()
+        self.showAllContoursToggle = widgets_push_buttons.Toggle()
         showAllContoursTooltip = (
             'If active, all contours will be displayed, including inner contours'
             '(e.g. holes and sub-objects)'
@@ -203,7 +214,7 @@ class LayoutGuiElements:
         )
 
         # Font size
-        self.fontSizeSpinBox = widgets.SpinBox()
+        self.fontSizeSpinBox = widgets_numeric_inputs.SpinBox()
         self.fontSizeSpinBox.setMinimum(1)
         self.fontSizeSpinBox.setMaximum(99)
         layout.addRow('Font size', self.fontSizeSpinBox) 
@@ -240,13 +251,13 @@ class LayoutGuiElements:
         # z-slice scrollbars
         self.gui_createZsliceNavigationWidgets()
 
-        self.zSliceOverlay_SB = widgets.ScrollBar(Qt.Horizontal)
+        self.zSliceOverlay_SB = widgets_numeric_inputs.ScrollBar(Qt.Horizontal)
         _z_label = QLabel('Overlay z-slice  ')
         _z_label.setFont(gui_main_constants._font)
         _z_label.setDisabled(True)
         self.overlay_z_label = _z_label
 
-        self.zProjOverlay_CB = widgets.ComboBox()
+        self.zProjOverlay_CB = widgets_combo_boxes.ComboBox()
         self.zProjOverlay_CB.setFont(gui_main_constants._font)
         self.zProjOverlay_CB.addItems([
             'single z-slice', 'max z-projection', 'mean z-projection',
@@ -323,7 +334,7 @@ class LayoutGuiElements:
 
     def gui_createImg2Widgets(self):
         bottomRightLayout = QVBoxLayout()
-        self.rightBottomGroupbox = widgets.GroupBox(
+        self.rightBottomGroupbox = gui_widgets_main_window_items.GroupBox(
             'Annotate right image independent of left image', 
             keyPressCallback=self.resetFocus
         )
@@ -331,7 +342,7 @@ class LayoutGuiElements:
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
 
-        self.rightImageFramesScrollbar = widgets.ScrollBarWithNumericControl(
+        self.rightImageFramesScrollbar = widgets_numeric_inputs.ScrollBarWithNumericControl(
             labelText='Frame n. '
         )
         self.rightImageFramesScrollbar.setVisible(False)
@@ -374,7 +385,7 @@ class LayoutGuiElements:
 
     def gui_createBottomWidgetsToBottomLayout(self):
         # self.bottomDockWidget = QDockWidget(self)
-        bottomScrollArea = widgets.ScrollArea(resizeVerticalOnShow=True)
+        bottomScrollArea = widgets_basic_widgets.ScrollArea(resizeVerticalOnShow=True)
         bottomScrollArea.sigLeaveEvent.connect(self.setFocusMain)
         bottomWidget = QWidget()
         bottomScrollAreaLayout = QVBoxLayout()
@@ -485,7 +496,7 @@ class LayoutGuiElements:
         # pyqtgraph ignores high-frequency mouse moves --> make sure the
         # last one is delivered (otherwise the hover position, e.g., of
         # the mirrored cursors, is stale when the mouse stops)
-        self.mouseMoveTrailingEdgeFilter = widgets.MouseMoveTrailingEdgeFilter(
+        self.mouseMoveTrailingEdgeFilter = widgets_plot_items.MouseMoveTrailingEdgeFilter(
             self.graphLayout
         )
         if self.invertBwAction.isChecked():
@@ -499,7 +510,7 @@ class LayoutGuiElements:
         # self.lutItemsLayout.setBorder('w')
 
         # Left plot
-        self.ax1 = widgets.MainPlotItem(showWelcomeText=True, ax_number=0)
+        self.ax1 = widgets_plot_items.MainPlotItem(showWelcomeText=True, ax_number=0)
         self.ax1.invertY(True)
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
@@ -508,7 +519,7 @@ class LayoutGuiElements:
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         # Right plot
-        self.ax2 = widgets.MainPlotItem(ax_number=1)
+        self.ax2 = widgets_plot_items.MainPlotItem(ax_number=1)
         self.ax2.setAspectLocked(True)
         self.ax2.invertY(True)
         self.ax2.hideAxis('bottom')
@@ -535,7 +546,7 @@ class LayoutGuiElements:
         self.equalizeHistPushButton = equalizeHistPushButton
 
         # Left image histogram
-        self.imgGrad = widgets.myHistogramLUTitem(parent=self, name='image')
+        self.imgGrad = widgets_lut_items.myHistogramLUTitem(parent=self, name='image')
         self.imgGrad.restoreState(self.df_settings)
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
         for action in self.imgGrad.rescaleActionGroup.actions():
@@ -544,7 +555,7 @@ class LayoutGuiElements:
             self.rescaleIntensMenu.addAction(action)
         
         # Colormap gradient widget
-        self.labelsGrad = widgets.labelsGradientWidget(parent=self)
+        self.labelsGrad = widgets_lut_items.labelsGradientWidget(parent=self)
         try:
             stateFound = self.labelsGrad.restoreState(self.df_settings)
         except Exception as e:
@@ -578,7 +589,7 @@ class LayoutGuiElements:
         self.viewMenu.addAction(self.launch3dViewerAction)
         
         # Right image histogram
-        self.imgGradRight = widgets.baseHistogramLUTitem(
+        self.imgGradRight = widgets_lut_items.baseHistogramLUTitem(
             name='image', parent=self, gradientPosition='left'
         )
         self.imgGradRight.gradient.menu.addAction(
@@ -624,7 +635,7 @@ class LayoutGuiElements:
         self.titleIDsPopupHideTimer.setSingleShot(True)
         self.titleIDsPopupHideTimer.timeout.connect(self.titleIDsPopup.hide)
         self._titleIDsPopupHtmlByLink = {}
-        self.fireworksOverlay = widgets.FireworksOverlay(self)
+        self.fireworksOverlay = gui_widgets_main_window_items.FireworksOverlay(self)
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)        
 
     def gui_createPlotItems(self):
@@ -646,14 +657,14 @@ class LayoutGuiElements:
         self.emptyLab = np.zeros((2,2), dtype=np.uint8)
 
         # Right image item linked to left
-        self.rightImageItem = widgets.ChildImageItem(
+        self.rightImageItem = gui_widgets_main_window_items.ChildImageItem(
             linkedScrollbar=self.rightImageFramesScrollbar
         )
         self.imgGradRight.setImageItem(self.rightImageItem)   
         self.ax2.addItem(self.rightImageItem)
         
         # Left image
-        self.img1 = widgets.ParentImageItem(
+        self.img1 = widgets_plot_items.ParentImageItem(
             linkedImageItem=self.rightImageItem,
             activatingActions=(
                 self.labelsGrad.showRightImgAction,
@@ -671,7 +682,7 @@ class LayoutGuiElements:
         # self.rgbaImg1.setImage(self.emptyLab)
 
         # Right image
-        self.img2 = widgets.labImageItem()
+        self.img2 = widgets_plot_items.labImageItem()
         self.ax2.addItem(self.img2)
 
         self.topLayerItems = []
@@ -687,14 +698,14 @@ class LayoutGuiElements:
         self.topLayerItems.append(self.BudMothTempLine)
         
         # Temporary line item connecting objects to merge
-        self.mergeObjsTempLine = widgets.PlotCurveItem(pen=self.redDashLinePen)
+        self.mergeObjsTempLine = widgets_plot_items.PlotCurveItem(pen=self.redDashLinePen)
         self.topLayerItems.append(self.mergeObjsTempLine)
 
         # Overlay segm. masks item
-        self.labelsLayerImg1 = widgets.BaseLabelsImageItem()
+        self.labelsLayerImg1 = widgets_plot_items.BaseLabelsImageItem()
         self.ax1.addItem(self.labelsLayerImg1)
 
-        self.labelsLayerRightImg = widgets.BaseLabelsImageItem()
+        self.labelsLayerRightImg = widgets_plot_items.BaseLabelsImageItem()
         self.ax2.addItem(self.labelsLayerRightImg)
 
         # Red/green border rect item
@@ -708,8 +719,8 @@ class LayoutGuiElements:
         # Brush/Eraser/Wand.. layer item
         # Labels image item --> `setImage` does not auto-level (the levels
         # are set by the left item, see `ParentImageItem.setLevels`)
-        self.tempLayerRightImage = widgets.BaseLabelsImageItem()
-        self.tempLayerImg1 = widgets.ParentImageItem(
+        self.tempLayerRightImage = widgets_plot_items.BaseLabelsImageItem()
+        self.tempLayerImg1 = widgets_plot_items.ParentImageItem(
             linkedImageItem=self.tempLayerRightImage,
             activatingActions=(self.labelsGrad.showRightImgAction, )
         )
@@ -723,7 +734,7 @@ class LayoutGuiElements:
         self.topLayerItemsRight.append(self.tempLayerRightImage)
 
         # Brush strokes prompts overlay (1 = background, 2 = foreground)
-        self.brushStrokesLayerImg1 = widgets.BaseLabelsImageItem()
+        self.brushStrokesLayerImg1 = widgets_plot_items.BaseLabelsImageItem()
         self.brushStrokesLayerImg1.setLookupTable(np.array(
             [[0, 0, 0, 0], [60, 160, 255, 255], [255, 80, 80, 255]],
             dtype=np.uint8
@@ -751,8 +762,8 @@ class LayoutGuiElements:
         # Keep IDs temp layers
         # Labels image item --> `setImage` does not auto-level (colors of
         # the IDs must not depend on the max kept ID)
-        self.keepIDsTempLayerRight = widgets.BaseLabelsImageItem()
-        self.keepIDsTempLayerLeft = widgets.ParentImageItem(
+        self.keepIDsTempLayerRight = widgets_plot_items.BaseLabelsImageItem()
+        self.keepIDsTempLayerLeft = widgets_plot_items.ParentImageItem(
             linkedImageItem=self.keepIDsTempLayerRight,
             activatingActions=(self.labelsGrad.showRightImgAction, )
         )
@@ -802,14 +813,14 @@ class LayoutGuiElements:
         self.topLayerItems.append(self.ax1_EraserX)
 
         # Brush circle img1
-        self.labelRoiCircItemLeft = widgets.LabelRoiCircularItem()
+        self.labelRoiCircItemLeft = gui_widgets_main_window_items.LabelRoiCircularItem()
         self.labelRoiCircItemLeft.cleared = False
         self.labelRoiCircItemLeft.setData(
             [], [], symbol='o', pxMode=False,
             brush=pg.mkBrush(color=(255,0,0,0)),
             pen=pg.mkPen(color='r', width=2), tip=None
         )
-        self.labelRoiCircItemRight = widgets.LabelRoiCircularItem()
+        self.labelRoiCircItemRight = gui_widgets_main_window_items.LabelRoiCircularItem()
         self.labelRoiCircItemRight.cleared = False
         self.labelRoiCircItemRight.setData(
             [], [], symbol='o', pxMode=False,
@@ -819,7 +830,7 @@ class LayoutGuiElements:
         self.topLayerItems.append(self.labelRoiCircItemLeft)
         self.topLayerItemsRight.append(self.labelRoiCircItemRight)
         
-        self.ax1_binnedIDs_ScatterPlot = widgets.BaseScatterPlotItem()
+        self.ax1_binnedIDs_ScatterPlot = gui_mixin_widgets.BaseScatterPlotItem()
         self.ax1_binnedIDs_ScatterPlot.setData(
             [], [], symbol='t', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -827,7 +838,7 @@ class LayoutGuiElements:
         )
         self.topLayerItems.append(self.ax1_binnedIDs_ScatterPlot)
         
-        self.ax1_ripIDs_ScatterPlot = widgets.BaseScatterPlotItem()
+        self.ax1_ripIDs_ScatterPlot = gui_mixin_widgets.BaseScatterPlotItem()
         self.ax1_ripIDs_ScatterPlot.setData(
             [], [], symbol='x', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -837,7 +848,7 @@ class LayoutGuiElements:
 
         # Ruler plotItem and scatterItem
         rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
-        self.ax1_rulerPlotItem = widgets.RulerPlotItem(pen=rulerPen)
+        self.ax1_rulerPlotItem = widgets_plot_items.RulerPlotItem(pen=rulerPen)
         self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
             symbol='o', size=9,
             brush=pg.mkBrush((255,0,0,50)),
@@ -893,7 +904,7 @@ class LayoutGuiElements:
         self.ax2.addItem(self.ax2_BrushCircle)
 
         # Annotated metadata markers (ScatterPlotItem)
-        self.ax2_binnedIDs_ScatterPlot = widgets.BaseScatterPlotItem()
+        self.ax2_binnedIDs_ScatterPlot = gui_mixin_widgets.BaseScatterPlotItem()
         self.ax2_binnedIDs_ScatterPlot.setData(
             [], [], symbol='t', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -901,7 +912,7 @@ class LayoutGuiElements:
         )
         self.ax2.addItem(self.ax2_binnedIDs_ScatterPlot)
         
-        self.ax2_ripIDs_ScatterPlot = widgets.BaseScatterPlotItem()
+        self.ax2_ripIDs_ScatterPlot = gui_mixin_widgets.BaseScatterPlotItem()
         self.ax2_ripIDs_ScatterPlot.setData(
             [], [], symbol='x', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -909,12 +920,12 @@ class LayoutGuiElements:
         )
         self.ax2.addItem(self.ax2_ripIDs_ScatterPlot)
 
-        self.freeRoiItem = widgets.PlotCurveItem(
+        self.freeRoiItem = widgets_plot_items.PlotCurveItem(
             pen=pg.mkPen(color='r', width=2)
         )
         self.topLayerItems.append(self.freeRoiItem)
         
-        self.warnPairingItem = widgets.PlotCurveItem(
+        self.warnPairingItem = widgets_plot_items.PlotCurveItem(
             pen=pg.mkPen(color='r', width=5, style=Qt.DashLine),
             pxMode=False
         )
@@ -922,13 +933,13 @@ class LayoutGuiElements:
         
         self.exportMaskImageItem = pg.ImageItem()
 
-        self.ghostContourItemLeft = widgets.GhostContourItem(self.ax1)
-        self.ghostContourItemRight = widgets.GhostContourItem(self.ax2)
+        self.ghostContourItemLeft = gui_widgets_main_window_items.GhostContourItem(self.ax1)
+        self.ghostContourItemRight = gui_widgets_main_window_items.GhostContourItem(self.ax2)
 
-        self.ghostMaskItemLeft = widgets.GhostMaskItem(self.ax1)
-        self.ghostMaskItemRight = widgets.GhostMaskItem(self.ax2)
+        self.ghostMaskItemLeft = gui_widgets_main_window_items.GhostMaskItem(self.ax1)
+        self.ghostMaskItemRight = gui_widgets_main_window_items.GhostMaskItem(self.ax2)
         
-        self.manualBackgroundObjItem = widgets.GhostContourItem(
+        self.manualBackgroundObjItem = gui_widgets_main_window_items.GhostContourItem(
             self.ax1, penColor='r', textColor='r'
         )
         self.manualBackgroundImageItem = pg.ImageItem()
@@ -937,7 +948,7 @@ class LayoutGuiElements:
         Y, X = self.currentLab2D.shape
         # Label ROI rectangle
         pen = pg.mkPen('r', width=3)
-        self.labelRoiItem = widgets.ROI(
+        self.labelRoiItem = gui_mixin_widgets.ROI(
             (0,0), (0,0),
             maxBounds=QRectF(QRect(0,0,X,Y)),
             scaleSnap=True,
@@ -1044,7 +1055,7 @@ class LayoutGuiElements:
 
     def gui_createGraphicsItems(self):
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Creating axes items', parent=self,
             pbarDesc='Creating axes items (see progress in the terminal)...'
         )
@@ -1188,11 +1199,11 @@ class LayoutGuiElements:
             retainSpaceZ = False
         else:
             retainSpaceZ = checked
-        myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.zProjComboBox, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
+        qutils.setRetainSizePolicy(self.zSliceScrollBar, retain=retainSpaceZ)
+        qutils.setRetainSizePolicy(self.zProjComboBox, retain=retainSpaceZ)
+        qutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
+        qutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
+        qutils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
         
         QTimer.singleShot(200, self.resizeGui)
 

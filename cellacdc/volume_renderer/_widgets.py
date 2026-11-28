@@ -14,9 +14,9 @@ import pyqtgraph as pg
 
 from .. import html_utils
 
-from ..widgets import (
-    ToolBar, DoubleSpinBox, playPushButton
-)
+from cellacdc.shared.widgets.numeric_inputs import DoubleSpinBox
+from cellacdc.shared.widgets.push_buttons import playPushButton
+from cellacdc.shared.widgets.toolbars import ToolBar
 from qtpy.QtWidgets import QMenu
 
 LABELS_TEXT_FONTSIZE = 10

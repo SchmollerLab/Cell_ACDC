@@ -5,7 +5,8 @@ from trackastra.model import Trackastra
 from trackastra.tracking import graph_to_ctc
 from trackastra.utils import str2path
 
-from ... import _types, myutils, core
+from ... import _types, core
+from cellacdc.myutils import table_utils, torch_utils
 
 from . import get_pretrained_model_names
 
@@ -44,7 +45,7 @@ class tracker:
             If `True`, attempts to try to use the GPU for inference. 
             Default is False
         """        
-        device = myutils.get_torch_device(gpu=gpu)
+        device = torch_utils.get_torch_device(gpu=gpu)
         if use_custom_model and not model_folder_path:
             raise ValueError(
                 '`use_custom_model` is True, but `model_folder_path` is empty!'
@@ -122,7 +123,7 @@ class tracker:
         if linking_mode == 'greedy_nodiv':
             return tracked_video
         
-        acdc_df, cca_dfs, asym_segm_tracked = myutils.df_ctc_to_acdc_df(
+        acdc_df, cca_dfs, asym_segm_tracked = table_utils.df_ctc_to_acdc_df(
             df_ctc, tracked_video, cell_division_mode=cell_division_mode, 
             return_list=True, progressbar=True
         )

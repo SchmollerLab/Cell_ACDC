@@ -26,7 +26,7 @@ from cellacdc import export_current_view_gui_recent_paths_csv_path
 from cellacdc import urls
 from cellacdc import settings_folderpath
 if GUI_INSTALLED:
-    from cellacdc import widgets
+    from cellacdc.shared.widgets import message_box as widgets_message_box
 
 
 def get_module_name(script_file_path):
@@ -148,7 +148,7 @@ def get_images_folderpath(folderpath):
 
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     if not filenames:
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'Cell-ACDC could not find any files in the folder '
             f'<b>{parent_path}</b>.<br><br>'
@@ -163,7 +163,7 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     char = filenames[0][:2]
     startWithSameChar = all([f.startswith(char) for f in filenames])
     if not startWithSameChar:
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'Cell-ACDC detected files inside the folder '
             'that <b>do not start with the same, common basename</b>.<br><br>'

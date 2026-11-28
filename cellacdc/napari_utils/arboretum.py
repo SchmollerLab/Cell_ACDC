@@ -2,7 +2,10 @@ import os
 from functools import partial
 from natsort import natsorted
 
-from .. import myutils, apps, load, printl, core, widgets
+from .. import load, printl, core
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import item_views as widgets_item_views
 from .. import exception_handler
 from ..utils import base
 
@@ -13,7 +16,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
             self, posPath, app, title: str, infoText: str, parent=None
         ):
         
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             app, title, module, infoText, parent
         )
@@ -26,7 +29,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
     @exception_handler
     def launchNapariArboretum(self, posPath):
         images_path = os.path.join(posPath, 'Images')
-        ls = myutils.listdir(images_path)
+        ls = filesystem.listdir(images_path)
 
         image_files = [
             file for file in ls 
@@ -35,7 +38,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
             or file.endswith('.h5')
         ]
 
-        selectImageFile = widgets.QDialogListbox(
+        selectImageFile = widgets_item_views.QDialogListbox(
             'Select image file',
             'Select which image file to load\n',
             image_files, multiSelection=False, parent=self,
@@ -60,7 +63,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         )
 
         if len(existingEndnames) > 1:
-            win = apps.SelectSegmFileDialog(
+            win = dialogs_file_selection.SelectSegmFileDialog(
                 existingEndnames, images_path, parent=self, 
                 basename=posData.basename
             )
@@ -89,7 +92,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         tracks_data, graph, properties = tree.to_arboretum()
 
         props = natsorted(acdc_df.columns.to_list())
-        selectProps = widgets.QDialogListbox(
+        selectProps = widgets_item_views.QDialogListbox(
             'Select measurements',
             'Select measurements to add as <b>properties</b> in napari viewer<br><br>'
             '<code>Ctrl+Click</code> <i>to select multiple items</i><br>'

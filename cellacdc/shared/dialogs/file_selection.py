@@ -25,8 +25,13 @@ import qtpy.compat
 from cellacdc import _window_stacking
 from cellacdc import load, html_utils
 from cellacdc import is_mac
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import filesystem
+from ..widgets import (
+    item_views as widgets_item_views,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc.acdc_regex import is_alphanumeric_filename, to_alphanumeric
 from cellacdc import path
 from cellacdc import fonts
@@ -134,7 +139,7 @@ class filenameDialog(QDialog):
 
         basenameLabel = QLabel(basename)
 
-        self.lineEdit = widgets.alphaNumericLineEdit(onlyWarn=True)
+        self.lineEdit = widgets_line_edits.alphaNumericLineEdit(onlyWarn=True)
         self.lineEdit.setAlignment(Qt.AlignCenter)
         defaultEntry = FilenameEntryFormatter.format_entry_text(defaultEntry)
         self.lineEdit.setText(defaultEntry)
@@ -155,22 +160,22 @@ class filenameDialog(QDialog):
         
         self.warningInvalidCharLabel = QLabel()
 
-        okButton = widgets.okPushButton('Ok')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton('Ok')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
         self.okButton = okButton
 
         buttonsLayout.addStretch()
         buttonsLayout.addWidget(cancelButton)
 
         if addDoNotSaveButton:
-            doNotSaveButton = widgets.noPushButton('Do not save')
+            doNotSaveButton = widgets_push_buttons.noPushButton('Do not save')
             doNotSaveButton.clicked.connect(self.doNotSave_cb)
             buttonsLayout.addWidget(doNotSaveButton)
             self.doNotSave = False
 
         buttonsLayout.addSpacing(20)
         if helpText:
-            helpButton = widgets.helpPushButton('Help...')
+            helpButton = widgets_push_buttons.helpPushButton('Help...')
             helpButton.clicked.connect(partial(self.showHelp, helpText))
             buttonsLayout.addWidget(helpButton)
         if additionalButtons is not None:
@@ -206,7 +211,7 @@ class filenameDialog(QDialog):
             self.updateFilename(defaultEntry)
     
     def doNotSave_cb(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'Are you sure you do <b>not</b> want to save the file?'
         )
@@ -222,7 +227,7 @@ class filenameDialog(QDialog):
         
     def showHelp(self, text):
         text = html_utils.paragraph(text)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Filename help', text)
 
     def _text(self):
@@ -245,7 +250,7 @@ class filenameDialog(QDialog):
             return True
 
         filename = self.filenameLabel.text()
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'The following file<br><br>'
             f'<code>{filename}</code><br><br>'
@@ -276,7 +281,7 @@ class filenameDialog(QDialog):
         if self._text():
             return True
        
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.critical(
             self, 'Empty text', 
             html_utils.paragraph('Text entry field <b>cannot be empty</b>')
@@ -290,7 +295,7 @@ class filenameDialog(QDialog):
         if 'segm' not in self._text():
             return True
        
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             'The text appended to the filename cannot contain the text '
             '"segm".<br><br>'
@@ -395,8 +400,8 @@ class selectPositionsMultiExp(dialogs_base.QBaseDialog):
         self.treeWidget.itemClicked.connect(self.selectAllChildren)
 
         buttonsLayout = QHBoxLayout()
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -424,7 +429,7 @@ class selectPositionsMultiExp(dialogs_base.QBaseDialog):
 
     def ok_cb(self):
         if not self.treeWidget.selectedItems():
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             txt = 'You did not select any experiment/Position folder!'
             msg.warning(self, 'Empty selection!', html_utils.paragraph(txt))
             return
@@ -476,12 +481,12 @@ class SelectPositionFoldersDialogue(QDialog):
         label = QLabel(CbLabel)
         topLayout.addWidget(label, alignment=Qt.AlignRight)
 
-        okButton = widgets.okPushButton('Ok')
+        okButton = widgets_push_buttons.okPushButton('Ok')
         self.okButton = okButton
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
         if showInFileManagerPath is not None:
-            txt = myutils.get_open_filemaneger_os_string()
-            showInFileManagerButton = widgets.showInFileManagerButton(txt)
+            txt = filesystem.get_open_filemaneger_os_string()
+            showInFileManagerButton = widgets_push_buttons.showInFileManagerButton(txt)
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
@@ -497,7 +502,7 @@ class SelectPositionFoldersDialogue(QDialog):
         if addSelectByInfoCheckboxes and allowMultiSelection:
             selectByInfoLayout = self._createSelectByInfoCheckboxes(items)
 
-        listBox = widgets.listWidget()
+        listBox = widgets_item_views.listWidget()
         listBox.addItems(items)
         if allowMultiSelection:
             selectionMode = QAbstractItemView.SelectionMode.ExtendedSelection
@@ -714,7 +719,7 @@ class SelectPositionFoldersDialogue(QDialog):
             path = os.path.join(self.showInFileManagerPath, folder)
             if os.path.exists(path) and os.path.isdir(path):
                 showPath = path
-        myutils.showInExplorer(showPath)
+        filesystem.showInExplorer(showPath)
 
     def getSelectedItems(self):
         selectedItems = self.ListBox.selectedItems()
@@ -808,7 +813,7 @@ class SelectSegmFileDialog(QDialog):
 
         questionText = html_utils.paragraph(infoText)
         label = QLabel(questionText)
-        listWidget = widgets.listWidget()
+        listWidget = widgets_item_views.listWidget()
         listWidget.addItems(images_ls)
         listWidget.setCurrentRow(0)
         listWidget.itemDoubleClicked.connect(self.listDoubleClicked)
@@ -819,13 +824,13 @@ class SelectSegmFileDialog(QDialog):
         self.items = list(images_ls)
         self.listWidget = listWidget
 
-        okButton = widgets.okPushButton(' Load selected ')
+        okButton = widgets_push_buttons.okPushButton(' Load selected ')
         txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
-        showInFileManagerButton = widgets.showInFileManagerButton(txt)
-        cancelButton = widgets.cancelPushButton(' Cancel ')
+        showInFileManagerButton = widgets_push_buttons.showInFileManagerButton(txt)
+        cancelButton = widgets_push_buttons.cancelPushButton(' Cancel ')
 
         if addNewFileButton:
-            newFileButton = widgets.newFilePushButton('New file...')
+            newFileButton = widgets_push_buttons.newFilePushButton('New file...')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -860,7 +865,7 @@ class SelectSegmFileDialog(QDialog):
         self.ok_cb()
 
     def showInFileManager(self, checked=True):
-        myutils.showInExplorer(self.parent_path)
+        filesystem.showInExplorer(self.parent_path)
     
     def newFile_cb(self):
         win = filenameDialog(
@@ -934,7 +939,7 @@ def get_existing_directory(allow_images_path=True, **kwargs):
             'because it is reserved to files that start with the same '
             'basename.<br><br>Thank you for your patience!'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.warning(kwargs['parent'], 'Cannot save here', txt)
 
 
@@ -984,21 +989,21 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
         infoLabel = QLabel(infoText)
         infoLabel.setAlignment(Qt.AlignCenter)
         
-        self.listWidget = widgets.listWidget()
+        self.listWidget = widgets_item_views.listWidget()
         self.listWidget.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
         if preSelectedPaths is not None:
             self.listWidget.addItems(preSelectedPaths)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
-        delButton = widgets.delPushButton('Remove selected path(s)')
-        browseButton = widgets.browseFileButton(
+        delButton = widgets_push_buttons.delPushButton('Remove selected path(s)')
+        browseButton = widgets_push_buttons.browseFileButton(
             'Add folder...', openFolder=True, 
-            start_dir=myutils.getMostRecentPath()
+            start_dir=filesystem.getMostRecentPath()
         )
-        recentPathsButton = widgets.PushButton('Add from recent paths...')
+        recentPathsButton = widgets_push_buttons.PushButton('Add from recent paths...')
         recentPathsButton.setIcon(QIcon(':open_file.svg'))
         recentPathsButton.setToolTip(
             'Select one or more existing folders from recent paths.'
@@ -1051,11 +1056,11 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
     def expFolderToPosFoldernamesMapper(self):
         expPathsPosFoldernamesMapper = defaultdict(set)
         for selectedPath in self.pathsList():
-            pos_foldernames = myutils.get_pos_foldernames(
+            pos_foldernames = filesystem.get_pos_foldernames(
                 selectedPath, check_if_is_sub_folder=True
             )
             if not pos_foldernames: 
-                images_path = myutils.get_images_folderpath(selectedPath)
+                images_path = filesystem.get_images_folderpath(selectedPath)
                 expPathsPosFoldernamesMapper[selectedPath].add('')
             else:
                 expPath = load.get_exp_path(selectedPath)
@@ -1072,14 +1077,14 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
         faultyFolders = []
         for path, selected_pos in self.expFolderToPosFoldernamesMapper().items():
             if selected_pos == ['']:
-                images_path = myutils.get_images_folderpath(path)
+                images_path = filesystem.get_images_folderpath(path)
                 if images_path is None or not os.path.exists(images_path):
                     faultyFolders.append(path)
                     
             else:
                 for pos in selected_pos:
                     pos_path = os.path.join(path, pos)
-                    images_path = myutils.get_images_folderpath(pos_path)
+                    images_path = filesystem.get_images_folderpath(pos_path)
                     if images_path is None or not os.path.exists(images_path):
                         faultyFolders.append(pos_path)
         
@@ -1098,7 +1103,7 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
         self.close()
         
     def warnNoAllValid(self, faultyFolders=None):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             Some of the selected folders (see below) do not contain an Images folder.<br><br>
             Please, make sure to select Position folders, the Images folder inside Position folders, or any folder containing Position folders as sub-directories.<br><br>
@@ -1113,7 +1118,7 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
         )
     
     def warnEmptySelection(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             No folder was selected.<br><br>
             """)
@@ -1122,7 +1127,7 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
         )
     
     def warnNoValidPathsFound(self, selected_path):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             The selected path (see below) <b>does not contain any valid folder.</b><br><br>
             Please, make sure to select a Position folder, the Images folder 
@@ -1138,7 +1143,7 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
         )
     
     def warnNoValidExpPaths(self, selected_path):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
             The selected folder does 
             <b>not contain any valid experiment folders</b>.
@@ -1201,9 +1206,9 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
         return paths
     
     def addFolderPath(self, selected_path):
-        myutils.addToRecentPaths(selected_path)
+        filesystem.addToRecentPaths(selected_path)
         
-        folder_type = myutils.determine_folder_type(selected_path)     
+        folder_type = filesystem.determine_folder_type(selected_path)     
         is_pos_folder, is_images_folder, folder_path = folder_type
         if is_pos_folder:
             paths = [selected_path]
@@ -1241,7 +1246,7 @@ class SelectFoldersToAnalyse(dialogs_base.QBaseDialog):
 
     def addFromRecentPaths(self):
         """Open a multi-select dialog containing existing recent folders."""
-        recent_paths, dates = myutils.get_recent_paths()
+        recent_paths, dates = filesystem.get_recent_paths()
         if not recent_paths:
             return
         

@@ -1,7 +1,8 @@
 import pandas as pd
 import pytest
 
-from cellacdc import myutils
+import os
+from cellacdc.myutils import filesystem
 
 pytestmark = pytest.mark.core
 
@@ -35,16 +36,16 @@ def test_recent_paths_dates_stay_aligned(
     csv_path = tmp_path / 'recentPaths.csv'
     df = pd.DataFrame(rows, columns=['path', 'opened_last_on'])
     df.to_csv(csv_path, index_label='index')
-    monkeypatch.setattr(myutils, 'recentPaths_path', str(csv_path))
+    monkeypatch.setattr(filesystem, 'recentPaths_path', str(csv_path))
     monkeypatch.setattr(
-        myutils.os.path,
+        os.path,
         'isdir',
         lambda path: path.replace('\\', '/') in {
             'C:/data/first', 'C:/data/second'
         },
     )
 
-    recent_paths = myutils.get_recent_paths(None, only_existing=False)
+    recent_paths = filesystem.get_recent_paths(None, only_existing=False)
     assert recent_paths == (expected_paths, expected_dates)
 
 
@@ -55,16 +56,16 @@ def test_recent_paths_without_dates(tmp_path, monkeypatch):
         {'path': [existing_path, str(tmp_path / 'missing'), existing_path]}
     )
     df.to_csv(csv_path, index_label='index')
-    monkeypatch.setattr(myutils, 'recentPaths_path', str(csv_path))
+    monkeypatch.setattr(filesystem, 'recentPaths_path', str(csv_path))
 
-    recent_paths = myutils.get_recent_paths(None, only_existing=False)
+    recent_paths = filesystem.get_recent_paths(None, only_existing=False)
 
     assert recent_paths == ([existing_path.replace('\\', '/')], None)
 
 
 def test_recent_paths_without_file(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        myutils, 'recentPaths_path', str(tmp_path / 'missing.csv')
+        filesystem, 'recentPaths_path', str(tmp_path / 'missing.csv')
     )
 
-    assert myutils.get_recent_paths(None, only_existing=False) == ([], None)
+    assert filesystem.get_recent_paths(None, only_existing=False) == ([], None)

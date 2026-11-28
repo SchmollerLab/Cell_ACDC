@@ -10,8 +10,11 @@ from functools import partial
 import numpy as np
 from qtpy.QtCore import QEventLoop, QTimer, QThread
 from cellacdc import exception_handler, disableWindow
-from cellacdc import prompts, apps, workers, html_utils
-from cellacdc import widgets
+from cellacdc import prompts, html_utils
+from cellacdc.shared.dialogs import generic as dialogs_generic
+from cellacdc.shared.workers import base as workers_base
+from ..dialogs import data_io as gui_dialogs_data_io
+from cellacdc.shared.widgets import message_box as widgets_message_box
 from cellacdc import _warnings
 from cellacdc import qutils
 from cellacdc import exporters
@@ -66,7 +69,7 @@ class ExportsGuiElements:
 
         posData = self.data[self.pos_i]
         self.exportCurrentViewThread = QThread()
-        self.exportCurrentViewWorker = workers.SimpleWorker(
+        self.exportCurrentViewWorker = workers_base.SimpleWorker(
             posData, 
             io.export_current_view, 
             func_args=(
@@ -139,7 +142,7 @@ class ExportsGuiElements:
             
         self.setDisabled(True)
         
-        self.progressWin = apps.QDialogWorkerProgress(
+        self.progressWin = dialogs_generic.QDialogWorkerProgress(
             title='Exporting to video', parent=self.mainWin,
             pbarDesc='Exporting to video...'
         )
@@ -311,7 +314,7 @@ class ExportsGuiElements:
             Do you want to record a video of scrolling through the z-slices or 
             a Timelapse video?
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         _, timelapseButton = msg.question(
             self, 'Z-slices or Timelapse video?', txt,
             buttonsTexts=('Z-slices', 'Timelapse')
@@ -369,7 +372,7 @@ class ExportsGuiElements:
         mode = 'timelapse' if doTimelapseVideo else 'z_slices'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_{mode}_video'
-        win = apps.ExportToVideoParametersDialog(
+        win = gui_dialogs_data_io.ExportToVideoParametersDialog(
             channels,
             parent=self, 
             startFolderpath=posData.pos_path, 
@@ -478,7 +481,7 @@ class ExportsGuiElements:
         posData = self.data[self.pos_i]
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_image'
-        win = apps.ExportToImageParametersDialog(
+        win = gui_dialogs_data_io.ExportToImageParametersDialog(
             parent=self, 
             startFolderpath=posData.pos_path, 
             startFilename=filename, 

@@ -1,4 +1,6 @@
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -13,7 +15,7 @@ class CountObjectsInsegm(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -21,7 +23,7 @@ class CountObjectsInsegm(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.CountObjectsInSegm(self)
+        self.worker = CountObjectsInSegm(self)
         self.worker.sigAborted.connect(self.workerAborted)
         super().runWorker(self.worker)
     
@@ -37,7 +39,7 @@ class CountObjectsInsegm(NewThreadMultipleExpBaseUtil):
         else:
             txt = f'"{self._title}" process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -82,7 +84,7 @@ class CountObjectsInSegm(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f) for f in ls 
                     if f.endswith(f'{endFilenameSegm}.npz')

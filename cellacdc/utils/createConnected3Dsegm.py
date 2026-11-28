@@ -1,4 +1,8 @@
-from .. import apps, myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import message_box as widgets_message_box
+from . import segm_workers
 
 from .base import NewThreadMultipleExpBaseUtil
 
@@ -7,7 +11,7 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -15,7 +19,7 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.CreateConnected3Dsegm(self)
+        self.worker = segm_workers.CreateConnected3Dsegm(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigAborted.connect(self.workerAborted)
         super().runWorker(self.worker)
@@ -32,7 +36,7 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
             the name will be the same as the original file.
             """
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=basename,
             hintText='Insert a name for the <b>new 3D segmentation</b> file:',
             existingNames=existingEndnames, 
@@ -58,7 +62,7 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
         else:
             txt = '3D segmentation mask creation process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:

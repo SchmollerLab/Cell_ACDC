@@ -17,11 +17,28 @@ from qtpy.QtCore import Qt, QTimer, QFile
 from qtpy.QtGui import QColor, QKeySequence, QIcon
 from qtpy.QtWidgets import QApplication, QWidget
 
-from cellacdc import measurements_viewer, qutils, widgets
-from cellacdc import measurements_viewer_utils
+from cellacdc import qutils
+from cellacdc import (
+    core,
+    urls as urls_mod,
+)
+from cellacdc.measurements_viewer import viewer_utils
+from cellacdc.measurements_viewer.dialogs import processing_recipe as viewer_dialogs_processing_recipe
+from cellacdc.measurements_viewer.main_window import (
+    configuration as viewer_configuration,
+    ui_setup as viewer_ui_setup,
+)
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from qtpy.QtWidgets import QColorDialog
 from cellacdc import cellacdc_path
-from cellacdc.measurements_viewer import (
-    MeasurementsViewerWin, SIGNAL_COLORS, signal_color
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
+from cellacdc.measurements_viewer.viewer_utils import (
+    SIGNAL_COLORS,
+    signal_color,
 )
 
 pytestmark = pytest.mark.viewer
@@ -172,7 +189,7 @@ def test_inverting_background_recolors_default_colors(viewer):
 
 
 def test_default_phase_colors_are_okabe_ito_and_not_red():
-    from cellacdc import phase_translator
+    from cellacdc.measurements_viewer import phase_translator
     names = [f'phase{i}' for i in range(25)]
     colors = phase_translator.phase_colors(names)
     assert colors['phase0'] == '#56b4e9'
@@ -184,7 +201,7 @@ def test_premade_timepoint_colors_are_not_red():
     # A red dashed time point line is mistaken for the current frame line
     # it is drawn over (and dragging it moves the time point)
     import os
-    folder = measurements_viewer.PREMADE_CONFIGURATIONS_PATH
+    folder = viewer_configuration.PREMADE_CONFIGURATIONS_PATH
     colors = {}
     for filename in os.listdir(folder):
         if not filename.endswith('.json'):
@@ -198,8 +215,8 @@ def test_premade_timepoint_colors_are_not_red():
 
 
 def test_conditional_formatting_default_colors_are_not_red():
-    from cellacdc import apps_measurements_viewer
-    colors = apps_measurements_viewer.ConditionalFormattingDialog.DEFAULT_COLORS
+    from cellacdc.measurements_viewer.dialogs import conditional_formatting as viewer_dialogs_conditional_formatting
+    colors = viewer_dialogs_conditional_formatting.ConditionalFormattingDialog.DEFAULT_COLORS
     assert not [color for color in colors if is_reddish(color)]
     assert '#d55e00' not in colors
 
@@ -441,7 +458,7 @@ def test_loading_data_blinks_cell_id_controls(app, monkeypatch, tmp_path, blinks
         assert blinks == []
         images_path = make_timelapse_position(tmp_path)
         window.setData(
-            measurements_viewer.load_positions([images_path], 'phase')
+            viewer_utils.load_positions([images_path], 'phase')
         )
         # Not inside `setData`: the synchronous rest of a load (e.g. the
         # overlay channels of a configuration) would delay the blink timers
@@ -536,15 +553,15 @@ def test_restarting_blink_restores_original_style(app):
 
 
 @pytest.mark.parametrize('text, expected', [
-    ("Don't save", widgets.noPushButton),
-    ('Do not save', widgets.noPushButton),
-    ('Save tables', widgets.savePushButton),
-    ('Save both as...', widgets.savePushButton),
-    ('Save configuration...', widgets.savePushButton),
-    ('Cancel', widgets.cancelPushButton),
+    ("Don't save", widgets_push_buttons.noPushButton),
+    ('Do not save', widgets_push_buttons.noPushButton),
+    ('Save tables', widgets_push_buttons.savePushButton),
+    ('Save both as...', widgets_push_buttons.savePushButton),
+    ('Save configuration...', widgets_push_buttons.savePushButton),
+    ('Cancel', widgets_push_buttons.cancelPushButton),
 ])
 def test_save_changes_buttons_have_icons(app, text, expected):
-    button, _ = widgets.getPushButton(text)
+    button, _ = widgets_push_buttons.getPushButton(text)
     assert type(button) is expected
     button.deleteLater()
 
@@ -578,8 +595,8 @@ def test_log_level_prefix_is_not_doubled(viewer, capsys):
 
 
 def test_viewer_log_handler_is_attached_once(viewer):
-    logger = measurements_viewer.get_logger()
-    measurements_viewer.get_logger()
+    logger = viewer_utils.get_logger()
+    viewer_utils.get_logger()
     assert logger is viewer.logger
     handlers = [
         handler for handler in logger.handlers
@@ -600,7 +617,7 @@ def test_plotting_and_removing_a_column_logs_its_name(viewer, capsys):
 @pytest.mark.slow
 def test_changing_and_resetting_a_color_is_logged(viewer, capsys, monkeypatch):
     monkeypatch.setattr(
-        measurements_viewer.QColorDialog, 'getColor',
+        QColorDialog, 'getColor',
         lambda *args, **kwargs: QColor('#123456')
     )
     capsys.readouterr()
@@ -620,7 +637,7 @@ def test_save_changes_prompt_logs_the_chosen_button(viewer, capsys, monkeypatch)
             self.clickedButton = "Don't save"
             return list(buttonsTexts)
 
-    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeSaveBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeSaveBox)
     monkeypatch.setattr(viewer, 'unsavedAcdcDfPositions', lambda: [])
     monkeypatch.setattr(viewer, 'hasUnsavedConfiguration', lambda: True)
     capsys.readouterr()
@@ -653,8 +670,8 @@ def record_load_threads(monkeypatch):
     """Wrap `load_position` and `core.count_objects_and_init_rps` to record
     the thread they run in."""
     threads = {'load_position': [], 'regionprops': []}
-    load_position = measurements_viewer.load_position
-    count_objects = measurements_viewer.core.count_objects_and_init_rps
+    load_position = viewer_utils.load_position
+    count_objects = core.count_objects_and_init_rps
 
     def recorded_load_position(*args, **kwargs):
         threads['load_position'].append(threading.current_thread())
@@ -665,10 +682,10 @@ def record_load_threads(monkeypatch):
         return count_objects(*args, **kwargs)
 
     monkeypatch.setattr(
-        measurements_viewer_utils, 'load_position', recorded_load_position
+        viewer_utils, 'load_position', recorded_load_position
     )
     monkeypatch.setattr(
-        measurements_viewer.core, 'count_objects_and_init_rps',
+        core, 'count_objects_and_init_rps',
         recorded_count_objects
     )
     return threads
@@ -764,7 +781,7 @@ def test_load_configuration_loads_in_worker_thread_and_reports_errors(
     # A failure in the worker thread gives the same warning as before
     loaded = loading_window.data
     monkeypatch.setattr(
-        measurements_viewer_utils, 'load_position',
+        viewer_utils, 'load_position',
         Mock(side_effect=OSError('Cannot read'))
     )
     error = Mock()
@@ -786,8 +803,8 @@ def test_reentrant_load_and_close_are_refused(
     window: a second load or closing started from them is refused."""
     from tests.test_measurement_viewer import make_timelapse_position
     images_path = make_timelapse_position(tmp_path)
-    load_position = Mock(wraps=measurements_viewer.load_position)
-    monkeypatch.setattr(measurements_viewer_utils, 'load_position', load_position)
+    load_position = Mock(wraps=viewer_utils.load_position)
+    monkeypatch.setattr(viewer_utils, 'load_position', load_position)
     nested = {}
 
     def askSaveBeforeLoading():
@@ -869,8 +886,8 @@ def test_load_is_refused_while_measurement_processing_runs(
     data being replaced."""
     from tests.test_measurement_viewer import make_timelapse_position
     images_path = make_timelapse_position(tmp_path)
-    load_position = Mock(wraps=measurements_viewer.load_position)
-    monkeypatch.setattr(measurements_viewer_utils, 'load_position', load_position)
+    load_position = Mock(wraps=viewer_utils.load_position)
+    monkeypatch.setattr(viewer_utils, 'load_position', load_position)
     error = Mock()
     monkeypatch.setattr(loading_window, 'configurationError', error)
 
@@ -901,7 +918,7 @@ def test_load_is_refused_while_measurement_processing_runs(
 def test_processing_is_refused_while_loading(viewer, monkeypatch):
     dialog = Mock(side_effect=AssertionError('dialog must not open'))
     monkeypatch.setattr(
-        measurements_viewer.apps_measurements_viewer,
+        viewer_dialogs_processing_recipe,
         'MeasurementProcessingRecipeDialog', dialog
     )
     viewer._isLoadingData = True
@@ -970,7 +987,7 @@ def props_dock_viewer(app, monkeypatch, tmp_path):
     images_path = make_timelapse_position(
         tmp_path, SizeT=3, extra_cells=((1, 2), (2, 2))
     )
-    window.setData(measurements_viewer.load_positions([images_path], 'phase'))
+    window.setData(viewer_utils.load_positions([images_path], 'phase'))
     window.restrictFramesCheckbox.setChecked(False)
     monkeypatch.setattr(window.propsDockWidget, 'isVisible', lambda: True)
     yield window
@@ -1044,7 +1061,7 @@ def test_objects_dock_with_3D_cell_outside_the_z_slice(
     window._startupConfigurationPrompted = True
     try:
         window.setData(
-            measurements_viewer.load_positions([images_path], 'phase')
+            viewer_utils.load_positions([images_path], 'phase')
         )
         assert window.isSegm3D
         window.followIDcheckbox.setChecked(False)
@@ -1109,7 +1126,7 @@ class _RecordingMessageBox:
 @pytest.fixture
 def recorded_messages(monkeypatch):
     _RecordingMessageBox.calls = []
-    monkeypatch.setattr(widgets, 'myMessageBox', _RecordingMessageBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', _RecordingMessageBox)
     return _RecordingMessageBox.calls
 
 
@@ -1182,7 +1199,7 @@ def test_viewer_actions_use_their_resource_icons(bare_viewer):
 
 def test_help_menu_opens_user_guide(bare_viewer, monkeypatch):
     opened = []
-    monkeypatch.setattr(measurements_viewer.myutils, 'browse_url', opened.append)
+    monkeypatch.setattr(filesystem, 'browse_url', opened.append)
     helpActions = bare_viewer.helpMenu.actions()
     assert bare_viewer.focusOnSearchAction in helpActions
     userGuideAction, = [
@@ -1190,13 +1207,13 @@ def test_help_menu_opens_user_guide(bare_viewer, monkeypatch):
         if action.text() == 'Measurements viewer user guide...'
     ]
     userGuideAction.trigger()
-    assert opened == [measurements_viewer.urls.measurements_viewer_docs_url]
+    assert opened == [urls_mod.measurements_viewer_docs_url]
     bare_viewer.acdcDocsAction.trigger()
-    assert opened[-1] == measurements_viewer.urls.docs_homepage
+    assert opened[-1] == urls_mod.docs_homepage
 
 
 def test_quick_start_links_to_user_guide(viewer, recorded_messages):
-    urls = measurements_viewer.urls
+    urls = urls_mod
     viewer.measurementsHelpButton.click()
     viewer.quickStartAction.trigger()
     assert len(recorded_messages) == 2
@@ -1209,8 +1226,9 @@ def test_quick_start_links_to_user_guide(viewer, recorded_messages):
 def test_phase_translator_dialog_help_links_to_its_section(
         app, recorded_messages
     ):
-    from cellacdc import apps_measurements_viewer, urls
-    dialog = apps_measurements_viewer.PhaseTranslatorDialog([], [], [], {})
+    from cellacdc import urls
+    from cellacdc.measurements_viewer.dialogs import phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs
+    dialog = viewer_dialogs_phase_translator_dialogs.PhaseTranslatorDialog([], [], [], {})
     try:
         dialog.helpButton.click()
     finally:
@@ -1240,15 +1258,16 @@ def test_docs_page_has_the_linked_sections():
 
 
 def test_help_texts_build_real_message_boxes(app):
-    from cellacdc import apps_measurements_viewer, html_utils
+    from cellacdc import html_utils
+    from cellacdc.measurements_viewer.dialogs import phase_translator_dialogs as viewer_dialogs_phase_translator_dialogs
     for text in (
-            measurements_viewer.MEASUREMENTS_VIEWER_QUICK_START,
-            apps_measurements_viewer.PHASE_TRANSLATOR_HELP
+            viewer_ui_setup.MEASUREMENTS_VIEWER_QUICK_START,
+            viewer_dialogs_phase_translator_dialogs.PHASE_TRANSLATOR_HELP
         ):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.information(
             None, 'Help', html_utils.paragraph(text),
-            url_to_open=measurements_viewer.urls.measurements_viewer_docs_url,
+            url_to_open=urls_mod.measurements_viewer_docs_url,
             open_url_button_text='Open user guide', showDialog=False
         )
         assert msg.openUrlButton.text() == 'Open user guide'
@@ -1262,7 +1281,7 @@ def test_apply_phases_cell_action_has_icon_shortcut_and_toolbar(bare_viewer):
     action = bare_viewer.applyPhasesCellAction
     assert not action.icon().isNull()
     assert action.shortcut() == QKeySequence(
-        measurements_viewer.APPLY_PHASES_CELL_SHORTCUT
+        viewer_ui_setup.APPLY_PHASES_CELL_SHORTCUT
     )
     assert 'Shortcut: "' in action.toolTip()
     assert action in bare_viewer.phaseTranslatorToolbar.actions()
@@ -1319,7 +1338,7 @@ def test_custom_annotations_of_inactive_buttons_are_shown(app, tmp_path):
             tmp_path, SizeT=2, extra_cells=((0, 2), (1, 2))
         )
         window.setData(
-            measurements_viewer.load_positions([images_path], 'phase')
+            viewer_utils.load_positions([images_path], 'phase')
         )
         # As the main GUI: the eye button "Show all custom annotations"
         assert window.viewAllCustomAnnotAction.isChecked()

@@ -20,8 +20,19 @@ from qtpy.QtWidgets import (
 )
 from cellacdc import _window_stacking
 from cellacdc import html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import app_info, filesystem
+from ..widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    item_views as widgets_item_views,
+    line_edits as widgets_line_edits,
+    lut_items as widgets_lut_items,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    plot_items as widgets_plot_items,
+    push_buttons as widgets_push_buttons,
+    toolbars as widgets_toolbars,
+)
 from cellacdc import fonts
 from . import base as dialogs_base
 
@@ -47,7 +58,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         
         self.setTitle('Points appearance')
 
-        layout = widgets.FormLayout()
+        layout = widgets_line_edits.FormLayout()
 
         '----------------------------------------------------------------------' 
         row = 0
@@ -56,11 +67,11 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         """)
         symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
         if backend == 'pyqtgraph':
-            symbolCombobox = widgets.pgScatterSymbolsCombobox()
+            symbolCombobox = widgets_combo_boxes.pgScatterSymbolsCombobox()
         elif backend == 'vispy':
-            symbolCombobox = widgets.VisPyMarkersSymbolsCombobox()
+            symbolCombobox = widgets_combo_boxes.VisPyMarkersSymbolsCombobox()
             
-        self.symbolWidget = widgets.formWidget(
+        self.symbolWidget = widgets_line_edits.formWidget(
             symbolCombobox, addInfoButton=True,
             labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt,
             stretchWidget=False
@@ -71,8 +82,8 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
 
         '----------------------------------------------------------------------' 
         row += 1
-        self.colorButton = widgets.myColorButton(color=(255, 0, 0))
-        self.colorWidget = widgets.formWidget(
+        self.colorButton = widgets_push_buttons.myColorButton(color=(255, 0, 0))
+        self.colorWidget = widgets_line_edits.formWidget(
             self.colorButton, stretchWidget=True,
             labelTextLeft='Colour: ', parent=self
         )
@@ -84,9 +95,9 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
 
         '----------------------------------------------------------------------' 
         row += 1
-        self.sizeSpinBox = widgets.SpinBox()
+        self.sizeSpinBox = widgets_numeric_inputs.SpinBox()
         self.sizeSpinBox.setValue(5)
-        self.sizeWidget = widgets.formWidget(
+        self.sizeWidget = widgets_line_edits.formWidget(
             self.sizeSpinBox, stretchWidget=True,
             labelTextLeft='Size: ', parent=self
         )
@@ -95,7 +106,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         '----------------------------------------------------------------------' 
         
         '----------------------------------------------------------------------' 
-        self.zHeightSpinBox = widgets.DummyWidget()
+        self.zHeightSpinBox = widgets_basic_widgets.DummyWidget()
         if not is_3d:
             row += 1
             self.addZheightSpinbox(row)
@@ -108,18 +119,18 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         <b>Shortcut</b> that you can use to <b>hide/show</b> points.
         """)
         shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
-        self.shortcutWidget = widgets.formWidget(
-            widgets.ShortcutLineEdit(), addInfoButton=True,
+        self.shortcutWidget = widgets_line_edits.formWidget(
+            widgets_line_edits.ShortcutLineEdit(), addInfoButton=True,
             labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
         )
         layout.addFormWidget(self.shortcutWidget, row=row)
         '----------------------------------------------------------------------'
         
         '----------------------------------------------------------------------' 
-        self.opacitySlider = widgets.DummyWidget()
+        self.opacitySlider = widgets_basic_widgets.DummyWidget()
         if add_opacity_slider:
             row += 1
-            self.opacitySlider = widgets.sliderWithSpinBox(
+            self.opacitySlider = widgets_numeric_inputs.sliderWithSpinBox(
                 title_loc='in_line', 
                 isFloat=True, 
                 parent=self,
@@ -129,7 +140,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             self.opacitySlider.setRange(0.0, 1.0)
             self.opacitySlider.setSingleStep(0.05)
             self.opacitySlider.setDecimals(2)
-            self.opacityWidget = widgets.formWidget(
+            self.opacityWidget = widgets_line_edits.formWidget(
                 self.opacitySlider, stretchWidget=True,
                 labelTextLeft='Opacity: ', parent=self
             )
@@ -149,10 +160,10 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             '`z - (Z-depth/2) < z < z + (Z-depth/2)`\n'
             'where `z` is the center z-slice of the added point.'
         )
-        self.zHeightSpinBox = widgets.OddSpinBox()
+        self.zHeightSpinBox = widgets_numeric_inputs.OddSpinBox()
         self.zHeightSpinBox.setValue(1)
         self.zHeightSpinBox.setMinimum(1)
-        self.zHeightWidget = widgets.formWidget(
+        self.zHeightWidget = widgets_line_edits.formWidget(
             self.zHeightSpinBox, stretchWidget=True,
             labelTextLeft='Z-depth: ', parent=self,
             toolTip=zHeightTooltip
@@ -240,7 +251,7 @@ class EditPointsLayerAppearanceDialog(dialogs_base.QBaseDialog):
         
         self.appearanceGroupbox.sigValueChanged.connect(self.emitValueChanged)
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -325,17 +336,17 @@ class QCropZtool(dialogs_base.QBaseDialog):
         layout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.lowerZscrollbar = widgets.ScrollBarWithNumericControl()
+        self.lowerZscrollbar = widgets_numeric_inputs.ScrollBarWithNumericControl()
         self.lowerZscrollbar.setMaximum(SizeZ)
         self.lowerZscrollbar.setMinimum(1)
         self.lowerZscrollbar.setValue(1)
 
-        self.upperZscrollbar = widgets.ScrollBarWithNumericControl()
+        self.upperZscrollbar = widgets_numeric_inputs.ScrollBarWithNumericControl()
         self.upperZscrollbar.setMaximum(SizeZ)
         self.upperZscrollbar.setValue(SizeZ)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        cropButton = widgets.okPushButton(cropButtonText)
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        cropButton = widgets_push_buttons.okPushButton(cropButtonText)
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
 
@@ -464,7 +475,7 @@ class imageViewer(QMainWindow):
         self.frame_i = posData.frame_i
         self.num_frames = posData.SizeT
         
-        version = myutils.read_version()
+        version = app_info.read_version()
         self.setWindowTitle(f"Cell-ACDC v{version} - {posData.relPath}")
 
     def gui_createActions(self):
@@ -485,7 +496,7 @@ class imageViewer(QMainWindow):
         self.addAction(self.jumpBackwardAction)
         self.addAction(self.jumpForwardAction)
         if self.enableOverlay:
-            self.overlayButton = widgets.rightClickToolButton(parent=self)
+            self.overlayButton = widgets_toolbars.rightClickToolButton(parent=self)
             self.overlayButton.setIcon(QIcon(":overlay.svg"))
             self.overlayButton.setCheckable(True)
 
@@ -581,12 +592,12 @@ class imageViewer(QMainWindow):
         self.graphLayout.addItem(self.Plot, row=1, col=1)
 
         # Image Item
-        self.img = widgets.BaseImageItem()
+        self.img = widgets_plot_items.BaseImageItem()
         self.img.setEnableAutoLevels(True)
         self.Plot.addItem(self.img)
 
         #Image histogram
-        self.imgGrad = widgets.myHistogramLUTitem(isViewer=True)
+        self.imgGrad = widgets_lut_items.myHistogramLUTitem(isViewer=True)
         self.imgGrad.gradient.showMenu = self.showLutItemOverlayContextMenu 
         self.imgGrad.vb.raiseContextMenu = lambda x: None
         self.imgGrad.setImageItem(self.img)
@@ -745,7 +756,7 @@ class imageViewer(QMainWindow):
         imageItem = pg.ImageItem()
         imageItem.setOpacity(0.5)
 
-        lutItem = widgets.myHistogramLUTitem(isViewer=True)
+        lutItem = widgets_lut_items.myHistogramLUTitem(isViewer=True)
         
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None
@@ -1083,7 +1094,7 @@ class imageViewer(QMainWindow):
             if ch != self.posData.user_ch_name
         ]
         if not ch_names:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.information(
                 self, 'No channels to overlay', html_utils.paragraph(
                     'There are no other channels to overlay.'
@@ -1091,7 +1102,7 @@ class imageViewer(QMainWindow):
             )
             return
         # Not empty: `loadOverlayData` needs at least one channel
-        selectFluo = widgets.QDialogListbox(
+        selectFluo = widgets_item_views.QDialogListbox(
             'Select channel',
             'Select channel names to overlay:\n',
             ch_names, multiSelection=True, parent=self,
@@ -1106,7 +1117,7 @@ class imageViewer(QMainWindow):
     def setOverlayImages(self, frame_i=None):
         posData = self.posData
         for filename in posData.ol_data:
-            chName = myutils.get_chname_from_basename(
+            chName = filesystem.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
             )
             if chName not in self.checkedOverlayChannels:
@@ -1169,16 +1180,16 @@ class OverlayLabelsAppearanceDialog(dialogs_base.QBaseDialog):
 
         mainLayout = QVBoxLayout()
         
-        formLayout = widgets.FormLayout()
+        formLayout = widgets_line_edits.FormLayout()
         
         row = -1
         
         row += 1
-        self.colorButton = widgets.myColorButton(color=(255, 0, 0))
+        self.colorButton = widgets_push_buttons.myColorButton(color=(255, 0, 0))
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
         self.colorButton.setCursor(Qt.PointingHandCursor)
-        self.colorWidget = widgets.formWidget(
+        self.colorWidget = widgets_line_edits.formWidget(
             self.colorButton, addInfoButton=False, stretchWidget=False,
             labelTextLeft='Symbol color: ', parent=self, 
             widgetAlignment='left'
@@ -1190,11 +1201,11 @@ class OverlayLabelsAppearanceDialog(dialogs_base.QBaseDialog):
         formLayout.addFormWidget(self.colorWidget, row=row)
         
         row += 1
-        self.penWidthSpinBox = widgets.SpinBox()
+        self.penWidthSpinBox = widgets_numeric_inputs.SpinBox()
         self.penWidthSpinBox.setMinimum(0)
         self.penWidthSpinBox.setValue(2)
 
-        self.penWidthWidget = widgets.formWidget(
+        self.penWidthWidget = widgets_line_edits.formWidget(
             self.penWidthSpinBox, addInfoButton=False, stretchWidget=False,
             labelTextLeft='Symbol weight: ', parent=self, 
             widgetAlignment='left'
@@ -1206,14 +1217,14 @@ class OverlayLabelsAppearanceDialog(dialogs_base.QBaseDialog):
         formLayout.addFormWidget(self.penWidthWidget, row=row)
         
         row += 1
-        self.opacitySlider = widgets.sliderWithSpinBox(
+        self.opacitySlider = widgets_numeric_inputs.sliderWithSpinBox(
             isFloat=True, normalize=True
         )
         self.opacitySlider.setMinimum(0)
         self.opacitySlider.setMaximum(100)
         self.opacitySlider.setValue(0.8)
 
-        self.opacityWidget = widgets.formWidget(
+        self.opacityWidget = widgets_line_edits.formWidget(
             self.opacitySlider, addInfoButton=False, stretchWidget=True,
             labelTextLeft='Symbol opacity: ', parent=self
         )
@@ -1224,7 +1235,7 @@ class OverlayLabelsAppearanceDialog(dialogs_base.QBaseDialog):
             self.opacitySlider.setValue(opacity)
         formLayout.addFormWidget(self.opacityWidget, row=row)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)

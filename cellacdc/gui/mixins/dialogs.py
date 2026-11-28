@@ -29,7 +29,16 @@ from cellacdc import _window_stacking
 from cellacdc import load, measurements, html_utils
 from cellacdc import printl
 from cellacdc import qutils
-from cellacdc import widgets
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    combo_boxes as widgets_combo_boxes,
+    item_views as widgets_item_views,
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    numeric_inputs as widgets_numeric_inputs,
+    push_buttons as widgets_push_buttons,
+)
+from . import widgets as gui_mixin_widgets
 from cellacdc import _core
 from cellacdc import fonts
 from cellacdc import QtScoped
@@ -96,7 +105,7 @@ class customAnnotationDialog(QDialog):
         self.setWindowTitle('Custom annotation')
         _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
-        layout = widgets.FormLayout()
+        layout = widgets_line_edits.FormLayout()
 
         row = 0
         nameInfoTxt = ("""
@@ -109,8 +118,8 @@ class customAnnotationDialog(QDialog):
         Internally reserved names:
         """)
         self.nameInfoTxt = (f'{html_utils.paragraph(nameInfoTxt)}')
-        self.nameWidget = widgets.formWidget(
-            widgets.alphaNumericLineEdit(), addInfoButton=True,
+        self.nameWidget = widgets_line_edits.formWidget(
+            widgets_line_edits.alphaNumericLineEdit(), addInfoButton=True,
             labelTextLeft='Name: ', parent=self, infoTxt=self.nameInfoTxt
         )
         self.nameWidget.infoButton.disconnect()
@@ -136,8 +145,8 @@ class customAnnotationDialog(QDialog):
         the requested time frame.
         """)
         symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
-        self.symbolWidget = widgets.formWidget(
-            widgets.pgScatterSymbolsCombobox(), addInfoButton=True,
+        self.symbolWidget = widgets_line_edits.formWidget(
+            widgets_combo_boxes.pgScatterSymbolsCombobox(), addInfoButton=True,
             labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt
         )
         if state is not None:
@@ -158,8 +167,8 @@ class customAnnotationDialog(QDialog):
             of this event.<br><br> Leave empty if you don't need a shortcut.
             """)
         shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
-        self.shortcutWidget = widgets.formWidget(
-            widgets.ShortcutLineEdit(), addInfoButton=True,
+        self.shortcutWidget = widgets_line_edits.formWidget(
+            widgets_line_edits.ShortcutLineEdit(), addInfoButton=True,
             labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
         )
         if state is not None:
@@ -173,7 +182,7 @@ class customAnnotationDialog(QDialog):
         specific for this annotation
         """)
         descInfoTxt = (f'{html_utils.paragraph(descInfoTxt)}')
-        self.descWidget = widgets.formWidget(
+        self.descWidget = widgets_line_edits.formWidget(
             QPlainTextEdit(), addInfoButton=True,
             labelTextLeft='Description: ', parent=self, infoTxt=descInfoTxt
         )
@@ -184,17 +193,17 @@ class customAnnotationDialog(QDialog):
         row += 1
         optionsGroupBox = QGroupBox('Additional options')
         optionsLayout = QGridLayout()
-        toggle = widgets.Toggle()
+        toggle = widgets_push_buttons.Toggle()
         toggle.setChecked(True)
         self.keepActiveToggle = toggle
         toggleLabel = QLabel('Keep tool active after using it: ')
         colorButtonLabel = QLabel('Symbol color: ')
-        self.hideAnnotTooggle = widgets.Toggle()
+        self.hideAnnotTooggle = widgets_push_buttons.Toggle()
         self.hideAnnotTooggle.setChecked(True)
         hideAnnotTooggleLabel = QLabel(
             'Hide annotation when button is not active: '
         )
-        self.colorButton = widgets.myColorButton(color=(255, 0, 0))
+        self.colorButton = widgets_push_buttons.myColorButton(color=(255, 0, 0))
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
 
@@ -221,7 +230,7 @@ class customAnnotationDialog(QDialog):
                 'rules. If a cell has several annotations\n'
                 'with this option, the first one in the list (toolbar order) wins.'
             )
-            self.overridesPhasesToggle = widgets.Toggle()
+            self.overridesPhasesToggle = widgets_push_buttons.Toggle()
             self.overridesPhasesToggle.setToolTip(overridesPhasesTooltip)
             overridesPhasesLabel = QLabel('Overrides phases: ')
             overridesPhasesLabel.setToolTip(overridesPhasesTooltip)
@@ -258,9 +267,7 @@ class customAnnotationDialog(QDialog):
             }
             # Measurements viewer only; local import avoids a circular
             # import (apps_measurements_viewer imports apps)
-            from cellacdc.apps_measurements_viewer import (
-                _CustomAnnotationPredictorGroupbox
-            )
+            from cellacdc.measurements_viewer.dialogs.predictor_editors import _CustomAnnotationPredictorGroupbox
             self.predictorGroupbox = _CustomAnnotationPredictorGroupbox(
                 predictorOptions, 
                 predictor=None if state is None else state.get('predictor'),
@@ -281,13 +288,13 @@ class customAnnotationDialog(QDialog):
 
         buttonsLayout = QHBoxLayout()
 
-        self.loadSavedAnnotButton = widgets.OpenFilePushButton(
+        self.loadSavedAnnotButton = widgets_push_buttons.OpenFilePushButton(
             '  Load annotation...  '
         )
         if not savedCustomAnnot:
             self.loadSavedAnnotButton.setDisabled(True)
-        self.okButton = widgets.okPushButton('  Ok  ')
-        cancelButton = widgets.cancelPushButton('Cancel')
+        self.okButton = widgets_push_buttons.okPushButton('  Ok  ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -349,7 +356,7 @@ class customAnnotationDialog(QDialog):
             ('Delete selected annnotations', ) if self.allowDeleteSaved
             else ()
         )
-        self.selectAnnotWin = widgets.QDialogListbox(
+        self.selectAnnotWin = widgets_item_views.QDialogListbox(
             'Load annotation parameters',
             'Select annotation to load:', items,
             additionalButtons=additionalButtons,
@@ -373,9 +380,9 @@ class customAnnotationDialog(QDialog):
         self.shortcutWidget.widget.setText(selectedAnnot['shortcut'])
         self.descWidget.widget.setPlainText(selectedAnnot['description'])
         self.colorButton.setColor(selectedAnnot['symbolColor'])
-        keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
+        keySequence = widgets_line_edits.macShortcutToWindows(selectedAnnot['shortcut'])
         if keySequence:
-            self.shortcutWidget.widget.keySequence = widgets.KeySequenceFromText(keySequence)
+            self.shortcutWidget.widget.keySequence = widgets_line_edits.KeySequenceFromText(keySequence)
         # Same options as restored from `state` in __init__
         self.keepActiveToggle.setChecked(selectedAnnot.get('keepActive', True))
         self.hideAnnotTooggle.setChecked(
@@ -392,7 +399,7 @@ class customAnnotationDialog(QDialog):
             )
 
     def warnNoItemsSelected(self):
-        msg = widgets.myMessageBox(parent=self)
+        msg = widgets_message_box.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxWarning')
         msg.setWindowTitle('Delete annotation?')
         msg.addText('You didn\'t select any annotation!')
@@ -400,7 +407,7 @@ class customAnnotationDialog(QDialog):
         msg.exec_()
 
     def deleteSelectedAnnot(self):
-        msg = widgets.myMessageBox(parent=self)
+        msg = widgets_message_box.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxWarning')
         msg.setWindowTitle('Delete annotation?')
         msg.addText('Are you sure you want to delete the selected annotations?')
@@ -451,7 +458,7 @@ class customAnnotationDialog(QDialog):
             option, the first one in the list (toolbar order) wins.
             """)
         info = (f'{html_utils.paragraph(info)}')
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.setIcon()
         msg.setWindowTitle(f'Additional options info')
         msg.addText(info)
@@ -469,8 +476,8 @@ class customAnnotationDialog(QDialog):
         self.close()
 
     def showNameInfo(self):
-        msg = widgets.myMessageBox()
-        listView = widgets.readOnlyQList(msg)
+        msg = widgets_message_box.myMessageBox()
+        listView = widgets_item_views.readOnlyQList(msg)
         listView.addItems(self.internalNames)
         # listView.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         msg.information(
@@ -502,8 +509,8 @@ class customAnnotationDialog(QDialog):
             return
 
         if self.clickedButton==self.okButton and self.nameInfoLabel.text():
-            msg = widgets.myMessageBox()
-            listView = widgets.listWidget(msg)
+            msg = widgets_message_box.myMessageBox()
+            listView = widgets_item_views.listWidget(msg)
             listView.addItems(self.internalNames)
             listView.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
             name = self.nameWidget.widget.text()
@@ -523,7 +530,7 @@ class customAnnotationDialog(QDialog):
 
         name = self.nameWidget.widget.text()
         if self.clickedButton==self.okButton and name in self.existingNames:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Name already used', html_utils.paragraph(
                     f'A custom annotation called "{name}" already exists.'
@@ -538,7 +545,7 @@ class customAnnotationDialog(QDialog):
             else ''
         )
         if self.clickedButton==self.okButton and conflict:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                 self, 'Name cannot be used', html_utils.paragraph(
                     f'<code>{html.escape(name)}</code> cannot be used as '
@@ -557,7 +564,7 @@ class customAnnotationDialog(QDialog):
                 QKeySequence(shortcut).toString()
             )
         if usedBy is not None:
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets_message_box.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Shortcut already used', html_utils.paragraph(
                     f'The shortcut "{html.escape(shortcut)}" is already used '
@@ -573,7 +580,7 @@ class customAnnotationDialog(QDialog):
             try:
                 predictor = self.predictorGroupbox.validatePredictor()
             except Exception as err:
-                msg = widgets.myMessageBox(wrapText=False)
+                msg = widgets_message_box.myMessageBox(wrapText=False)
                 msg.warning(
                     self, 'Invalid predictor', 
                     html_utils.paragraph(html.escape(str(err)))
@@ -804,7 +811,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
             
         self.new_hard_shortcuts = {}
         for shortcut, name in hard_shortcuts.items():
-            shortcut = widgets.KeySequenceFromText(shortcut)
+            shortcut = widgets_line_edits.KeySequenceFromText(shortcut)
             shortcut_str = shortcut.toString()
             self.new_hard_shortcuts[name] = shortcut_str
 
@@ -815,7 +822,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
         self.customShortcuts = {}
         self.shortcutLineEdits = {}
 
-        scrollArea = widgets.ScrollArea(self)
+        scrollArea = widgets_basic_widgets.ScrollArea(self)
         scrollArea.setWidgetResizable(True)
         self.scrollArea = scrollArea
         scrollAreaWidget = QWidget()
@@ -846,9 +853,9 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
         
         if self.show_delete_object_shortcut:
             name = 'Delete object'
-            button = widgets.PushButton(self, flat=True)
+            button = widgets_push_buttons.PushButton(self, flat=True)
             button.setIcon(QIcon(":del_obj_click.svg"))
-            self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
+            self.delObjShortcutLineEdit = widgets_line_edits.ShortcutLineEdit(
                 allowModifiers=True, notAllowedModifier=Qt.AltModifier,
                 allowMouseButtons=True
             )
@@ -875,11 +882,11 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
             row += 1
 
         name = 'Zoom out'
-        button = widgets.PushButton(self, flat=True)
+        button = widgets_push_buttons.PushButton(self, flat=True)
         label = QLabel('Zoom out:')
-        self.zoomShortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
+        self.zoomShortcutLineEdit = widgets_line_edits.ShortcutLineEdit(allowMouseButtons=True)
         if zoomOutKeyValue is not None:
-            zoomOutKeySequence = widgets.KeySequenceFromText(zoomOutKeyValue)
+            zoomOutKeySequence = widgets_line_edits.KeySequenceFromText(zoomOutKeyValue)
             self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
             self.zoomShortcutLineEdit.key = zoomOutKeyValue
         self.zoomShortcutLineEdit.textChanged.connect(self.shortcutChanged)
@@ -948,13 +955,13 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
             entriesLayout.addWidget(QLabel(f'<b>{title}</b>'), row, 0, 1, 5)
             row += 1
             for name, widget in shortcuts.items():
-                button = widgets.PushButton(self, flat=True)
+                button = widgets_push_buttons.PushButton(self, flat=True)
                 try:
                     button.setIcon(widget.icon())
                 except:
                     pass
                 label = QLabel(f'{name}:')
-                shortcutLineEdit = widgets.ShortcutLineEdit(
+                shortcutLineEdit = widgets_line_edits.ShortcutLineEdit(
                     allowMouseButtons=True
                 )
                 if mouseBindings is not None and name in mouseBindings:
@@ -965,7 +972,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
                     isShortcutMouseButton = True
                 elif hasattr(widget, 'keyPressShortcut'):
                     shortcutLineEdit.key = widget.keyPressShortcut
-                    shortcut = widgets.KeySequenceFromText(
+                    shortcut = widgets_line_edits.KeySequenceFromText(
                         widget.keyPressShortcut
                     )
                     isShortcutKeyPress = True
@@ -1020,7 +1027,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
             entriesLayout.addWidget(QLabel(f'<b>{title}</b>'), row, 0, 1, 5)
             row += 1
             for what, shortcut in shortcuts.items():
-                button = widgets.PushButton(self, flat=True)
+                button = widgets_push_buttons.PushButton(self, flat=True)
                 if isinstance(what, str):
                     label = QLabel(f'{what}:')
                 else:
@@ -1044,7 +1051,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
 
         scrollAreaWidget.setLayout(entriesLayout)
         scrollArea.setWidget(scrollAreaWidget)
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -1148,7 +1155,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
         # `text` (textChanged) is the displayed text, which uses macOS key
         # names on macOS ('Command+O'), while ShortcutLineEdit.text() gives
         # the portable form ('Ctrl+O'): compare portable forms
-        text = widgets.macShortcutToWindows(text)
+        text = widgets_line_edits.macShortcutToWindows(text)
         name = sender.name
         group_updated = self.exclusivity_groups_reverse.get(name, 'other')
         for name_other, shortcutLineEdit in self.shortcutLineEdits.items():
@@ -1174,7 +1181,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
             break
         for shortcuts in self.new_hard_shortcuts.values():
             for name_other, shortcut_txt in shortcuts.items():
-                if widgets.macShortcutToWindows(shortcut_txt) == text:
+                if widgets_line_edits.macShortcutToWindows(shortcut_txt) == text:
                     warnConflictLabel = getattr(
                         sender, 'warnConflictLabel', None
                     )
@@ -1191,7 +1198,7 @@ class ShortcutEditorDialog(dialogs_base.QBaseDialog):
             'Only "Middle click" can be used without pressing keys.<br><br>'
             'Thank you for your patience!'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.warning(self, 'Invalid key sequence to delete objects', txt)
     
     def ok_cb(self):
@@ -1265,13 +1272,13 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         
         mainLayout = QVBoxLayout()
         
-        formLayout = widgets.FormLayout()
+        formLayout = widgets_line_edits.FormLayout()
         formLayout.setVerticalSpacing(10)
         formLayout.setHorizontalSpacing(50)
         
         row = 0
         unitCombobox = QComboBox()
-        unitFormWidget = widgets.formWidget(
+        unitFormWidget = widgets_line_edits.formWidget(
             unitCombobox, labelTextLeft='Physical unit'
         )
         unitCombobox.addItems(
@@ -1288,7 +1295,7 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         self.unitCombobox = unitCombobox
         
         row += 1
-        lengthDoubleSpinbox = widgets.DoubleSpinBox()
+        lengthDoubleSpinbox = widgets_numeric_inputs.DoubleSpinBox()
         lengthDoubleSpinbox.setMaximum(maxLength)
         lengthDoubleSpinbox.setMinimum(PhysicalSizeX)
         lengthDoubleSpinbox.setDecimals(1)
@@ -1297,7 +1304,7 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         else:
             deafultLength = np.ceil(PhysicalSizeX*15)
             lengthDoubleSpinbox.setValue(round(deafultLength))
-        lengthFormWidget = widgets.formWidget(
+        lengthFormWidget = widgets_line_edits.formWidget(
             lengthDoubleSpinbox, labelTextLeft='Length (μm)'
         )
         self.lengthFormWidget = lengthFormWidget
@@ -1308,7 +1315,7 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         )       
         
         row += 1
-        thicknessSpinbox = widgets.DoubleSpinBox()
+        thicknessSpinbox = widgets_numeric_inputs.DoubleSpinBox()
         thicknessSpinbox.setMaximum(maxThickness)
         thicknessSpinbox.setMinimum(1)
         if properties.get('thickness') is not None:
@@ -1316,7 +1323,7 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         else:
             thicknessSpinbox.setValue(round(4, 1))
         thicknessSpinbox.setDecimals(1)
-        thicknessFormWidget = widgets.formWidget(
+        thicknessFormWidget = widgets_line_edits.formWidget(
             thicknessSpinbox, labelTextLeft='Thickness (pixel)'
         )
         formLayout.addFormWidget(
@@ -1327,7 +1334,7 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         
         row += 1
         locCombobox = QComboBox()
-        locFormWidget = widgets.formWidget(
+        locFormWidget = widgets_line_edits.formWidget(
             locCombobox, labelTextLeft='Location'
         )
         locCombobox.addItems(
@@ -1343,10 +1350,10 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         self.locCombobox = locCombobox
         
         row += 1
-        self.colorButton = widgets.myColorButton(color=(255, 255, 255))
+        self.colorButton = widgets_push_buttons.myColorButton(color=(255, 255, 255))
         if properties.get('color') is not None:
             self.colorButton.setColor(properties.get('color'))
-        colorFormWidget = widgets.formWidget(
+        colorFormWidget = widgets_line_edits.formWidget(
             self.colorButton, labelTextLeft='Color',
             widgetAlignment=Qt.AlignCenter, stretchWidget=False
         )
@@ -1356,12 +1363,12 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         )  
         
         row += 1
-        displayTextToggle = widgets.Toggle()
+        displayTextToggle = widgets_push_buttons.Toggle()
         if properties.get('is_text_visible') is not None:
             displayTextToggle.setChecked(properties.get('is_text_visible'))
         else:
             displayTextToggle.setChecked(True)
-        displayTextFormWidget = widgets.formWidget(
+        displayTextFormWidget = widgets_line_edits.formWidget(
             displayTextToggle, labelTextLeft='Display text',
             widgetAlignment=Qt.AlignCenter, stretchWidget=False
         )
@@ -1372,12 +1379,12 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         self.displayTextToggle = displayTextToggle
         
         row += 1
-        fontSizeSpinbox = widgets.SpinBox()
+        fontSizeSpinbox = widgets_numeric_inputs.SpinBox()
         if properties.get('font_size') is not None:
             fontSizeSpinbox.setValue(int(properties.get('font_size')))
         else:
             fontSizeSpinbox.setValue(12)
-        fontSizeFormWidget = widgets.formWidget(
+        fontSizeFormWidget = widgets_line_edits.formWidget(
             fontSizeSpinbox, labelTextLeft='Font size (px)'
         )
         self.fontSizeSpinbox = fontSizeSpinbox
@@ -1387,14 +1394,14 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         ) 
         
         row += 1
-        decimalsSpinbox = widgets.SpinBox()
+        decimalsSpinbox = widgets_numeric_inputs.SpinBox()
         decimalsSpinbox.setMaximum(6)
         decimalsSpinbox.setMinimum(0)
         if properties.get('num_decimals') is not None:
             decimalsSpinbox.setValue(properties.get('num_decimals'))
         else:
             decimalsSpinbox.setValue(0)
-        decimalsFormWidget = widgets.formWidget(
+        decimalsFormWidget = widgets_line_edits.formWidget(
             decimalsSpinbox, labelTextLeft='Number of decimals'
         )
         formLayout.addFormWidget(
@@ -1404,8 +1411,8 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         self.decimalsSpinbox = decimalsSpinbox
         
         row += 1
-        moveWithZoomToggle = widgets.Toggle()
-        moveWithZoomWidget = widgets.formWidget(
+        moveWithZoomToggle = widgets_push_buttons.Toggle()
+        moveWithZoomWidget = widgets_line_edits.formWidget(
             moveWithZoomToggle, labelTextLeft='Move scale bar with zoom',
             widgetAlignment=Qt.AlignCenter, stretchWidget=False
         )
@@ -1417,7 +1424,7 @@ class ScaleBarPropertiesDialog(dialogs_base.QBaseDialog):
         
         mainLayout.addLayout(formLayout)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -1500,17 +1507,17 @@ class TimestampPropertiesDialog(dialogs_base.QBaseDialog):
         
         mainLayout = QVBoxLayout()
         
-        formLayout = widgets.FormLayout()
+        formLayout = widgets_line_edits.FormLayout()
         formLayout.setVerticalSpacing(10)
         formLayout.setHorizontalSpacing(50)
         
         row = 0
-        self.startTimeWidget = widgets.TimeWidget()
+        self.startTimeWidget = gui_mixin_widgets.TimeWidget()
         if properties.get('start_timedelta') is not None:
             self.startTimeWidget.setValuesFromTimedelta(
                 properties.get('start_timedelta')
             )
-        startTimeFormWidget = widgets.formWidget(
+        startTimeFormWidget = widgets_line_edits.formWidget(
             self.startTimeWidget, labelTextLeft='Start time',
         )
         formLayout.addFormWidget(
@@ -1519,10 +1526,10 @@ class TimestampPropertiesDialog(dialogs_base.QBaseDialog):
         )
         
         row += 1
-        self.colorButton = widgets.myColorButton(color=(255, 255, 255))
+        self.colorButton = widgets_push_buttons.myColorButton(color=(255, 255, 255))
         if properties.get('color') is not None:
             self.colorButton.setColor(properties.get('color'))
-        colorFormWidget = widgets.formWidget(
+        colorFormWidget = widgets_line_edits.formWidget(
             self.colorButton, labelTextLeft='Color',
             widgetAlignment=Qt.AlignCenter, stretchWidget=False
         )
@@ -1532,12 +1539,12 @@ class TimestampPropertiesDialog(dialogs_base.QBaseDialog):
         ) 
         
         row += 1
-        fontSizeWidget = widgets.FontSizeWidget()
+        fontSizeWidget = gui_mixin_widgets.FontSizeWidget()
         if properties.get('font_size') is not None:
             fontSizeWidget.setValue(properties.get('font_size'))
         else:
             fontSizeWidget.setValue(12)
-        fontSizeFormWidget = widgets.formWidget(
+        fontSizeFormWidget = widgets_line_edits.formWidget(
             fontSizeWidget, labelTextLeft='Font size (px)'
         )
         self.fontSizeWidget = fontSizeWidget
@@ -1548,7 +1555,7 @@ class TimestampPropertiesDialog(dialogs_base.QBaseDialog):
         
         row += 1
         locCombobox = QComboBox()
-        locFormWidget = widgets.formWidget(
+        locFormWidget = widgets_line_edits.formWidget(
             locCombobox, labelTextLeft='Location'
         )
         locCombobox.addItems(
@@ -1564,8 +1571,8 @@ class TimestampPropertiesDialog(dialogs_base.QBaseDialog):
         self.locCombobox = locCombobox
         
         row += 1
-        moveWithZoomToggle = widgets.Toggle()
-        moveWithZoomWidget = widgets.formWidget(
+        moveWithZoomToggle = widgets_push_buttons.Toggle()
+        moveWithZoomWidget = widgets_line_edits.formWidget(
             moveWithZoomToggle, labelTextLeft='Move timestamp with zoom',
             widgetAlignment=Qt.AlignCenter, stretchWidget=False
         )
@@ -1577,7 +1584,7 @@ class TimestampPropertiesDialog(dialogs_base.QBaseDialog):
         
         mainLayout.addLayout(formLayout)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -1647,7 +1654,7 @@ class SetCustomLevelsLut(dialogs_base.QBaseDialog):
         
         layout = QVBoxLayout()
         
-        self.minLevelSlider = widgets.sliderWithSpinBox(
+        self.minLevelSlider = widgets_numeric_inputs.sliderWithSpinBox(
             title='Minimum', 
             title_loc='top', 
         )
@@ -1658,7 +1665,7 @@ class SetCustomLevelsLut(dialogs_base.QBaseDialog):
         
         layout.addWidget(self.minLevelSlider)
         
-        self.maxLevelSlider = widgets.sliderWithSpinBox(
+        self.maxLevelSlider = widgets_numeric_inputs.sliderWithSpinBox(
             title='Maximum', 
             title_loc='top', 
         )
@@ -1675,7 +1682,7 @@ class SetCustomLevelsLut(dialogs_base.QBaseDialog):
         self.minLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
         self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -1709,7 +1716,7 @@ class ViewCcaTableWindow(pdDataFrameWidget):
     def __init__(self, df, parent=None):
         super().__init__(df, parent=parent)
         
-        updateTableButton = widgets.reloadPushButton(
+        updateTableButton = widgets_push_buttons.reloadPushButton(
             'Update table with visible IDs...'
         )
         buttonsLayout = QHBoxLayout()
@@ -1741,19 +1748,19 @@ class ObjectCountDialog(dialogs_base.QBaseDialog):
         self.cancel = False
         mainLayout = QVBoxLayout()
 
-        cancelOkLayout = widgets.CancelOkButtonsLayout()
+        cancelOkLayout = widgets_push_buttons.CancelOkButtonsLayout()
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
         
         self.data = data
         if data is not None:
-            saveCountsButton = widgets.savePushButton(
+            saveCountsButton = widgets_push_buttons.savePushButton(
                 'Export counts to CSV table'
             )
             saveCountsButton.clicked.connect(self.saveCounts)
             cancelOkLayout.insertWidget(3, saveCountsButton)
         
-        updateCountsButton = widgets.reloadPushButton('Update counts')
+        updateCountsButton = widgets_push_buttons.reloadPushButton('Update counts')
         cancelOkLayout.insertWidget(3, updateCountsButton)
         updateCountsButton.clicked.connect(self.emitUpdateCounts)
         
@@ -1781,7 +1788,7 @@ class ObjectCountDialog(dialogs_base.QBaseDialog):
             
             self.categoryLabelMapper[category] = countLabel
             
-            showHideButton = widgets.showDetailsButton(txt='')
+            showHideButton = widgets_push_buttons.showDetailsButton(txt='')
             showHideButton.setChecked(True)
             showHideButton.sigToggled.connect(
                 partial(self.showHideCount, labels=(catLabel, countLabel))
@@ -1798,7 +1805,7 @@ class ObjectCountDialog(dialogs_base.QBaseDialog):
             categoryLayout.setStretch(3, 0)
             
             mainLayout.addLayout(categoryLayout)
-            mainLayout.addWidget(widgets.QHLine())
+            mainLayout.addWidget(widgets_basic_widgets.QHLine())
         
         mainLayout.addSpacing(10)
         
@@ -1834,7 +1841,7 @@ class ObjectCountDialog(dialogs_base.QBaseDialog):
             Objects count table saved in every loaded Position folder<br> 
             as a <b>CSV file ending with</b> <code>{df_count_endname}</code>
         """)
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         msg.information(self, 'Objects count saved', txt)
     
     def updateWarnLabel(self, checked):
@@ -1902,17 +1909,17 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
         self.setWindowTitle('Annotate object track settings')
 
         mainLayout = QVBoxLayout()
-        formLayout = widgets.FormLayout()
+        formLayout = widgets_line_edits.FormLayout()
 
         row = 0
         lengthInfoTxt = html_utils.paragraph(
             'Number of past frames to include when drawing each cell track. '
             'Higher values show longer history and can add visual clutter.'
         )
-        self.lengthSpinBox = widgets.SpinBox()
+        self.lengthSpinBox = widgets_numeric_inputs.SpinBox()
         self.lengthSpinBox.setMinimum(1)
         self.lengthSpinBox.setMaximum(999)
-        self.lengthWidget = widgets.formWidget(
+        self.lengthWidget = widgets_line_edits.formWidget(
             self.lengthSpinBox,
             labelTextLeft='Track length (frames): ',
             parent=self,
@@ -1927,13 +1934,13 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'RGB color used for cell movement tracks. '
             'This affects both line color and fade rendering.'
         )
-        self.colorButton = widgets.myColorButton(color=tuple(settings['color']))
+        self.colorButton = widgets_push_buttons.myColorButton(color=tuple(settings['color']))
         try:
             self.colorButton.clicked.disconnect()
         except TypeError:
             pass
         self.colorButton.clicked.connect(self.selectColor)
-        self.colorWidget = widgets.formWidget(
+        self.colorWidget = widgets_line_edits.formWidget(
             self.colorButton,
             labelTextLeft='Track color: ',
             parent=self,
@@ -1948,10 +1955,10 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'Number of track segments over which fading out is applied. '
             'Lower values create a longer "full boldness" trail.'
         )
-        self.nFadeSpinBox = widgets.SpinBox()
+        self.nFadeSpinBox = widgets_numeric_inputs.SpinBox()
         self.nFadeSpinBox.setMinimum(1)
         self.nFadeSpinBox.setMaximum(999)
-        self.nFadeWidget = widgets.formWidget(
+        self.nFadeWidget = widgets_line_edits.formWidget(
             self.nFadeSpinBox,
             labelTextLeft='Full boldness trail (segments): ',
             parent=self,
@@ -1966,10 +1973,10 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'Maximum line width for the newest part of each track. '
             'Must be greater than or equal to "Min line width".'
         )
-        self.maxWidthSpinBox = widgets.SpinBox()
+        self.maxWidthSpinBox = widgets_numeric_inputs.SpinBox()
         self.maxWidthSpinBox.setMinimum(1)
         self.maxWidthSpinBox.setMaximum(100)
-        self.maxWidthWidget = widgets.formWidget(
+        self.maxWidthWidget = widgets_line_edits.formWidget(
             self.maxWidthSpinBox,
             labelTextLeft='Max line width: ',
             parent=self,
@@ -1984,10 +1991,10 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'Minimum line width for the oldest visible track segments. '
             'Automatically constrained to stay below or equal to "Max line width".'
         )
-        self.minWidthSpinBox = widgets.SpinBox()
+        self.minWidthSpinBox = widgets_numeric_inputs.SpinBox()
         self.minWidthSpinBox.setMinimum(1)
         self.minWidthSpinBox.setMaximum(100)
-        self.minWidthWidget = widgets.formWidget(
+        self.minWidthWidget = widgets_line_edits.formWidget(
             self.minWidthSpinBox,
             labelTextLeft='Min line width: ',
             parent=self,
@@ -2002,9 +2009,9 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'Opacity of the newest track segments, in percent (0-100). '
             '100 is fully opaque, 0 is fully transparent.'
         )
-        self.maxAlphaSpinBox = widgets.SpinBox()
+        self.maxAlphaSpinBox = widgets_numeric_inputs.SpinBox()
         self.maxAlphaSpinBox.setRange(0, 100)
-        self.maxAlphaWidget = widgets.formWidget(
+        self.maxAlphaWidget = widgets_line_edits.formWidget(
             self.maxAlphaSpinBox,
             labelTextLeft='Max alpha (%): ',
             parent=self,
@@ -2019,9 +2026,9 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'Opacity of the oldest visible track segments, in percent (0-100). '
             'Automatically constrained to stay below or equal to "Max alpha".'
         )
-        self.minAlphaSpinBox = widgets.SpinBox()
+        self.minAlphaSpinBox = widgets_numeric_inputs.SpinBox()
         self.minAlphaSpinBox.setRange(0, 100)
-        self.minAlphaWidget = widgets.formWidget(
+        self.minAlphaWidget = widgets_line_edits.formWidget(
             self.minAlphaSpinBox,
             labelTextLeft='Min alpha (%): ',
             parent=self,
@@ -2034,11 +2041,11 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
         showOnlyVisible3DInfoTxt = html_utils.paragraph(
             'Show only visible objects in 3D view.'
         )
-        self.showOnlyVisible3DCheckBox = widgets.Toggle()
+        self.showOnlyVisible3DCheckBox = widgets_push_buttons.Toggle()
         self.showOnlyVisible3DCheckBox.setChecked(
             settings['3D_show_only_visible']
         )
-        self.showOnlyVisible3DWidget = widgets.formWidget(
+        self.showOnlyVisible3DWidget = widgets_line_edits.formWidget(
             self.showOnlyVisible3DCheckBox,
             labelTextLeft='3D show only visible: ',
             parent=self,
@@ -2055,8 +2062,8 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'When disabled, the full track history up to "Track length" is drawn. '
             'Is mutually exclusive with all other options!'
         )
-        self.againstPrevToggle = widgets.Toggle()
-        self.againstPrevWidget = widgets.formWidget(
+        self.againstPrevToggle = widgets_push_buttons.Toggle()
+        self.againstPrevWidget = widgets_line_edits.formWidget(
             self.againstPrevToggle,
             labelTextLeft='Only against previous frame: ',
             parent=self,
@@ -2072,7 +2079,7 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'RGB color of the line connecting each object to its previous-frame '
             'position when "Only against previous frame" is enabled.'
         )
-        self.againstPrevLineColorButton = widgets.myColorButton(
+        self.againstPrevLineColorButton = widgets_push_buttons.myColorButton(
             color=tuple(settings['against_prev_line_color'])
         )
         try:
@@ -2082,7 +2089,7 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
         self.againstPrevLineColorButton.clicked.connect(
             lambda: self.selectColor(self.againstPrevLineColorButton)
         )
-        self.againstPrevLineColorWidget = widgets.formWidget(
+        self.againstPrevLineColorWidget = widgets_line_edits.formWidget(
             self.againstPrevLineColorButton,
             labelTextLeft='Against-prev line color: ',
             parent=self,
@@ -2097,10 +2104,10 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'Thickness of the line connecting each object to its previous-frame '
             'position when "Only against previous frame" is enabled.'
         )
-        self.againstPrevLineWidthSpinBox = widgets.SpinBox()
+        self.againstPrevLineWidthSpinBox = widgets_numeric_inputs.SpinBox()
         self.againstPrevLineWidthSpinBox.setMinimum(1)
         self.againstPrevLineWidthSpinBox.setMaximum(100)
-        self.againstPrevLineWidthWidget = widgets.formWidget(
+        self.againstPrevLineWidthWidget = widgets_line_edits.formWidget(
             self.againstPrevLineWidthSpinBox,
             labelTextLeft='Against-prev line thickness: ',
             parent=self,
@@ -2115,7 +2122,7 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'RGB color of previous-frame contours when "Only against previous '
             'frame" is enabled.'
         )
-        self.againstPrevContourColorButton = widgets.myColorButton(
+        self.againstPrevContourColorButton = widgets_push_buttons.myColorButton(
             color=tuple(settings['against_prev_contour_color'])
         )
         try:
@@ -2125,7 +2132,7 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
         self.againstPrevContourColorButton.clicked.connect(
             lambda: self.selectColor(self.againstPrevContourColorButton)
         )
-        self.againstPrevContourColorWidget = widgets.formWidget(
+        self.againstPrevContourColorWidget = widgets_line_edits.formWidget(
             self.againstPrevContourColorButton,
             labelTextLeft='Against-prev contour color: ',
             parent=self,
@@ -2140,10 +2147,10 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
             'Thickness of previous-frame contours when "Only against previous '
             'frame" is enabled.'
         )
-        self.againstPrevContourWidthSpinBox = widgets.SpinBox()
+        self.againstPrevContourWidthSpinBox = widgets_numeric_inputs.SpinBox()
         self.againstPrevContourWidthSpinBox.setMinimum(1)
         self.againstPrevContourWidthSpinBox.setMaximum(100)
-        self.againstPrevContourWidthWidget = widgets.formWidget(
+        self.againstPrevContourWidthWidget = widgets_line_edits.formWidget(
             self.againstPrevContourWidthSpinBox,
             labelTextLeft='Against-prev contour thickness: ',
             parent=self,
@@ -2154,7 +2161,7 @@ class AnnotateObjTrackSettingsDialog(dialogs_base.QBaseDialog):
         formLayout.addFormWidget(self.againstPrevContourWidthWidget, row=row)
         row += 1
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
 

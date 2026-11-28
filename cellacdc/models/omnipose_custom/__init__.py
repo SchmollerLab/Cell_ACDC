@@ -2,6 +2,6 @@ import os
 import sys
 import subprocess
 
-from cellacdc import myutils
+from cellacdc.myutils import installs
 
-myutils.check_install_package('omnipose_acdc', import_pkg_name='omnipose')
+installs.check_install_package('omnipose_acdc', import_pkg_name='omnipose')

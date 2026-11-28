@@ -1,6 +1,8 @@
 import os
 
-from .. import apps, myutils, workers, widgets, html_utils, printl
+from .. import html_utils, printl
+from cellacdc.myutils import filesystem, image_utils
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 import skimage.io
@@ -16,7 +18,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -24,7 +26,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.SplitVideoIntoFrameTiffs(self)
+        self.worker = SplitVideoIntoFrameTiffs(self)
         self.worker.sigAskSetup.connect(self.askSetupParams)
         self.worker.sigCancelled.connect(self.workerCancelled)
         self.worker.sigAskDstFolderExist.connect(
@@ -33,7 +35,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         super().runWorker(self.worker)
     
     def askDstFolderExist(self, videoDstFolderPath):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             The position folder below already exists!<br><br>
             If you continue, the content will be removed before 
@@ -58,8 +60,8 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         video_filepath = None
         for pos_folder in pos_foldernames:
             images_path = os.path.join(exp_path, pos_folder, 'Images')
-            basename, chNames = myutils.getBasenameAndChNames(images_path)
-            for file in myutils.listdir(images_path):
+            basename, chNames = filesystem.getBasenameAndChNames(images_path)
+            for file in filesystem.listdir(images_path):
                 if file == f'{basename}{video_endname}':
                     video_filepath = os.path.join(images_path, file)
                     break
@@ -67,7 +69,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
             if video_filepath is not None:
                 break
         
-        win = apps.SetupSplitVideoIntoTiffsDialog(
+        win = utils_base.SetupSplitVideoIntoTiffsDialog(
             video_filepath,
             parent=self
         )
@@ -97,7 +99,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         else:
             txt = '3D segmentation mask creation process completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -195,8 +197,8 @@ class SplitVideoIntoFrameTiffs(utils_base.BaseWorkerUtil):
                     io.delete_folder_content(videoDstFolderPath)
 
                 images_path = os.path.join(exp_path, pos, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(images_path)
-                ls = myutils.listdir(images_path)
+                basename, chNames = filesystem.getBasenameAndChNames(images_path)
+                ls = filesystem.listdir(images_path)
                 imageFilepath = [
                     os.path.join(images_path, f) for f in ls 
                     if f == f'{basename}{selectedVideoEndname}'
@@ -231,7 +233,7 @@ class SplitVideoIntoFrameTiffs(utils_base.BaseWorkerUtil):
                 
                 self.signals.sigInitInnerPbar.emit(numFrames)
                 for frame_i in range(numFrames):
-                    img = myutils.convert_to_dtype(image_data[frame_i], dtype)
+                    img = image_utils.convert_to_dtype(image_data[frame_i], dtype)
                     t_str = str(frame_i).zfill(3)
                     frame_filename = f'{prefix}{t_str}.tif'
                     frame_filepath = os.path.join(

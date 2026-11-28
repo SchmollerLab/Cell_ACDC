@@ -14,7 +14,12 @@ from qtpy.QtWidgets import (
 )
 from cellacdc import _window_stacking
 from cellacdc import measurements, html_utils
-from cellacdc import widgets
+from ..widgets import (
+    combo_boxes as widgets_combo_boxes,
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from cellacdc import cellacdc_path
 from cellacdc import fonts
 
@@ -43,15 +48,15 @@ class CellACDCTrackerParamsWin(QDialog):
         maxOverlapSpinbox.setValue(0.4)
         self.maxOverlapSpinbox = maxOverlapSpinbox
         paramsLayout.addWidget(maxOverlapSpinbox, row, 1)
-        infoButton = widgets.infoPushButton()
+        infoButton = widgets_push_buttons.infoPushButton()
         infoButton.clicked.connect(self.showInfo)
         paramsLayout.addWidget(infoButton, row, 2)
         paramsLayout.setColumnStretch(0, 0)
         paramsLayout.setColumnStretch(1, 1)
         paramsLayout.setColumnStretch(2, 0)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         cancelButton.clicked.connect(self.cancel_cb)
         okButton.clicked.connect(self.ok_cb)
 
@@ -75,7 +80,7 @@ class CellACDCTrackerParamsWin(QDialog):
         self.setFont(fonts.font)
 
     def showInfo(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'Cell-ACDC tracker computes the percentage of overlap between '
             'all the objects<br> at frame <code>n</code> and all the '
@@ -144,7 +149,7 @@ class BayesianTrackerParamsWin(QDialog):
             modelPathLineEdit.setText(default_model_path)
         self.modelPathLineEdit = modelPathLineEdit
         paramsLayout.addWidget(modelPathLineEdit, row, 1)
-        browseButton = widgets.browseFileButton(
+        browseButton = widgets_push_buttons.browseFileButton(
             title='Select Bayesian Tracker model file',
             ext={'JSON Config': ('.json',)},
             start_dir=start_dir
@@ -157,7 +162,7 @@ class BayesianTrackerParamsWin(QDialog):
             label = QLabel(html_utils.paragraph('Intensity image channel:  '))
             paramsLayout.addWidget(label, row, 0)
             items = ['None', *self.channels]
-            self.channelCombobox = widgets.QCenteredComboBox()
+            self.channelCombobox = widgets_combo_boxes.QCenteredComboBox()
             self.channelCombobox.addItems(items)
             paramsLayout.addWidget(self.channelCombobox, row, 1)
             if self.currentChannelName is not None:
@@ -166,7 +171,7 @@ class BayesianTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Features'))
         paramsLayout.addWidget(label, row, 0)
-        selectFeaturesButton = widgets.setPushButton('Select features')
+        selectFeaturesButton = widgets_push_buttons.setPushButton('Select features')
         paramsLayout.addWidget(selectFeaturesButton, row, 1)
         self.features = []
         selectFeaturesButton.clicked.connect(self.selectFeatures)
@@ -174,7 +179,7 @@ class BayesianTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Verbose'))
         paramsLayout.addWidget(label, row, 0)
-        verboseToggle = widgets.Toggle()
+        verboseToggle = widgets_push_buttons.Toggle()
         verboseToggle.setChecked(True)
         self.verboseToggle = verboseToggle
         paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
@@ -182,7 +187,7 @@ class BayesianTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Run optimizer'))
         paramsLayout.addWidget(label, row, 0)
-        optimizeToggle = widgets.Toggle()
+        optimizeToggle = widgets_push_buttons.Toggle()
         optimizeToggle.setChecked(True)
         self.optimizeToggle = optimizeToggle
         paramsLayout.addWidget(optimizeToggle, row, 1, alignment=Qt.AlignCenter)
@@ -232,8 +237,8 @@ class BayesianTrackerParamsWin(QDialog):
         self.updateMethodCombobox.currentTextChanged.connect(self.methodChanged)
         paramsLayout.addWidget(updateMethodCombobox, row, 1)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         cancelButton.clicked.connect(self.cancel_cb)
         okButton.clicked.connect(self.ok_cb)
 
@@ -268,7 +273,7 @@ class BayesianTrackerParamsWin(QDialog):
     
     def selectFeatures(self):
         features = measurements.get_btrack_features()
-        selectWin = widgets.QDialogListbox(
+        selectWin = widgets_item_views.QDialogListbox(
             'Select features',
             'Select features to use for tracking:\n',
             features, multiSelection=True, parent=self, 
@@ -331,7 +336,7 @@ class BayesianTrackerParamsWin(QDialog):
 
     def warnNotValidPath(self):
         url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'The model configuration file path<br><br>'
             f'{self.modelPathLineEdit.text()}<br><br> '
@@ -344,7 +349,7 @@ class BayesianTrackerParamsWin(QDialog):
         )
 
     def warnNotAcceptedVolume(self):
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             f'{self.volumeLineEdit.text()} is <b>not a valid volume!</b><br><br>'
             'Valid volume is for example (0, 2048), (0, 2048)<br>'
@@ -398,7 +403,7 @@ class DeltaTrackerParamsWin(QDialog):
             modelPathLineEdit.setText(default_model_path)
         self.modelPathLineEdit = modelPathLineEdit
         paramsLayout.addWidget(modelPathLineEdit, row, 1)
-        browseButton = widgets.browseFileButton(
+        browseButton = widgets_push_buttons.browseFileButton(
             title='Select Original Images',
             ext={'TIFF': ('.tif',)},
             start_dir=start_dir
@@ -421,7 +426,7 @@ class DeltaTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Single Mother Machine Chamber?'))
         paramsLayout.addWidget(label, row, 0)
-        chamberToggle = widgets.Toggle()
+        chamberToggle = widgets_push_buttons.Toggle()
         chamberToggle.setChecked(True)
         self.chamberToggle = chamberToggle
         paramsLayout.addWidget(chamberToggle, row, 1, alignment=Qt.AlignCenter)
@@ -429,7 +434,7 @@ class DeltaTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Verbose'))
         paramsLayout.addWidget(label, row, 0)
-        verboseToggle = widgets.Toggle()
+        verboseToggle = widgets_push_buttons.Toggle()
         verboseToggle.setChecked(True)
         self.verboseToggle = verboseToggle
         paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
@@ -437,7 +442,7 @@ class DeltaTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Legacy Save (.mat)'))
         paramsLayout.addWidget(label, row, 0)
-        legacyToggle = widgets.Toggle()
+        legacyToggle = widgets_push_buttons.Toggle()
         legacyToggle.setChecked(False)
         self.legacyToggle = legacyToggle
         paramsLayout.addWidget(legacyToggle, row, 1, alignment=Qt.AlignCenter)
@@ -445,7 +450,7 @@ class DeltaTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Pickle (.pkl)'))
         paramsLayout.addWidget(label, row, 0)
-        pickleToggle = widgets.Toggle()
+        pickleToggle = widgets_push_buttons.Toggle()
         pickleToggle.setChecked(False)
         self.pickleToggle = pickleToggle
         paramsLayout.addWidget(pickleToggle, row, 1, alignment=Qt.AlignCenter)
@@ -453,13 +458,13 @@ class DeltaTrackerParamsWin(QDialog):
         row += 1
         label = QLabel(html_utils.paragraph('Movie (.mp4) *only for 2D images'))
         paramsLayout.addWidget(label, row, 0)
-        movieToggle = widgets.Toggle()
+        movieToggle = widgets_push_buttons.Toggle()
         movieToggle.setChecked(False)
         self.movieToggle = movieToggle
         paramsLayout.addWidget(movieToggle, row, 1, alignment=Qt.AlignCenter)
 
-        cancelButton = widgets.cancelPushButton('Cancel')
-        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
+        okButton = widgets_push_buttons.okPushButton(' Ok ')
         cancelButton.clicked.connect(self.cancel_cb)
         okButton.clicked.connect(self.ok_cb)
 

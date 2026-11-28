@@ -14,7 +14,8 @@ import skimage.io
 import skimage.measure
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import apps, cli, cca_functions, measurements
+from cellacdc import cli, cca_functions, measurements
+from cellacdc.shared.dialogs import set_measurements as dialogs_set_measurements
 from cellacdc.utils import compute as utils_compute
 
 pytestmark = pytest.mark.core
@@ -108,7 +109,7 @@ def load_posData(images_path):
 
 def build_dialog(posData, existing_cols=None, **kwargs):
     # As `utils.compute.computeMeasurmentsUtilWin.initAddMetricsWorker`
-    return apps.SetMeasurementsDialog(
+    return dialogs_set_measurements.SetMeasurementsDialog(
         list(posData.chNames), [], posData.SizeZ > 1, posData.isSegm3D,
         posData=posData, allPosData=kwargs.pop('allPosData', [posData]),
         addDoNotAskAgainCheckbox=True,
@@ -317,7 +318,7 @@ def test_existing_unselected_measurements(
     def answer(parent, colnames, **kwargs):
         asked.append(list(colnames))
         return False, delete
-    monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
+    monkeypatch.setattr(dialogs_set_measurements, 'askDeleteUncheckedExistingMeasurements', answer)
 
     posData = load_posData(images_path)
     existing = list(posData.acdc_df.columns)
@@ -347,12 +348,12 @@ def test_existing_unselected_measurements(
 def test_utility_passes_existing_columns(app, experiment, monkeypatch):
     _, posData = experiment
     created = {}
-    original = apps.SetMeasurementsDialog
+    original = dialogs_set_measurements.SetMeasurementsDialog
 
     def capture(*args, **kwargs):
         created.update(kwargs)
         return original(*args, **kwargs)
-    monkeypatch.setattr(apps, 'SetMeasurementsDialog', capture)
+    monkeypatch.setattr(dialogs_set_measurements, 'SetMeasurementsDialog', capture)
     UtilWin = utils_compute.computeMeasurmentsUtilWin
     host = SimpleNamespace(
         doNotAskAgain=False,
@@ -478,7 +479,7 @@ def test_inputs_of_selected_concentration_are_computed(
     win0.deleteLater()
 
     monkeypatch.setattr(
-        apps, 'askDeleteUncheckedExistingMeasurements', 
+        dialogs_set_measurements, 'askDeleteUncheckedExistingMeasurements', 
         lambda *args, **kwargs: (False, True)
     )
     posData = load_posData(images_path)
@@ -547,7 +548,7 @@ def test_combined_input_not_computed_keeps_existing_values(
     posData.saveCombineMetrics()
 
     monkeypatch.setattr(
-        apps, 'askDeleteUncheckedExistingMeasurements', 
+        dialogs_set_measurements, 'askDeleteUncheckedExistingMeasurements', 
         lambda *args, **kwargs: (False, True)
     )
     win = build_dialog(posData, existing_cols=list(posData.acdc_df.columns))
@@ -640,7 +641,7 @@ def save_everything_then_answer(images_path, monkeypatch, delete):
     def answer(parent, colnames, **kwargs):
         asked.append(list(colnames))
         return False, delete
-    monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
+    monkeypatch.setattr(dialogs_set_measurements, 'askDeleteUncheckedExistingMeasurements', answer)
     return asked
 
 
@@ -924,7 +925,7 @@ def test_reused_selection_asks_again_for_columns_not_listed(
     def answer(parent, colnames, **kwargs):
         asked.append((list(colnames), kwargs))
         return False, False
-    monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
+    monkeypatch.setattr(dialogs_set_measurements, 'askDeleteUncheckedExistingMeasurements', answer)
     exp2 = tmp_path / 'exp2'
     inputs = [
         {
@@ -976,7 +977,7 @@ def test_dialog_checks_each_position_with_its_combined_measurements(
     def answer(parent, colnames, **kwargs):
         asked.append((list(colnames), kwargs))
         return False, True
-    monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
+    monkeypatch.setattr(dialogs_set_measurements, 'askDeleteUncheckedExistingMeasurements', answer)
     columns = [
         ['GFP_sum_meanProj', 'is_cell_dead'],
         ['GFP_sum_meanProj', 'GFP_p2only', 'phase_p2only'],

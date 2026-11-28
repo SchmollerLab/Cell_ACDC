@@ -8,8 +8,8 @@ from qtpy.QtGui import QIcon, QCursor, QGuiApplication, QPixmap, QPainter
 from qtpy.QtWidgets import QApplication
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import image_utils
+from cellacdc.shared.widgets import plot_items as widgets_plot_items
 from cellacdc import qutils
 from . import constants as gui_main_constants
 
@@ -328,7 +328,7 @@ class CursorsGuiElements:
 
         # Moved at every mouse move --> lightweight item (much faster than
         # a pg.ScatterPlotItem)
-        self.ax2_cursor = widgets.MirroredCursorItem(
+        self.ax2_cursor = widgets_plot_items.MirroredCursorItem(
             symbol=gui_main_constants.MIRRORED_CURSOR_PG_SYMBOL,
             size=gui_main_constants.FINAL_SIZE_CURSOR // 2,
             pen=pg.mkPen('w', width=1),
@@ -336,7 +336,7 @@ class CursorsGuiElements:
         )
         self.ax2.addItem(self.ax2_cursor, ignoreBounds=True)
 
-        self.ax1_cursor = widgets.MirroredCursorItem(
+        self.ax1_cursor = widgets_plot_items.MirroredCursorItem(
             symbol=gui_main_constants.MIRRORED_CURSOR_PG_SYMBOL,
             size=gui_main_constants.FINAL_SIZE_CURSOR // 2,
             pen=pg.mkPen('w', width=1),
@@ -510,7 +510,7 @@ class CursorsGuiElements:
         
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
-        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+        if not image_utils.is_in_bounds(xdata, ydata, X, Y):
             return
 
         self.isHoverZneighID = False

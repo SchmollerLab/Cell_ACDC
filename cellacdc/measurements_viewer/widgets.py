@@ -12,7 +12,7 @@ from qtpy.QtCore import Signal, QEvent, QRect
 from qtpy.QtGui import QIcon, QKeySequence
 from qtpy.QtWidgets import QAction, QStyleOptionViewItem
 import pyqtgraph as pg
-from cellacdc import widgets, qutils
+from cellacdc import qutils
 
 
 class MeasurementTreeModel(QStandardItemModel):
@@ -465,7 +465,7 @@ class _TimeCoursePlotItem(pg.PlotItem):
             pass  # deleted plot
 
 
-class _MeasurementColumnDelegate(widgets._ButtonSearchHighlightDelegate):
+class _MeasurementColumnDelegate(widgets_search_widgets._ButtonSearchHighlightDelegate):
     indicatorWidth = 28
 
     def initStyleOption(self, option, index):

@@ -29,8 +29,15 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 
 # Custom modules
 from .. import exception_handler, printl
-from .. import prompts, load, myutils, apps, load, widgets, html_utils
-from .. import workers
+from .. import prompts, load, load, html_utils
+from cellacdc.myutils import app_info, image_utils
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    item_views as widgets_item_views,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from .. import cellacdc_path, settings_folderpath
 from .. import io
 import skimage.io
@@ -98,11 +105,11 @@ class convertFileFormatWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
     def main(self):
-        most_recent_path = myutils.getMostRecentPath()
+        most_recent_path = filesystem.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, 'Select experiment folder containing Position_n folders '
                   'or specific Position_n folder', most_recent_path)
-        myutils.addToRecentPaths(exp_path)
+        filesystem.addToRecentPaths(exp_path)
 
         if exp_path == '':
             abort = self.doAbort()
@@ -114,7 +121,7 @@ class convertFileFormatWin(QMainWindow):
             f'Cell-ACDC - Convert .{self.from_} to .{self.to} - "{exp_path}"'
         )
 
-        folder_type = myutils.determine_folder_type(exp_path)
+        folder_type = filesystem.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
 
         print('Loading data...')
@@ -129,7 +136,7 @@ class convertFileFormatWin(QMainWindow):
                     'is not a valid folder. '
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = widgets.myMessageBox()
+                msg = widgets_message_box.myMessageBox()
                 msg.critical(
                     self, 'Incompatible folder', txt
                 )
@@ -187,7 +194,7 @@ class convertFileFormatWin(QMainWindow):
                 return
 
             for pos_i, images_path in enumerate(tqdm(images_paths, ncols=100)):
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 _basename = self.getBasename(
                     images_path, selectedFilenames
                 )
@@ -212,7 +219,7 @@ class convertFileFormatWin(QMainWindow):
             exit('Done.')
 
     def getBasename(self, images_path, selectedFilenames):
-        commonStartFilenames = myutils.filterCommonStart(images_path)
+        commonStartFilenames = filterCommonStart(images_path)
         selector = prompts.select_channel_name()
         _, noBasename = selector.get_available_channels(
             commonStartFilenames, images_path, useExt=None
@@ -261,7 +268,7 @@ class convertFileFormatWin(QMainWindow):
         if self.to == 'npy':
             np.save(newPath, data)
         elif self.to == 'tif':
-            myutils.to_tiff(newPath, data)
+            image_utils.to_tiff(newPath, data)
         elif self.to == 'npz':
             io.savez_compressed(newPath, data)
         print('')
@@ -273,10 +280,10 @@ class convertFileFormatWin(QMainWindow):
         return True
     
     def warnFileExisting(self, newFilePath):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(f"""
             The following file is already existing:<br><br>
-            <code>{myutils.trim_path(newFilePath, depth=4)}</code><br><br>
+            <code>{trim_path(newFilePath, depth=4)}</code><br><br>
             What do you want to do? 
         """)
         msg.addShowInFileManagerButton(newFilePath)
@@ -293,7 +300,7 @@ class convertFileFormatWin(QMainWindow):
         if msg.clickedButton == renameButton:
             folderName = os.path.dirname(newFilePath)
             filename, ext = os.path.splitext(os.path.basename(newFilePath))
-            win = apps.filenameDialog(
+            win = dialogs_file_selection.filenameDialog(
                 basename=filename, ext=ext, allowEmpty=False,
                 hintText='Insert a <b>filename</b> for the new file:<br>'
             )
@@ -305,7 +312,7 @@ class convertFileFormatWin(QMainWindow):
             
 
     def conversionDone(self, src, dst):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.setWidth(700)
         parent_path = os.path.dirname(dst)
         txt = (
@@ -326,7 +333,7 @@ class convertFileFormatWin(QMainWindow):
         )
         if basename.endswith('_'):
             basename = basename[:-1]
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             ext=self.to, title='New filename',
             hintText=hintText, parent=self, basename=basename
         )
@@ -336,7 +343,7 @@ class convertFileFormatWin(QMainWindow):
         return win.cancel, win.entryText
 
     def criticalNoCommonBasename(self, filenames, parent_path):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph(
             f'The file name <code>{filenames[0]}</code><br>'
             'does not follow <b>Cell-ACDC naming convention</b>.<br><br>'
@@ -354,7 +361,7 @@ class convertFileFormatWin(QMainWindow):
         )
 
     def selectFiles(self, images_path, filterExt=None):
-        files = myutils.listdir(images_path)
+        files = filesystem.listdir(images_path)
         if filterExt is not None:
             items = []
             for file in files:
@@ -365,7 +372,7 @@ class convertFileFormatWin(QMainWindow):
         else:
             items = files
 
-        selectFilesWidget = widgets.QDialogListbox(
+        selectFilesWidget = widgets_item_views.QDialogListbox(
             'Select files',
             f'Select the .{self.from_} files you want to convert to '
             f'.{self.to}\n\n'
@@ -393,7 +400,7 @@ class convertFileFormatWin(QMainWindow):
 
     def closeEvent(self, event):
         if not self.success:
-            msg = widgets.myMessageBox(showCentered=False)
+            msg = widgets_message_box.myMessageBox(showCentered=False)
             txt = html_utils.paragraph("""
                 Conversion process aborted.
             """)
@@ -409,7 +416,7 @@ class ImagesToPositions(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         
-        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        logger, logs_path, log_path, log_filename = app_info.setupLogger(
             module='converter'
         )
 
@@ -456,9 +463,9 @@ class ImagesToPositions(QDialog):
         textLayout.addStretch(1)
 
         buttonsLayout = QHBoxLayout()
-        stopButton = widgets.stopPushButton('Stop process')
-        startButton = widgets.playPushButton('    Start     ')
-        cancelButton = widgets.cancelPushButton('Close')
+        stopButton = widgets_push_buttons.stopPushButton('Stop process')
+        startButton = widgets_push_buttons.playPushButton('    Start     ')
+        cancelButton = widgets_push_buttons.cancelPushButton('Close')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -470,11 +477,11 @@ class ImagesToPositions(QDialog):
         self.stopButton = stopButton
 
         progressBarLayout = QHBoxLayout()
-        self.progressBar = widgets.ProgressBarWithETA(parent=self)
+        self.progressBar = widgets_basic_widgets.ProgressBarWithETA(parent=self)
         progressBarLayout.addWidget(self.progressBar)
         progressBarLayout.addWidget(self.progressBar.ETA_label)
         # self.progressBar.hide()
-        self.logConsole = widgets.QLogConsole(parent=self)
+        self.logConsole = widgets_basic_widgets.QLogConsole(parent=self)
 
         layout.addLayout(textLayout)
         layout.addSpacing(20)
@@ -499,7 +506,7 @@ class ImagesToPositions(QDialog):
         self.startButton.hide()
         self.stopButton.show()
 
-        MostRecentPath = myutils.getMostRecentPath()
+        MostRecentPath = filesystem.getMostRecentPath()
         folderPath = QFileDialog.getExistingDirectory(
             self, 'Select folder containing images', MostRecentPath
         )
@@ -516,7 +523,7 @@ class ImagesToPositions(QDialog):
             self.stop()
             return
         
-        myutils.addToRecentPaths(tagertFolderPath, logger=self.logger)
+        filesystem.addToRecentPaths(tagertFolderPath, logger=self.logger)
 
         textToAppendInstructions = html_utils.paragraph(
             'Insert a <b>name to append</b> at the end of each new .tif file.'
@@ -525,7 +532,7 @@ class ImagesToPositions(QDialog):
             'that ends with the same common name.<br><br>'
             'Typically, you can use this for the channel name, e.g., "GFP".'
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             ext='.tif', title='Insert text to append', 
             hintText=textToAppendInstructions,
             parent=self, allowEmpty=False
@@ -537,7 +544,7 @@ class ImagesToPositions(QDialog):
             return
 
         self.thread = QThread()
-        self.worker = workers.ImagesToPositionsWorker(
+        self.worker = ImagesToPositionsWorker(
             folderPath, tagertFolderPath, win.entryText
         )
         self.worker.moveToThread(self.thread)
@@ -590,13 +597,13 @@ class ImagesToPositions(QDialog):
         self.stopButton.hide()
 
         if self.worker.abort:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.warning(
                 self, 'Conversion process stopped', 
                 html_utils.paragraph('Conversion process stopped!')
             )
         else:
-            msg = widgets.myMessageBox()
+            msg = widgets_message_box.myMessageBox()
             msg.information(
                 self, 'Conversion completed', 
                 html_utils.paragraph('Conversion process completed!')
@@ -624,7 +631,7 @@ class ImagesToPositionsWorker(QObject):
         self.progress.emit(f'Selected folder: "{self.folderPath}"')
         self.progress.emit(f'Target folder: "{self.targetFolderPath}"')
         self.progress.emit(' ')
-        ls = myutils.listdir(self.folderPath)
+        ls = filesystem.listdir(self.folderPath)
         numFiles = len(ls)
         self.initPbar.emit(numFiles)
         numPosDigits = len(str(numFiles))
@@ -660,7 +667,7 @@ class ImagesToPositionsWorker(QObject):
                 relPath = os.path.join(posName, 'Images', newFilename)
                 tifFilePath = os.path.join(imagesPath, newFilename)
                 self.progress.emit(f'Saving to file: ...{os.sep}{relPath}')
-                myutils.to_tiff(
+                image_utils.to_tiff(
                     tifFilePath, data
                 )
                 pos += 1

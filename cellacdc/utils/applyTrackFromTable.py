@@ -4,7 +4,15 @@ from functools import partial
 import pandas as pd
 
 from .. import exception_handler
-from .. import myutils, apps, widgets, html_utils, printl, workers
+from .. import html_utils, printl
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
+from . import segm_workers
 from ..utils import base
 
 from qtpy.QtWidgets import QFileDialog
@@ -19,7 +27,7 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
             self, app, title: str, infoText: str, parent=None,
             callbackOnFinished=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             app, title, module, infoText, parent
         )
@@ -35,7 +43,7 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
         if not endFilenameSegm:
             return False
         
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             'After clicking "Ok" you will be asked to <b>select the table '
             'file</b> (.csv) containing the <b>tracking information</b>.'
@@ -56,7 +64,7 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
 
         df = pd.read_csv(csvPath, nrows=2)
 
-        win = apps.ApplyTrackTableSelectColumnsDialog(df, parent=self)
+        win = ApplyTrackTableSelectColumnsDialog(df, parent=self)
         win.exec_()
         if win.cancel:
             return False
@@ -74,14 +82,14 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
         
         imagesPath = os.path.join(posPath, 'Images')
         segmFilename = [
-            f for f in myutils.listdir(imagesPath) 
+            f for f in filesystem.listdir(imagesPath) 
             if f.endswith(f'{endFilenameSegm}.npz')
         ][0]
         basename = os.path.splitext(segmFilename)[0]
-        overWriteButton = widgets.savePushButton(
+        overWriteButton = widgets_push_buttons.savePushButton(
             'Overwrite existing segmentation file'
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=f'{basename}_',
             hintText='Insert a <b>filename for the tracked</b> masks file:',
             allowEmpty=False, defaultEntry='tracked', 
@@ -92,7 +100,7 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
         if win.cancel:
             return False
 
-        self.worker = workers.ApplyTrackInfoWorker(
+        self.worker = segm_workers.ApplyTrackInfoWorker(
             self, endFilenameSegm, csvPath, win.filename, columnsInfo, posPath
         )
         if self.callbackOnFinished is not None:
@@ -133,7 +141,7 @@ class ApplyTrackTableSelectColumnsDialog(dialogs_base.QBaseDialog):
 
         formLayout = QFormLayout()
 
-        self.frameIndexCombobox = widgets.QCenteredComboBox()
+        self.frameIndexCombobox = widgets_combo_boxes.QCenteredComboBox()
         self.frameIndexCombobox.addItems(df.columns)
         self.frameIndexCheckbox = QCheckBox('1st frame is index 1')
         frameIndexLayout = QHBoxLayout()
@@ -145,36 +153,36 @@ class ApplyTrackTableSelectColumnsDialog(dialogs_base.QBaseDialog):
             'Frame index: ', frameIndexLayout
         )
 
-        self.trackedIDsCombobox = widgets.QCenteredComboBox()
+        self.trackedIDsCombobox = widgets_combo_boxes.QCenteredComboBox()
         self.trackedIDsCombobox.addItems(df.columns)
         formLayout.addRow('Tracked IDs: ', self.trackedIDsCombobox)
 
         items = df.columns.to_list()
         items.insert(0, 'None')
-        self.maskIDsCombobox = widgets.QCenteredComboBox()
+        self.maskIDsCombobox = widgets_combo_boxes.QCenteredComboBox()
         self.maskIDsCombobox.addItems(items)
         formLayout.addRow('Segmentation mask IDs: ', self.maskIDsCombobox)
 
-        self.xCentroidCombobox = widgets.QCenteredComboBox()
+        self.xCentroidCombobox = widgets_combo_boxes.QCenteredComboBox()
         self.xCentroidCombobox.addItems(items)
         formLayout.addRow('X coord. centroid: ', self.xCentroidCombobox)
 
-        self.yCentroidCombobox = widgets.QCenteredComboBox()
+        self.yCentroidCombobox = widgets_combo_boxes.QCenteredComboBox()
         self.yCentroidCombobox.addItems(items)
         formLayout.addRow('Y coord. centroid: ', self.yCentroidCombobox)
 
-        self.parentIDcombobox = widgets.QCenteredComboBox()
+        self.parentIDcombobox = widgets_combo_boxes.QCenteredComboBox()
         self.parentIDcombobox.addItems(items)
         formLayout.addRow('Parent ID (optional): ', self.parentIDcombobox)
 
         deleteUntrackedLayout = QHBoxLayout()
-        self.deleteUntrackedIDsToggle = widgets.Toggle()
+        self.deleteUntrackedIDsToggle = widgets_push_buttons.Toggle()
         deleteUntrackedLayout.addStretch(1)
         deleteUntrackedLayout.addWidget(self.deleteUntrackedIDsToggle)
         deleteUntrackedLayout.addStretch(1)
         formLayout.addRow('Delete untracked IDs: ', deleteUntrackedLayout)
         
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -207,7 +215,7 @@ class ApplyTrackTableSelectColumnsDialog(dialogs_base.QBaseDialog):
         self.close()
     
     def warnInvalidSelection(self):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg = widgets_message_box.myMessageBox(showCentered=False, wrapText=False)
         msg.warning(
             self, 'Invalid selection', html_utils.paragraph(
                 f'<b>Invalid selection</b><br> {self.instructionsText}'

@@ -36,7 +36,8 @@ import pandas as pd
 
 from tqdm import tqdm
 
-from . import load, myutils
+from . import load
+from cellacdc.myutils import filesystem, image_utils, table_utils
 from . import cca_df_colnames, printl, base_cca_dict, base_cca_tree_dict
 from . import features
 from . import error_up_str
@@ -51,7 +52,7 @@ from . import io
 from . import measurements
 from . import favourite_func_metrics_csv_path
 from . import default_index_cols
-from . import myutils_models
+from cellacdc.myutils import model_modules
 
 from ._types import (
     ChannelsDict
@@ -372,7 +373,7 @@ def track_sub_cell_objects_third_segm_acdc_df(
         rp = skimage.measure.regionprops(lab)
         IDs = [obj.label for obj in rp]
         if frame_i not in parent_objs_acdc_df.index.get_level_values(0):
-            acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+            acdc_df_frame_i = table_utils.getBaseAcdcDf(rp)
         else:
             acdc_df_frame_i = parent_objs_acdc_df.loc[frame_i]
             cols = acdc_df_frame_i.columns.intersection(all_non_metrics_cols)
@@ -405,9 +406,9 @@ def track_sub_cell_objects_acdc_df(
         sub_ids = [sub_obj.label for sub_obj in rp_sub]
         old_sub_ids = all_old_sub_ids[frame_i]
         if subobj_acdc_df is None:
-            sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
+            sub_acdc_df_frame_i = table_utils.getBaseAcdcDf(rp_sub)
         elif frame_i not in subobj_acdc_df.index.get_level_values(0):
-            sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
+            sub_acdc_df_frame_i = table_utils.getBaseAcdcDf(rp_sub)
         else:
             sub_acdc_df_frame_i = (
                 subobj_acdc_df.loc[frame_i].rename(index=old_sub_ids) 
@@ -429,7 +430,7 @@ def track_sub_cell_objects_acdc_df(
             # --> check with `IDs_with_sub_obj = ... if id in lab`
             IDs_with_sub_obj = [id for id in sub_ids if id in lab]
             if cells_acdc_df is None:
-                acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+                acdc_df_frame_i = table_utils.getBaseAcdcDf(rp)
             else:
                 acdc_df_frame_i = cells_acdc_df.loc[[frame_i]].copy()
            
@@ -929,7 +930,7 @@ def annotate_lineage_tree_from_labels(tracked_labels, labels_to_IDs_mapper):
     return cca_dfs
 
 def getBaseCca_df(IDs, with_tree_cols=False):
-    return myutils_models.getBaseCca_df(IDs, with_tree_cols=with_tree_cols)
+    return model_modules.getBaseCca_df(IDs, with_tree_cols=with_tree_cols)
 
 def apply_tracking_from_table(
         segmData, trackColsInfo, src_df, signal=None, logger=print, 
@@ -2596,7 +2597,7 @@ def combine_channels_func(
     channel_names = [step['channel'] for step in inputs_info.values()]
     channel_keys = inputs_info.keys()
     segm_channels, fluo_channel_names, current_segm = (
-        myutils.separate_fluo_segment_channels(channel_names)
+        filesystem.separate_fluo_segment_channels(channel_names)
     )
     original_dtype = None
     
@@ -2612,7 +2613,7 @@ def combine_channels_func(
             if original_dtype is None:
                 original_dtype = ch_image_data.dtype
             
-            ch_image_data = myutils.img_to_float(ch_image_data)
+            ch_image_data = image_utils.img_to_float(ch_image_data)
             target_dims, target_shape = _update_target_shape_target_dims(
                  target_dims, target_shape, ch_image_data
             )
@@ -2654,7 +2655,7 @@ def combine_channels_func(
                 fluo_data_dict[channel_full_name], key, n_dim)
             if original_dtype is None:
                 original_dtype = channel_img_data.dtype
-            channel_img_data_float = myutils.img_to_float(channel_img_data)
+            channel_img_data_float = image_utils.img_to_float(channel_img_data)
             target_dims, target_shape = _update_target_shape_target_dims(
                 target_dims, target_shape, channel_img_data_float
             )
@@ -2770,10 +2771,10 @@ def combine_channels_func(
     txt = ''
     if keep_input_data_type and not output_as_segm:
         try:
-            output_img = myutils.convert_to_dtype(
+            output_img = image_utils.convert_to_dtype(
                 output_img, original_dtype
             )
-            method = 'cellacdc.myutils.convert_to_dtype'
+            method = 'cellacdc.myutils.image_utils.convert_to_dtype'
             warning = 'safe'
             prefix = ''
         except Exception as err:
@@ -3230,7 +3231,7 @@ def count_objects_and_init_rps(posData: 'load.loadData', logger_func=print):
     logger_func('Counting total number of segmented objects...')
     pbar = tqdm(total=len(segm_data), ncols=100)
     for i, lab in enumerate(segm_data):
-        posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+        posData.allData_li[i] = table_utils.get_empty_stored_data_dict()
         rp = regionprops.acdcRegionprops(lab)
         IDs = rp.IDs_set      
         posData.allData_li[i]['regionprops'] = rp
@@ -3437,7 +3438,7 @@ def apply_func_to_imgs(image:np.ndarray,
         target_shape, dtype=target_type
     )
 
-    input_output_mapper = myutils.get_input_output_mapper(
+    input_output_mapper = image_utils.get_input_output_mapper(
         image_shape, iter_axis, target_shape, target_axis_iter
     )
 

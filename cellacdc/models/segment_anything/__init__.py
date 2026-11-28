@@ -1,11 +1,11 @@
-from cellacdc import myutils
+from cellacdc.myutils import downloads, model_installs
 
-myutils.check_install_segment_anything()
+model_installs.check_install_segment_anything()
 
 import os
 from cellacdc import segment_anything_weights_filenames
 
-_, sam_models_path = myutils.get_model_path('segment_anything', create_temp_dir=False)
+_, sam_models_path = downloads.get_model_path('segment_anything', create_temp_dir=False)
 
 model_types = {
     'Large': ('default', segment_anything_weights_filenames[0]), 

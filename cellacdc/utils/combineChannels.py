@@ -2,7 +2,13 @@ import os
 
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils, load
+from .. import html_utils, load
+from cellacdc.myutils import filesystem
+from cellacdc.shared.dialogs import file_selection as dialogs_file_selection
+from cellacdc.shared.widgets import (
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
@@ -20,7 +26,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
         ):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -28,7 +34,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
 
     def runWorker(self):
-        self.worker = workers.CombineChannelsWorkerUtil(self)
+        self.worker = CombineChannelsWorkerUtil(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigAskSetup.connect(self.askSetup)
         self.worker.sigAborted.connect(self.workerAborted)
@@ -42,7 +48,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
                 self.images_paths.append(images_path)
-                basename, chNames_loc = myutils.getBasenameAndChNames(
+                basename, chNames_loc = filesystem.getBasenameAndChNames(
                     images_path
                 )
                 segm_files = load.get_segm_files(images_path)
@@ -63,7 +69,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         self.worker.basename = basename
         df_metadata = load.load_metadata_df(images_path)
     
-        win = apps.CombineChannelsSetupDialogUtil(
+        win = CombineChannelsSetupDialogUtil(
             chNames,
             df_metadata=df_metadata,
             parent=self
@@ -107,7 +113,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             the name will be the same as the original file base.
             """
         )
-        win = apps.filenameDialog(
+        win = dialogs_file_selection.filenameDialog(
             basename=f'{basename}{basename_ext}',
             ext=ext,
             hintText=f'Insert a name for the <b>{"combined channels" if not saveAsSegm else "combined segmentation"}</b> file:',
@@ -134,7 +140,7 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
         else:
             txt = 'Channel combination completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
@@ -163,7 +169,7 @@ class CombineChannelsSetupDialogUtil(dialogs_preprocessing.CombineChannelsSetupD
         self.mainLayout.addSpacing(20)
 
         qutils.hide_and_delete_layout(self.buttonsLayout)
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout()
         self.buttonsLayout = buttonsLayout
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -212,7 +218,7 @@ class CombineChannelsWorkerUtil(utils_base.BaseWorkerUtil):
             basename_ext = ''
         
         for images_path in image_paths:
-            basename, channels = myutils.getBasenameAndChNames(images_path)
+            basename, channels = filesystem.getBasenameAndChNames(images_path)
             
             savename = (
                 f'{basename}{basename_ext}{appended_text_filename}{out_ext}'

@@ -25,7 +25,8 @@ from qtpy.QtWidgets import (
     QDialog, QSpacerItem, QFrame
 )
 from cellacdc import _window_stacking
-from cellacdc import myutils, is_mac, html_utils
+from cellacdc import is_mac, html_utils
+from cellacdc.myutils import filesystem, misc
 from cellacdc import _base_widgets
 from . import style as widgets_style
 from . import push_buttons as widgets_push_buttons
@@ -110,7 +111,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
             txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
         self.showInFileManagButton = widgets_push_buttons.showInFileManagerButton(txt)
         self.buttonsLayout.addWidget(self.showInFileManagButton)
-        func = partial(myutils.showInExplorer, path)
+        func = partial(filesystem.showInExplorer, path)
         self.showInFileManagButton.clicked.connect(func)
     
     def addBrowseUrlButton(self, url, button_text=''):
@@ -498,7 +499,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
                 self.addImage(image_path)
         
         if layouts is not None:
-            if myutils.is_iterable(layouts):
+            if misc.is_iterable(layouts):
                 for layout in layouts:
                     self.addLayout(layout)
             else:
@@ -507,7 +508,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
         if widgets is not None:
             self._layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
             self.currentRow += 1
-            if myutils.is_iterable(widgets):
+            if misc.is_iterable(widgets):
                 for widget in widgets:
                     self.addWidget(widget)
             else:

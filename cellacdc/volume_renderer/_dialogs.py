@@ -6,7 +6,11 @@ from qtpy.QtWidgets import (
     QVBoxLayout, QGridLayout, QLabel, QComboBox
 )
 
-from .. import widgets, printl
+from .. import printl
+from cellacdc.shared.widgets import (
+    basic_widgets as widgets_basic_widgets,
+    push_buttons as widgets_push_buttons,
+)
 
 from .._base_widgets import QBaseDialog
 
@@ -38,7 +42,7 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
 
         row = 0
         label = QLabel('Elevation angle ')
-        hline = widgets.QHLine()
+        hline = widgets_basic_widgets.QHLine()
         self.elevationOrderCombobox = QComboBox()
         self.elevationOrderCombobox.addItems(paramOrderItems)
         self.elevationOrderCombobox.setCurrentText('1')
@@ -58,7 +62,7 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
 
         row = 2
         label = QLabel('Azimuth angle ')
-        hline = widgets.QHLine()
+        hline = widgets_basic_widgets.QHLine()
         self.azimuthOrderCombobox = QComboBox()
         self.azimuthOrderCombobox.addItems(paramOrderItems)
         self.azimuthOrderCombobox.setCurrentText('2')
@@ -114,7 +118,7 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
 
         row = 6
         label = QLabel('Z Position ')
-        hline = widgets.QHLine()
+        hline = widgets_basic_widgets.QHLine()
         self.zPosOrderCombobox = QComboBox()
         self.zPosOrderCombobox.addItems(paramOrderItems)
         self.zPosOrderCombobox.setCurrentText('5')
@@ -134,7 +138,7 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
 
         row = 8
         label = QLabel('Distance (zoom) ')
-        hline = widgets.QHLine()
+        hline = widgets_basic_widgets.QHLine()
         self.distanceOrderCombobox = QComboBox()
         self.distanceOrderCombobox.addItems(paramOrderItems)
         self.distanceOrderCombobox.setCurrentText('6')
@@ -154,8 +158,8 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
 
         paramsLayout.setColumnStretch(0, 0)
 
-        playAllButton = widgets.playPushButton('Play all')
-        buttonsLayout = widgets.CancelOkButtonsLayout(
+        playAllButton = widgets_push_buttons.playPushButton('Play all')
+        buttonsLayout = widgets_push_buttons.CancelOkButtonsLayout(
             additionalButtons=(playAllButton,)
         )
 

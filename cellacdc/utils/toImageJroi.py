@@ -1,4 +1,6 @@
-from .. import myutils, workers, widgets, html_utils
+from .. import html_utils
+from cellacdc.myutils import filesystem
+from cellacdc.shared.widgets import message_box as widgets_message_box
 
 from .base import NewThreadMultipleExpBaseUtil
 import os
@@ -14,7 +16,7 @@ class toImageRoiUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None):
-        module = myutils.get_module_name(__file__)
+        module = filesystem.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
@@ -22,7 +24,7 @@ class toImageRoiUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.ToImajeJroiWorker(self)
+        self.worker = ToImajeJroiWorker(self)
         super().runWorker(self.worker)
     
     def showEvent(self, event):
@@ -32,7 +34,7 @@ class toImageRoiUtil(NewThreadMultipleExpBaseUtil):
         super().workerFinished(worker)
         txt = 'Converting to ImageJ ROIs completed.'
         self.logger.info(txt)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, 'Process completed', html_utils.paragraph(txt))
         self.close()
 
@@ -70,7 +72,7 @@ class ToImajeJroiWorker(utils_base.BaseWorkerUtil):
 
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameSegm = self.mainWin.endFilenameSegm
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 
                 files_path = [
                     os.path.join(images_path, f) for f in ls 
@@ -104,13 +106,13 @@ class ToImajeJroiWorker(utils_base.BaseWorkerUtil):
                     rois = []
                     max_ID = posData.segm_data.max()
                     for t, lab in enumerate(posData.segm_data):
-                        rois_t = myutils.from_lab_to_imagej_rois(
+                        rois_t = from_lab_to_imagej_rois(
                             lab, ImagejRoi, t=t, SizeT=posData.SizeT, 
                             max_ID=max_ID
                         )
                         rois.extend(rois_t)
                 else:
-                    rois = myutils.from_lab_to_imagej_rois(
+                    rois = from_lab_to_imagej_rois(
                         posData.segm_data, ImagejRoi
                     )
 

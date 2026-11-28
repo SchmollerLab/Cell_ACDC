@@ -22,7 +22,8 @@ from functools import wraps
 import numpy as np
 import traceback
 from qtpy.QtCore import Signal, QObject
-from cellacdc import myutils, printl
+from cellacdc import printl
+from cellacdc.myutils import image_utils
 
 
 DEBUG = False
@@ -303,7 +304,7 @@ class CustomPreprocessWorkerGUI(QObject):
             return preprocessed_data
 
         try:
-            preprocessed_data = myutils.convert_to_dtype(
+            preprocessed_data = image_utils.convert_to_dtype(
                 preprocessed_data, image.dtype
             )
         except Exception as err:

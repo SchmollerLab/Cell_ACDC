@@ -23,8 +23,9 @@ from qtpy.QtWidgets import (
     QHBoxLayout, QCheckBox, QWidget, QLineEdit, QGridLayout, QPushButton,
     QFrame
 )
-from cellacdc import myutils, is_mac, html_utils
-from cellacdc import apps
+from cellacdc import is_mac, html_utils
+from cellacdc.myutils import filesystem
+from ..dialogs import generic as dialogs_generic
 from cellacdc import QtScoped
 from cellacdc.acdc_regex import float_regex
 from cellacdc.config import STANDARD_MOUSE_BUTTONS
@@ -186,10 +187,10 @@ class filePathControl(QFrame):
         if not os.path.isdir(path):
             path = os.path.dirname(path)
         
-        myutils.showInExplorer(path)      
+        filesystem.showInExplorer(path)      
 
     def browseRecentPaths(self):
-        recent_paths, dates = myutils.get_recent_paths(self)
+        recent_paths, dates = filesystem.get_recent_paths(self)
         if not recent_paths:
             msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
             txt = html_utils.paragraph(
@@ -204,7 +205,7 @@ class filePathControl(QFrame):
         except Exception as err:
             pass
 
-        self.recentPathsDialog = apps.SearchableListboxDialog(
+        self.recentPathsDialog = dialogs_generic.SearchableListboxDialog(
             recent_paths,
             title='Select recent paths',
             searchLineEditText='Search recent paths...',

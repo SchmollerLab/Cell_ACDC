@@ -10,8 +10,11 @@ from qtpy.QtWidgets import QApplication, QMenu
 
 import pyqtgraph as pg
 
-from cellacdc import widgets, workers
-from cellacdc.gui import guiWin
+from cellacdc.gui.mixins import widgets as gui_mixin_widgets
+from cellacdc.gui.widgets import points_layer_widgets as gui_widgets_points_layer_widgets
+from cellacdc.gui.workers import segmentation_tracking as gui_workers_segmentation_tracking
+from cellacdc.shared.widgets import plot_items as widgets_plot_items
+from cellacdc.gui.main_window.window import guiWin
 from cellacdc.service.client import ModelClient
 
 pytestmark = pytest.mark.gui
@@ -30,7 +33,7 @@ def popped(monkeypatch):
 
 
 def _box(app, editable=True):
-    return widgets.PromptBoxROI(
+    return gui_widgets_points_layer_widgets.PromptBoxROI(
         (10, 20), (30, 40), 7, (255, 0, 0),
         maxBounds=QRectF(QRect(0, 0, 100, 100)), editable=editable,
         boxData={'id': 7}
@@ -81,7 +84,7 @@ def test_prompt_box_roi(app, popped):
 
     state = roi.getState()
     for handle in roi.getHandles():
-        assert isinstance(handle, widgets._PromptBoxHandle)
+        assert isinstance(handle, gui_widgets_points_layer_widgets._PromptBoxHandle)
         event = DragEvent()
         handle.mouseDragEvent(event)
         assert event.ignored
@@ -100,7 +103,7 @@ def test_prompt_box_roi(app, popped):
 
 
 def test_supported_prompt_types_keep_the_current_type(app):
-    toolbar = widgets.MagicPromptsToolbar(None)
+    toolbar = gui_widgets_points_layer_widgets.MagicPromptsToolbar(None)
     toolbar.setSupportedPromptTypes(('point', 'box'))
     assert toolbar.promptType() == 'point'
     toolbar.setPromptType('box')
@@ -120,11 +123,11 @@ def test_frame_change_keeps_box_prompts(app):
     """Changing frame removes the deletion ROIs of the frame, not the other
     ROIs (box prompts, box being drawn, label ROI)."""
     gui = SimpleNamespace(
-        pos_i=0, labelRoiItem=widgets.ROI((0, 0), (0, 0)),
+        pos_i=0, labelRoiItem=gui_mixin_widgets.ROI((0, 0), (0, 0)),
         data=[SimpleNamespace(
             frame_i=0, allData_li=[{'delROIs_info': {'rois': []}}]
         )],
-        ax1=widgets.MainPlotItem(), ax2=widgets.MainPlotItem(),
+        ax1=widgets_plot_items.MainPlotItem(), ax2=widgets_plot_items.MainPlotItem(),
     )
     delRoi = pg.ROI((1, 1), (5, 5))
     gui.ax1.addDelRoiItem(delRoi, 'del1')
@@ -132,7 +135,7 @@ def test_frame_change_keeps_box_prompts(app):
     gui.ax2.addDelRoiItem(delRoi2, 'del2')
     boxRoi = _box(app)
     gui.ax1.addItem(boxRoi, ignoreBounds=True)
-    drawingRoi = widgets.ROI((20, 20), (3, 3))
+    drawingRoi = gui_mixin_widgets.ROI((20, 20), (3, 3))
     gui.ax1.addItem(drawingRoi)
     gui.ax1.addItem(gui.labelRoiItem)
 
@@ -212,7 +215,7 @@ def test_worker_sends_the_image_with_the_prompts_only_if_needed(
         [(0, 2, np.nan, 1, 1, 8, 8)],
         columns=['frame_i', 'id', 'z', 'ymin', 'xmin', 'ymax', 'xmax']
     )
-    worker = workers.MagicPromptsWorker(
+    worker = gui_workers_segmentation_tracking.MagicPromptsWorker(
         posData, image, df_points, model, {}, image_origin=origin,
         global_image=img_data[0], df_boxes=df_boxes
     )

@@ -14,8 +14,12 @@ from qtpy.QtWidgets import (
 )
 from cellacdc import _window_stacking
 from cellacdc import load, html_utils
-from cellacdc import myutils
-from cellacdc import widgets
+from cellacdc.myutils import filesystem
+from ..widgets import (
+    line_edits as widgets_line_edits,
+    message_box as widgets_message_box,
+    push_buttons as widgets_push_buttons,
+)
 
 
 class QDialogMetadata(QDialog):
@@ -77,7 +81,7 @@ class QDialogMetadata(QDialog):
         self.SizeT_SpinBox = QSpinBox()
         self.SizeT_SpinBox.setMinimum(1)
         self.SizeT_SpinBox.setMaximum(2147483647)
-        SizeTinfoButton = widgets.infoPushButton()
+        SizeTinfoButton = widgets_push_buttons.infoPushButton()
         self.allowEditSizeTcheckbox = QCheckBox('Let me edit it')
         if ask_SizeT:
             self.SizeT_SpinBox.setValue(SizeT)
@@ -115,7 +119,7 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.TimeIncrementLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.TimeIncrementSpinBox = widgets.FloatLineEdit()
+        self.TimeIncrementSpinBox = widgets_line_edits.FloatLineEdit()
         self.TimeIncrementSpinBox.setValue(TimeIncrement)
         gridLayout.addWidget(self.TimeIncrementSpinBox, row, 1)
 
@@ -128,7 +132,7 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.PhysicalSizeZLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.PhysicalSizeZSpinBox = widgets.FloatLineEdit()
+        self.PhysicalSizeZSpinBox = widgets_line_edits.FloatLineEdit()
         self.PhysicalSizeZSpinBox.setValue(PhysicalSizeZ)
         gridLayout.addWidget(self.PhysicalSizeZSpinBox, row, 1)
 
@@ -141,7 +145,7 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.PhysicalSizeYLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.PhysicalSizeYSpinBox = widgets.FloatLineEdit()
+        self.PhysicalSizeYSpinBox = widgets_line_edits.FloatLineEdit()
         self.PhysicalSizeYSpinBox.setValue(PhysicalSizeY)
         gridLayout.addWidget(self.PhysicalSizeYSpinBox, row, 1)
 
@@ -154,7 +158,7 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.PhysicalSizeXLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.PhysicalSizeXSpinBox = widgets.FloatLineEdit()
+        self.PhysicalSizeXSpinBox = widgets_line_edits.FloatLineEdit()
         self.PhysicalSizeXSpinBox.setValue(PhysicalSizeX)
         gridLayout.addWidget(self.PhysicalSizeXSpinBox, row, 1)
 
@@ -163,7 +167,7 @@ class QDialogMetadata(QDialog):
             self.PhysicalSizeXLabel.hide()
 
         row += 1
-        self.isSegm3Dtoggle = widgets.Toggle()
+        self.isSegm3Dtoggle = widgets_push_buttons.Toggle()
         if posData is not None:
             self.isSegm3Dtoggle.setChecked(posData.getIsSegm3D())
             disableToggle = (
@@ -198,8 +202,8 @@ class QDialogMetadata(QDialog):
         self.SizeZvalueChanged(SizeZ)
 
         self.additionalFieldsWidgets = []
-        addFieldButton = widgets.addPushButton('Add custom field')
-        addFieldInfoButton = widgets.infoPushButton()
+        addFieldButton = widgets_push_buttons.addPushButton('Add custom field')
+        addFieldInfoButton = widgets_push_buttons.infoPushButton()
         addFieldInfoButton.clicked.connect(self.showAddFieldInfo)
         addFieldButton.clicked.connect(self.addField)
         addFieldLayout = QHBoxLayout()
@@ -212,7 +216,7 @@ class QDialogMetadata(QDialog):
             okTxt = 'Apply only to this Position'
         else:
             okTxt = 'Ok for loaded Positions'
-        okButton = widgets.okPushButton(okTxt)
+        okButton = widgets_push_buttons.okPushButton(okTxt)
         okButton.setToolTip(
             'Save metadata only for current positionh'
         )
@@ -242,7 +246,7 @@ class QDialogMetadata(QDialog):
             self.selectButton = None
             okButton.setText('Ok')
 
-        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
 
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -286,7 +290,7 @@ class QDialogMetadata(QDialog):
             Note that you can still edit the number of frames if you need to correct it.<br>
             However, <b>you can only edit the metadata</b>, then the loading process will be stopped.
         """)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         msg.information(
             self, 'Why is the number of frames grayed out?', txt
         )
@@ -307,7 +311,7 @@ class QDialogMetadata(QDialog):
         nameWidget.setAlignment(Qt.AlignCenter)
         valueWidget = QLineEdit()
         valueWidget.setAlignment(Qt.AlignCenter)
-        removeButton = widgets.delPushButton()
+        removeButton = widgets_push_buttons.delPushButton()
 
         fieldLayout = QGridLayout()
         fieldLayout.addWidget(QLabel('Name'), 0, 0)
@@ -345,7 +349,7 @@ class QDialogMetadata(QDialog):
         self.mainLayout.removeItem(layoutToRemove)
 
     def showAddFieldInfo(self):
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         txt = html_utils.paragraph("""
             Add a <b>field (name and value)</b> that will be saved to the
             <code>metadata.csv</code> file and as a column in the
@@ -373,7 +377,7 @@ class QDialogMetadata(QDialog):
             '"Load folder" button.'
             '</i>'
         )
-        msg = widgets.myMessageBox()
+        msg = widgets_message_box.myMessageBox()
         msg.setIcon()
         msg.setWindowTitle(f'3D segmentation info')
         msg.addText(html_utils.paragraph(txt))
@@ -457,7 +461,7 @@ class QDialogMetadata(QDialog):
             but you are requesting to <b>change it to {Size}</b>.<br><br>
             Are you <b>sure you want to proceed</b>?
         """)
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False, showCentered=False)
         _, noButton, yesButton = msg.warning(
             self, 'WARNING: Edinting saved metadata', txt, 
             buttonsTexts=('Cancel', 'No', 'Yes, edit the metadata')
@@ -502,7 +506,7 @@ class QDialogMetadata(QDialog):
 
         if self.posData is not None and self.sender() != self.okButton:
             exp_path = self.posData.exp_path
-            pos_foldernames = myutils.get_pos_foldernames(exp_path)
+            pos_foldernames = filesystem.get_pos_foldernames(exp_path)
             if self.sender() == self.selectButton:
                 select_folder = load.select_exp_folder()
                 select_folder.pos_foldernames = pos_foldernames
@@ -512,7 +516,7 @@ class QDialogMetadata(QDialog):
                 pos_foldernames = select_folder.selected_pos
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, 'Images')
-                ls = myutils.listdir(images_path)
+                ls = filesystem.listdir(images_path)
                 search = [file for file in ls if file.find('metadata.csv')!=-1]
                 metadata_df = None
                 if search:
@@ -550,7 +554,7 @@ class QDialogMetadata(QDialog):
                             f'<code>{acdc_df_path}</code><br><br>'
                             'Close file and then press "Ok".'
                         )
-                        msg = widgets.myMessageBox()
+                        msg = widgets_message_box.myMessageBox()
                         msg.critical(self, 'Permission denied', err_msg)
                         acdc_df.to_csv(acdc_df_path, index=False)
 
@@ -600,11 +604,11 @@ class QDialogMetadata(QDialog):
                 What do you want to do?
             """)
         
-        msg = widgets.myMessageBox(wrapText=False)
+        msg = widgets_message_box.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(txt)
         
-        continueButton = widgets.okPushButton('Continue anyway')
-        correctButton = widgets.editPushButton('Let me correct')
+        continueButton = widgets_push_buttons.okPushButton('Continue anyway')
+        correctButton = widgets_push_buttons.editPushButton('Let me correct')
         
         msg.warning(
             self, 'Shape-metadata mismatch', txt,

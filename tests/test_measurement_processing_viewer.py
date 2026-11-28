@@ -10,8 +10,19 @@ from qtpy.QtCore import QItemSelectionModel, QMutex, QWaitCondition, Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QLabel, QWidget
 
-from cellacdc import apps, apps_measurements_viewer, measurements_viewer, widgets, workers
-from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc.measurements_viewer import (
+    annotation_data as viewer_annotation_data,
+    workers as viewer_workers,
+)
+from cellacdc.measurements_viewer.dialogs import processing_recipe as viewer_dialogs_processing_recipe
+from cellacdc.shared.dialogs import preprocessing as dialogs_preprocessing
+from cellacdc.shared.widgets import (
+    combo_boxes as widgets_combo_boxes,
+    message_box as widgets_message_box,
+)
+from cellacdc.shared.workers import base as workers_base
+from qtpy.QtWidgets import QFileDialog
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from tests.conftest import flushDeferredDeletes
 
 pytestmark = pytest.mark.viewer
@@ -68,7 +79,7 @@ def select_measurements(dialog, names):
 
 
 def test_measurement_recipe_ui_uses_separate_registry_and_defaults(app):
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(['area', 'intensity'])
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(['area', 'intensity'])
     params = dialog.preProcessParamsWidget
     assert params.recipe() == [
         {'method': 'Smooth measurement', 'kwargs': {'window': 3}}
@@ -77,7 +88,7 @@ def test_measurement_recipe_ui_uses_separate_registry_and_defaults(app):
     assert [selector.itemText(i) for i in range(selector.count())] == [
         'Smooth measurement', 'Min-max normalization', 'Ramp detection'
     ]
-    imageSelector = widgets.PreProcessingSelector()
+    imageSelector = widgets_combo_boxes.PreProcessingSelector()
     assert imageSelector.preprocessMapper is not selector.preprocessMapper
     assert dialog.keepInputDataTypeToggle.isHidden()
     assert any(
@@ -99,12 +110,12 @@ def test_measurement_recipe_ui_uses_separate_registry_and_defaults(app):
 
 
 def test_recipe_parameters_roundtrip(app, dummy_processor):
-    original = apps_measurements_viewer.MeasurementProcessingParamsWidget()
+    original = viewer_dialogs_processing_recipe.MeasurementProcessingParamsWidget()
     original.stepsWidgets[1]['step_kwargs'] = {'window': 7}
     original.addStep()
     original.stepsWidgets[2]['selector'].setCurrentText('Dummy')
     saved = original.recipeConfigPars('acdc')
-    loaded = apps_measurements_viewer.MeasurementProcessingParamsWidget()
+    loaded = viewer_dialogs_processing_recipe.MeasurementProcessingParamsWidget()
     loaded.stepsWidgets[1]['step_kwargs'] = {'window': 99}
     loaded.loadRecipe({section: saved[section] for section in saved.sections()})
     assert loaded.recipe() == original.recipe()
@@ -113,10 +124,10 @@ def test_recipe_parameters_roundtrip(app, dummy_processor):
 
 
 def test_empty_measurement_selection_is_rejected(app, monkeypatch):
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(['area'])
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(['area'])
     dialog.listSelector.clearSelection()
     warning = Mock()
-    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'warning', warning)
     dialog.ok_cb()
     assert dialog.cancel
     warning.assert_called_once()
@@ -124,10 +135,10 @@ def test_empty_measurement_selection_is_rejected(app, monkeypatch):
 
 
 def test_unsupported_recipe_does_not_change_steps(app, monkeypatch):
-    params = apps_measurements_viewer.MeasurementProcessingParamsWidget()
+    params = viewer_dialogs_processing_recipe.MeasurementProcessingParamsWidget()
     original = params.recipe()
     warning = Mock()
-    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'warning', warning)
     params.loadRecipe({'acdc.preprocess.step1': {'method': 'Gaussian filter'}})
     assert params.recipe() == original
     warning.assert_called_once()
@@ -135,16 +146,16 @@ def test_unsupported_recipe_does_not_change_steps(app, monkeypatch):
 
 
 def test_image_recipe_ui_still_uses_image_registry(app):
-    params = apps.PreProcessParamsWidget()
+    params = dialogs_preprocessing.PreProcessParamsWidget()
     selector = params.stepsWidgets[1]['selector']
-    assert type(selector) is widgets.PreProcessingSelector
+    assert type(selector) is widgets_combo_boxes.PreProcessingSelector
     assert 'Dummy' not in selector.preprocessMapper
     params.deleteLater()
 
 
 def run_worker_job(df, recipe, cols, new_colnames):
     """Run a measurement job synchronously and collect its signals."""
-    worker = workers.MeasurementProcessingWorkerGUI(QMutex(), QWaitCondition())
+    worker = viewer_workers.MeasurementProcessingWorkerGUI(QMutex(), QWaitCondition())
     done, failed, finished = [], [], []
     worker.sigDone.connect(done.append)
     worker.signals.critical.connect(failed.append)
@@ -163,7 +174,7 @@ def test_worker_run_is_a_one_shot_job(app):
         {'area': [0., 9.]},
         index=pd.MultiIndex.from_tuples([(0, 1), (1, 1)], names=['frame_i', 'Cell_ID'])
     )
-    worker = workers.MeasurementProcessingWorkerGUI(QMutex(), QWaitCondition())
+    worker = viewer_workers.MeasurementProcessingWorkerGUI(QMutex(), QWaitCondition())
     done, finished = [], []
     worker.sigDone.connect(done.append)
     worker.signals.finished.connect(finished.append)
@@ -183,7 +194,7 @@ def test_worker_run_is_a_one_shot_job(app):
 
 def test_worker_subclasses_preprocessing_and_keeps_fractional_values(app):
     assert issubclass(
-        workers.MeasurementProcessingWorkerGUI, workers.CustomPreprocessWorkerGUI
+        viewer_workers.MeasurementProcessingWorkerGUI, workers_base.CustomPreprocessWorkerGUI
     )
     df = pd.DataFrame(
         {'area': [0, 9]},
@@ -338,7 +349,7 @@ def test_edits_during_processing_are_kept(viewer):
     # In-place edits of other columns (time points, visited cells) ...
     viewer.acdc_df['timepoint_Bud'] = False
     viewer.acdc_df.loc[(2, 1), 'timepoint_Bud'] = True
-    viewer.acdc_df[measurements_viewer.VISITED_COLUMN] = [
+    viewer.acdc_df[viewer_annotation_data.VISITED_COLUMN] = [
         True, True, True, False, False, False
     ]
     edited = viewer.acdc_df.copy()
@@ -419,7 +430,7 @@ def test_processing_failure_shows_traceback_details(viewer, monkeypatch):
         def warning(self, parent, title, text, **kwargs):
             self.title = title
 
-    monkeypatch.setattr(widgets, 'myMessageBox', FakeMessageBox)
+    monkeypatch.setattr(widgets_message_box, 'myMessageBox', FakeMessageBox)
     viewer.startMeasurementsProcessing(
         ['area'], [{'method': 'Smooth measurement', 'kwargs': {'window': 0}}], ['area_bad']
     )
@@ -432,12 +443,12 @@ def test_processing_failure_shows_traceback_details(viewer, monkeypatch):
 
 def test_recipe_dialog_rejects_output_name_collisions(app, monkeypatch):
     # Output names are chosen in the recipe dialog: <measurement>_<suffix>.
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(
         ['area', 'area_taken']
     )
     select_measurements(dialog, ['area'])
     warning = Mock()
-    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
+    monkeypatch.setattr(widgets_message_box.myMessageBox, 'warning', warning)
     tip = dialog.append_new_colname_tip
     expected = {
         # No suffix would overwrite the input: neutral hint, not an error
@@ -470,7 +481,7 @@ def test_recipe_dialog_rejects_output_name_collisions(app, monkeypatch):
 def test_recipe_dialog_opens_without_error_tip(app):
     # The first measurement is preselected; with no suffix typed yet the
     # dialog shows a neutral hint instead of a red "forbidden" error.
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(
         ['area', 'volume']
     )
     tip = dialog.append_new_colname_tip
@@ -480,7 +491,7 @@ def test_recipe_dialog_opens_without_error_tip(app):
 
 
 def test_recipe_dialog_names_one_output_per_selected_measurement(app):
-    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+    dialog = viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog(
         ['area', 'volume']
     )
     select_measurements(dialog, ['area', 'volume'])
@@ -502,7 +513,7 @@ def test_accept_passes_dialog_output_names_to_processing(viewer, monkeypatch):
     )
     dialogClass = Mock(return_value=dialog)
     monkeypatch.setattr(
-        apps_measurements_viewer, 'MeasurementProcessingRecipeDialog', dialogClass
+        viewer_dialogs_processing_recipe, 'MeasurementProcessingRecipeDialog', dialogClass
     )
     start = Mock()
     monkeypatch.setattr(viewer, 'startMeasurementsProcessing', start)
@@ -522,7 +533,7 @@ def test_cancel_does_not_process(viewer, monkeypatch):
         saveNames=['area_new'], exec_=Mock(), deleteLater=Mock()
     )
     monkeypatch.setattr(
-        apps_measurements_viewer, 'MeasurementProcessingRecipeDialog',
+        viewer_dialogs_processing_recipe, 'MeasurementProcessingRecipeDialog',
         Mock(return_value=dialog)
     )
     start = Mock()
@@ -542,7 +553,7 @@ def test_recipe_dialog_is_deleted_after_use(viewer, monkeypatch):
         dialog.cancel = True
 
     monkeypatch.setattr(
-        apps_measurements_viewer.MeasurementProcessingRecipeDialog, 'exec_',
+        viewer_dialogs_processing_recipe.MeasurementProcessingRecipeDialog, 'exec_',
         cancel
     )
     table = weakref.ref(viewer.acdc_df)
@@ -589,7 +600,7 @@ def test_second_recipe_dialog_does_not_start_a_second_job(
         )
 
     monkeypatch.setattr(
-        apps_measurements_viewer, 'MeasurementProcessingRecipeDialog',
+        viewer_dialogs_processing_recipe, 'MeasurementProcessingRecipeDialog',
         recipe_dialog_class(['area_second'], startOther)
     )
     viewer.processMeasurements()
@@ -618,7 +629,7 @@ def test_recipe_inputs_dropped_meanwhile_are_refused(viewer, monkeypatch):
         viewer.posData().acdc_df = viewer.acdc_df
 
     monkeypatch.setattr(
-        apps_measurements_viewer, 'MeasurementProcessingRecipeDialog',
+        viewer_dialogs_processing_recipe, 'MeasurementProcessingRecipeDialog',
         recipe_dialog_class(['area_new'], dropInput)
     )
     start = Mock()
@@ -639,7 +650,7 @@ def test_export_includes_processed_columns(viewer, monkeypatch, tmp_path):
     wait_for_worker(viewer)
     path = tmp_path / 'measurements.csv'
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         Mock(return_value=(str(path), 'CSV (*.csv)'))
     )
     viewer.exportMeasurements()
@@ -649,7 +660,7 @@ def test_export_includes_processed_columns(viewer, monkeypatch, tmp_path):
 
 def test_export_failure_is_reported(viewer, monkeypatch, tmp_path):
     monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
+        QFileDialog, 'getSaveFileName',
         Mock(return_value=(str(tmp_path / 'missing' / 'table.csv'), ''))
     )
     viewer.exportMeasurements()

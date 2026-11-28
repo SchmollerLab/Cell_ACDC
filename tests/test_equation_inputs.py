@@ -802,10 +802,10 @@ def test_direct_daughter_input_in_reported_equation():
 
 def tree_tracked_frame(parent_IDs):
     """acdc_df as written by tree trackers (default cca + tree columns)."""
-    from cellacdc import myutils_models
+    from cellacdc.myutils import model_modules
     frames = []
     for frame_i, IDs in enumerate([[1, 2], [1, 2, 3, 4]]):
-        frame = myutils_models.getBaseCca_df(IDs, with_tree_cols=True)
+        frame = model_modules.getBaseCca_df(IDs, with_tree_cols=True)
         frame['frame_i'] = frame_i
         frame['area'] = 10.
         frames.append(frame.reset_index())

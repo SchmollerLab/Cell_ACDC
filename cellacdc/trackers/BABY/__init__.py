@@ -1,6 +1,6 @@
-from cellacdc import myutils
+from cellacdc.myutils import model_installs
 
-myutils.check_install_baby()
+model_installs.check_install_baby()
 
 from baby import modelsets
 meta = modelsets.meta()

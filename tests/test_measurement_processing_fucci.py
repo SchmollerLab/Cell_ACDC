@@ -7,17 +7,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cellacdc import measurement_processing, phase_translator
-from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
+from cellacdc import measurement_processing
+from cellacdc.measurements_viewer import phase_translator
+from cellacdc.measurements_viewer.custom_annotation_predictors import CustomAnnotationPredictor
 from cellacdc.measurement_processing.MinMaxNormalization.acdcProcess import (
     Model as MinMaxNormalization
 )
 from cellacdc.measurement_processing.RampDetection.acdcProcess import (
     Model as RampDetection
 )
-from cellacdc.measurements_viewer import (
-    MeasurementsViewerWin, PREMADE_CONFIGURATIONS_PATH
-)
+from cellacdc.measurements_viewer.main_window.configuration import PREMADE_CONFIGURATIONS_PATH
+from cellacdc.measurements_viewer.main_window.window import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import (
     PREDICTOR_NONE, PredictorDependencies, TimepointPredictor,
     TIMEPOINT_PREFIX
