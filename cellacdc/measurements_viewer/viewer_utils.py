@@ -45,17 +45,10 @@ from cellacdc.apps_measurements_viewer import (
 )
 from cellacdc.gui.mixins.custom_annotations import custom_annot_state_to_save
 from .custom_annotation_predictors import CustomAnnotationPredictor
-
-
-RESCALE_INTENS_HOW_TEXTS = (
-    'Rescale each 2D image',
-    'Rescale across z-stack',
-    'Rescale across time frames',
-    'Do no rescale, display raw image'
-)
-
-
-VISITED_COLUMN = 'measurements_viewer_visited' # for tracking which cells have been visited in the measurements viewer
+from . import position_data as viewer_position_data
+from . import annotation_data as viewer_annotation_data
+from .position_data import PositionDataUtils
+from .annotation_data import AnnotationDataUtils
 
 
 # Sections of a premade template that are used during setup only (not
@@ -309,7 +302,7 @@ def load_position(images_path, channel, segm_endname='segm'):
     normalize_loaded_acdc_df(posData)
     update_last_analyzed_frame(posData)
     posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
-    posData.acdcDfFileStamp = acdc_df_file_stamp(
+    posData.acdcDfFileStamp = viewer_position_data.acdc_df_file_stamp(
         getattr(posData, 'acdc_output_csv_path', None)
     )
     return posData
@@ -327,7 +320,7 @@ def normalize_loaded_acdc_df(posData):
     if acdc_df is None:
         return
     for column in acdc_df.columns:
-        if column == VISITED_COLUMN or (
+        if column == viewer_annotation_data.VISITED_COLUMN or (
                 isinstance(column, str) and column.startswith(TIMEPOINT_PREFIX)):
             acdc_df[column] = parse_flags(acdc_df[column])
     phase_translator.normalize_loaded_outputs(acdc_df)
@@ -375,31 +368,6 @@ def last_analyzed_frame(acdc_df, SizeT=None):
     return last, kind
 
 
-def analysis_last_frame(posData, mask=True):
-    """Last frame index that the calculations of `posData` use, or None
-    to use all frames: ``posData.lastAnalyzedFrame`` when `mask` is True
-    and the position is not analyzed until its last frame."""
-    if not mask:
-        return None
-    last = getattr(posData, 'lastAnalyzedFrame', None)
-    SizeT = getattr(posData, 'SizeT', None)
-    if last is None or SizeT is None or last >= SizeT - 1:
-        return None
-    return int(last)
-
-
-def mask_frames(df, last_frame):
-    """Rows of `df` (``frame_i`` index level or column) up to `last_frame`
-    included, or `df` itself (no copy) when `last_frame` is None."""
-    if last_frame is None or df is None:
-        return df
-    if 'frame_i' in df.columns:
-        frames = df['frame_i'].to_numpy()
-    else:
-        frames = df.index.get_level_values('frame_i').to_numpy()
-    return df[frames <= last_frame]
-
-
 def min_frame(*frames):
     """Smallest of the last frame indices `frames`, where None means all
     frames (no limit). None if all are None."""
@@ -415,44 +383,6 @@ def float_if_bool(values):
             and pd.api.types.is_bool_dtype(values.dtype)):
         return values.astype(float)
     return values
-
-
-def is_flag_column(values):
-    """Whether the stored column `values` (Series) holds only 0/1 flags and
-    missing values, so a custom annotation can reuse it: a bool-like column
-    (`parse_flags` with ``strict=True``) or a numeric one whose values are
-    all 0 or 1 (annotations are stored as int 0/1, which strict parsing
-    rejects). Measurements and text columns are not flag columns."""
-    if (pd.api.types.is_numeric_dtype(values.dtype)
-            and not pd.api.types.is_bool_dtype(values.dtype)):
-        return bool(values.dropna().isin([0, 1]).all())
-    return parse_flags(values, strict=True) is not None
-
-
-def flag_column_conflicts(names, tables):
-    """Custom annotation `names` (in their order) whose column is in one of
-    the `tables` (acdc_df, None skipped) but is not a 0/1 flag column
-    (`is_flag_column`, e.g., a measurement): the annotation would turn its
-    values into 0/1 (`ensureCustomAnnotColumn`)."""
-    tables = [table for table in tables if table is not None]
-    return [
-        name for name in names
-        if any(
-            name in table.columns and not is_flag_column(table[name])
-            for table in tables
-        )
-    ]
-
-
-def flag_column_conflicts_text(names):
-    """Why custom annotations `names` (`flag_column_conflicts`) cannot be
-    used with the tables to load."""
-    return (
-        'The tables have columns named like the custom annotations '
-        + ', '.join(f'"{name}"' for name in names)
-        + '\nwith values other than 0/1 (e.g., a measurement), '
-        'which the annotations would replace.'
-    )
 
 
 def position_key(posData):
@@ -492,7 +422,7 @@ def evaluate_masked_cell_equation(df, expression, SizeT=None, last_frame=None):
     evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
     if last_frame is None:
         return evaluate(df, expression, SizeT=SizeT)
-    source = mask_frames(df, last_frame)
+    source = viewer_position_data.mask_frames(df, last_frame)
     if source.empty:
         return pd.Series(np.nan, index=df.index)
     values = evaluate(source, expression, SizeT=last_frame + 1)
@@ -512,19 +442,6 @@ def update_last_analyzed_frame(posData):
     posData.lastAnalyzedFrame, posData.lastAnalyzedKind = last_analyzed_frame(
         getattr(posData, 'acdc_df', None), getattr(posData, 'SizeT', None)
     )
-
-
-def acdc_df_file_stamp(filepath):
-    """(modification time, size) of an acdc_output file, None if missing.
-    Used to detect files changed on disk (e.g., by the main GUI) since they
-    were loaded or saved by the viewer."""
-    if not filepath:
-        return None
-    try:
-        stat = os.stat(filepath)
-    except OSError:
-        return None
-    return (stat.st_mtime_ns, stat.st_size)
 
 
 def acdc_df_snapshot(acdc_df):
@@ -748,7 +665,10 @@ def load_display_positions(
     return data
 
 
-class MeasurementsViewerUtils:
+class MeasurementsViewerUtils(
+        PositionDataUtils,
+        AnnotationDataUtils,
+    ):
     """Data and logic methods of the measurements viewer window (see the
     module docstring)."""
 
@@ -1476,58 +1396,6 @@ class MeasurementsViewerUtils:
             channel=base, overlay_channels=overlays, visible_channels=visible
         )
 
-    def viewerManagedColumns(self):
-        return {
-            *(self.timepointColumn(identifier)
-              for identifier in self.timepointIdentifiers),
-            *self.customAnnotNames(), VISITED_COLUMN
-        }
-
-    def hasUnsavedAcdcDf(self, posData):
-        if not hasattr(posData, 'savedAcdcDf'):
-            return False
-        current = getattr(posData, 'acdc_df', None)
-        if current is None or current.empty:
-            return False
-        saved = posData.savedAcdcDf
-        if saved is None:
-            return True
-        current = self._standardizeAcdcDf(current)
-        # Empty viewer columns (no marks yet) are not changes to the file.
-        managed = self.viewerManagedColumns()
-        def unmarked(df, other):
-            return [
-                column for column in managed
-                if column in df and column not in other
-                and df[column].fillna(0).eq(0).all()
-            ]
-        current, saved = (
-            current.drop(columns=unmarked(current, saved)),
-            saved.drop(columns=unmarked(saved, current))
-        )
-        try:
-            pd.testing.assert_frame_equal(
-                current, saved, check_dtype=False, check_like=True,
-                check_index_type=False, check_column_type=False
-            )
-        except AssertionError:
-            return True
-        return False
-
-    def unsavedAcdcDfPositions(self):
-        return [
-            posData for posData in self.data or []
-            if self.hasUnsavedAcdcDf(posData)
-        ]
-
-    def isAcdcDfChangedOnDisk(self, posData):
-        """True if the acdc_output file of `posData` was modified (e.g., saved
-        by the main GUI) since the viewer loaded, reloaded or saved it."""
-        if not hasattr(posData, 'acdcDfFileStamp'):
-            return False
-        filepath = getattr(posData, 'acdc_output_csv_path', None)
-        return acdc_df_file_stamp(filepath) != posData.acdcDfFileStamp
-
     @staticmethod
     def inputOptionKey(option):
         """Comparison key of an input option that ignores channel order.
@@ -1605,7 +1473,7 @@ class MeasurementsViewerUtils:
         annotated, else tracked) only up to a frame before their last."""
         return [
             posData for posData in data
-            if analysis_last_frame(posData) is not None
+            if viewer_position_data.analysis_last_frame(posData) is not None
         ]
 
     @staticmethod
@@ -1679,51 +1547,6 @@ class MeasurementsViewerUtils:
                     )
         posData.acdc_df = result
 
-    @property
-    def frame_i(self):
-        # The current frame is stored in the current position data as in 
-        # guiWin (e.g., `SearchIDGuiElements.findID` sets `posData.frame_i`)
-        if not self.data:
-            return 0
-        return self.data[self.pos_i].frame_i
-
-    @frame_i.setter
-    def frame_i(self, value):
-        if not self.data:
-            return
-        self.data[self.pos_i].frame_i = value
-
-    def loadSettings(self):
-        self.settings_csv_path = settings_csv_path
-        if os.path.exists(settings_csv_path):
-            self.df_settings = pd.read_csv(
-                settings_csv_path, index_col='setting'
-            )
-        else:
-            self.df_settings = pd.DataFrame(
-                {'setting': [], 'value': []}, dtype=object
-            ).set_index('setting')
-        
-        if 'is_bw_inverted' not in self.df_settings.index:
-            self.df_settings.at['is_bw_inverted', 'value'] = 'No'
-        
-        try:
-            self.defaultRescaleIntensHow = (
-                self.df_settings.at['default_rescale_intens_how', 'value']
-            )
-        except Exception as err:
-            self.defaultRescaleIntensHow = RESCALE_INTENS_HOW_TEXTS[0]
-
-    def hasCcaAnnotations(self):
-        return any(
-            getattr(posData, 'cca_df', None) is not None 
-            or (
-                getattr(posData, 'acdc_df', None) is not None
-                and 'cell_cycle_stage' in posData.acdc_df.columns
-            )
-            for posData in self.data
-        )
-
     def load_fluo_data(self, fluo_path, isGuiThread=True):
         """Return the overlay channel data that the loading worker already
         read (`preload_overlay_channels`), otherwise read the file (as in
@@ -1733,193 +1556,6 @@ class MeasurementsViewerUtils:
             if preloaded and fluo_path in preloaded:
                 return preloaded.pop(fluo_path)
         return super().load_fluo_data(fluo_path, isGuiThread=isGuiThread)
-
-    def setPosDataDefaults(self):
-        """Add the metadata attributes that `load.loadData` always sets, but
-        that minimal posData objects passed to `setData` might lack"""
-        defaults = {
-            'PhysicalSizeX': 1.0, 'PhysicalSizeY': 1.0, 'PhysicalSizeZ': 1.0,
-            'TimeIncrement': 1.0, 'basename': '', 'loadedFluoChannels': set(),
-        }
-        for posData in self.data:
-            for name, value in defaults.items():
-                if not hasattr(posData, name):
-                    setattr(posData, name, copy.copy(value))
-            for name in ('fluo_data_dict', 'fluo_bkgrData_dict'):
-                if not hasattr(posData, name):
-                    setattr(posData, name, {})
-
-    def get_labels_array(
-            self, from_store=False, frame_i=None, return_existing=False,
-            return_copy=True
-        ):
-        posData = self.posData()
-        if frame_i is None:
-            frame_i = posData.frame_i
-        lab = posData.segm_data[frame_i]
-        if return_copy:
-            lab = lab.copy()
-        if return_existing:
-            return lab, False
-        return lab
-
-    def posData(self):
-        return self.data[self.pos_i]
-
-    def initPosAnnotData(self, posData):
-        """Initialize the per-frame stored data (`allData_li`) and the 
-        attributes of `posData` required by the annotations as in 
-        `gui.guiWin` and return the set of all IDs.
-
-        Uses the regionprops computed in the loading worker thread
-        (`precompute_position_regionprops`), if any. The rest runs on the
-        GUI thread (e.g. `loadTrackedLostCentroids` may show a dialog)."""
-        if getattr(posData, '_isViewerAnnotDataInit', False):
-            return posData.allIDs
-
-        precomputed = getattr(posData, '_viewerPrecomputedRps', None)
-        if precomputed is not None:
-            del posData._viewerPrecomputedRps
-        if (isinstance(precomputed, tuple)
-                and precomputed[0] is posData.segm_data):
-            _, posData.allData_li, allIDs = precomputed
-        else:
-            posData.allData_li = [None]*posData.SizeT
-            allIDs, posData = core.count_objects_and_init_rps(
-                posData, self.logger.info
-            )
-        for i in range(posData.SizeT):
-            if posData.allData_li[i] is None:
-                posData.allData_li[i] = myutils.get_empty_stored_data_dict()
-        posData.allIDs = set(allIDs)
-        
-        try:
-            posData.loadTrackedLostCentroids()
-        except Exception as err:
-            pass
-        tracked_lost_centroids = getattr(posData, 'tracked_lost_centroids', None)
-        if not isinstance(tracked_lost_centroids, dict):
-            posData.tracked_lost_centroids = {}
-        for i in range(posData.SizeT):
-            posData.tracked_lost_centroids.setdefault(i, set())
-        
-        posData.lost_IDs = []
-        posData.new_IDs = []
-        posData.old_IDs = []
-        posData.trackedLostIDs = set()
-        posData.whitelist = getattr(posData, 'whitelist', None)
-        posData.cca_df = None
-        SizeY, SizeX = posData.segm_data.shape[-2:]
-        if not hasattr(posData, 'SizeY'):
-            posData.SizeY = SizeY
-        if not hasattr(posData, 'SizeX'):
-            posData.SizeX = SizeX
-        posData._isViewerAnnotDataInit = True
-        return posData.allIDs
-
-    def getFrameAcdcDf(self, frame_i):
-        """Get the acdc_df of `frame_i` (index is Cell_ID) as stored in 
-        `posData.allData_li` by `gui.guiWin`"""
-        if self.acdc_df is None:
-            return
-        
-        frames = self.acdc_df.index.get_level_values(0)
-        if frame_i not in frames:
-            return
-        
-        df = self.acdc_df.loc[frame_i].copy()
-        if 'cell_cycle_stage' in df.columns:
-            cca_cols = df.columns.intersection(self.cca_df_colnames)
-            cca_df = df[cca_cols].dropna()
-            if cca_df.empty:
-                df = df.drop(columns=self.cca_df_colnames, errors='ignore')
-            else:
-                df = df.loc[cca_df.index]
-                cols = df.columns.intersection(self.cca_df_int_cols)
-                try:
-                    df[cols] = df[cols].astype('Int64')
-                except Exception as err:
-                    pass
-        return df
-
-    def getBaseCca_df(self, with_tree_cols=False):
-        """Read-only stand-in for `gui.guiWin.getBaseCca_df`: an empty cell
-        cycle table (no default annotations are invented for frames that
-        were not annotated)."""
-        return pd.DataFrame(columns=self.cca_df_colnames).rename_axis(
-            'Cell_ID'
-        )
-
-    def get_data(self):
-        """Load data of the current frame into `posData` as in
-        `gui.guiWin.get_data` (read-only)"""
-        posData = self.posData()
-        frame_i = posData.frame_i
-        storedData = posData.allData_li[frame_i]
-        posData.lab = self.getLabels(frame_i)
-        rp = storedData['regionprops']
-        if rp is None:
-            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
-            storedData['regionprops'] = rp
-        storedData['labels'] = posData.lab
-        posData.rp = rp
-        posData.IDs = rp.IDs
-        
-        df = self.getFrameAcdcDf(frame_i)
-        storedData['acdc_df'] = df
-        cca_df = None
-        if df is not None and 'cell_cycle_stage' in df.columns:
-            cca_cols = df.columns.intersection(self.cca_df_colnames)
-            cca_df = df[cca_cols].copy().dropna()
-        posData.cca_df = cca_df
-
-    def getAcdcDf(self, posData=None):
-        """Get the acdc_df of the position indexed by (frame_i, Cell_ID)."""
-        if posData is None:
-            posData = self.posData()
-        
-        acdc_df = getattr(posData, 'acdc_df', None)
-        if acdc_df is None or acdc_df.empty:
-            return
-        
-        acdc_df = self._standardizeAcdcDf(acdc_df).sort_index()
-        self.ensureTimepointColumns(acdc_df)
-        self.ensureCustomAnnotColumns(acdc_df)
-        if VISITED_COLUMN not in acdc_df:
-            acdc_df[VISITED_COLUMN] = False
-        else:
-            acdc_df[VISITED_COLUMN] = parse_flags(acdc_df[VISITED_COLUMN])
-        # The acdc_df of the position is the only store of the time points
-        posData.acdc_df = acdc_df
-        return acdc_df
-
-    def analysisLastFrame(self, posData=None):
-        """Last frame index used by the calculations (predictors, phases,
-        measurement processing, combined measurements and conditional
-        formatting) of a position, or None when they use all frames
-        (`analysis_last_frame` with the "Ignore frames after the last
-        analyzed frame" option)."""
-        if posData is None:
-            posData = self.posData()
-        return analysis_last_frame(posData, self.maskUnanalyzedFrames)
-
-    def analysisSizeT(self, posData=None):
-        """Number of frames seen by the calculations of a position (the
-        ``SizeT`` of equations): the frames up to `analysisLastFrame`, else
-        ``posData.SizeT``."""
-        if posData is None:
-            posData = self.posData()
-        last = self.analysisLastFrame(posData)
-        if last is not None:
-            return last + 1
-        return getattr(posData, 'SizeT', None)
-
-    def analysisDf(self, acdc_df, posData=None):
-        """Rows of `acdc_df` (a table of `posData`) used by the
-        calculations: up to `analysisLastFrame`, or `acdc_df` itself."""
-        if posData is None:
-            posData = self.posData()
-        return mask_frames(acdc_df, self.analysisLastFrame(posData))
 
     @staticmethod
     def recordStepsLastFrame(stepsLastFrames, posData, last, replace=False):
@@ -1959,85 +1595,12 @@ class MeasurementsViewerUtils:
         for posData in data:
             last = min_frame(
                 stepsLastFrames.get(position_key(posData)),
-                analysis_last_frame(posData, mask)
+                viewer_position_data.analysis_last_frame(posData, mask)
             )
             self.blankStepOutputs(posData, outputs, last)
             self.recordStepsLastFrame(stepsLastFrames, posData, last)
             lastFrames.append(last)
         return lastFrames
-
-    def dialogAnalysisDf(self, acdc_df, posData):
-        """`analysisDf` for the editor dialogs (`posData` may be None)."""
-        if posData is None or acdc_df is None:
-            return acdc_df
-        return self.analysisDf(acdc_df, posData)
-
-    def dialogAnalysisSizeT(self, posData):
-        """`analysisSizeT` for the editor dialogs (`posData` may be None)."""
-        if posData is None:
-            return None
-        return self.analysisSizeT(posData)
-
-    def allAcdcDfs(self):
-        """Unique tables of the loaded positions including the displayed one."""
-        dfs = [getattr(posData, 'acdc_df', None) for posData in self.data or []]
-        dfs.append(self.acdc_df)
-        unique = {id(df): df for df in dfs if df is not None}
-        return list(unique.values())
-
-    def timepointColumn(self, identifier):
-        return f'{TIMEPOINT_PREFIX}{identifier.name}'
-
-    def ensureTimepointColumns(self, acdc_df):
-        """Add the missing boolean column of each time point identifier."""
-        for identifier in self.timepointIdentifiers:
-            column = self.timepointColumn(identifier)
-            if column not in acdc_df.columns:
-                acdc_df[column] = False
-            elif acdc_df[column].dtype != bool:
-                acdc_df[column] = parse_flags(acdc_df[column])
-
-    def timepointsDf(self, posData=None):
-        """The acdc_df holding the time points of a position (or None)."""
-        if posData is None:
-            posData = self.posData()
-        if posData is self.posData():
-            return self.acdc_df
-        return self.getAcdcDf(posData)
-
-    def cellTimepoints(self, uid, ID, posData=None):
-        """Sorted frame indices of the time points `uid` of cell `ID`."""
-        acdc_df = self.timepointsDf(posData)
-        column = self.timepointColumn(self.timepointIdentifier(uid))
-        if acdc_df is None or column not in acdc_df.columns:
-            return []
-        try:
-            values = acdc_df[column].xs(ID, level='Cell_ID')
-        except KeyError:
-            return []
-        return sorted(int(frame_i) for frame_i in values.index[values.to_numpy()])
-
-    def timepointCellIDs(self, uid, posData=None):
-        """Cell IDs with at least one time point `uid`."""
-        acdc_df = self.timepointsDf(posData)
-        column = self.timepointColumn(self.timepointIdentifier(uid))
-        if acdc_df is None or column not in acdc_df.columns:
-            return set()
-        IDs = acdc_df.index.get_level_values('Cell_ID')
-        return set(IDs[acdc_df[column].to_numpy()])
-
-    def prunePendingPhaseIDs(self):
-        """Forget pending cells of positions that are no longer loaded (e.g.
-        after loading other data), so their `posData` can be freed."""
-        loaded = {id(posData): posData for posData in self.data or []}
-        self._pendingPhaseIDs = {
-            key: entry for key, entry in self._pendingPhaseIDs.items()
-            if loaded.get(key) is entry[0]
-        }
-
-    def cellHasRow(self, ID, frame_i, posData=None):
-        acdc_df = self.timepointsDf(posData)
-        return acdc_df is not None and (frame_i, ID) in acdc_df.index
 
     @staticmethod
     def _standardizeAcdcDf(acdc_df):
@@ -2046,58 +1609,6 @@ class MeasurementsViewerUtils:
         acdc_df = acdc_df.reset_index()
         acdc_df = acdc_df.drop(columns='index', errors='ignore')
         return acdc_df.set_index(['frame_i', 'Cell_ID'])
-
-    def restoreTimepointColumns(self, posData, previous):
-        """Keep the time points, the custom annotations, the visited cells
-        and the phases evaluated in this session (which may differ from the
-        file on disk) after the acdc_df of the position was reloaded.
-
-        Phases (``posData.phaseTranslatorColumns``) are carried over only
-        when they were evaluated in memory, so that they stay consistent
-        with the kept time points: rows missing from `previous` get ``''``
-        and translator outputs of the file dropped in memory are removed
-        (all of them when every phase was cleared in memory: empty
-        ``phaseTranslatorColumns``)."""
-        acdc_df = getattr(posData, 'acdc_df', None)
-        if previous is None or acdc_df is None or acdc_df.empty:
-            return
-        previous = self._standardizeAcdcDf(previous)
-        acdc_df = self._standardizeAcdcDf(acdc_df)
-        for identifier in self.timepointIdentifiers:
-            column = self.timepointColumn(identifier)
-            if column not in previous.columns:
-                continue
-            marked = previous.index[parse_flags(previous[column]).to_numpy()]
-            acdc_df[column] = acdc_df.index.isin(marked)
-        for name in self.customAnnotNames():
-            if name not in previous.columns:
-                continue
-            marked = previous.index[parse_flags(previous[name]).to_numpy()]
-            acdc_df[name] = acdc_df.index.isin(marked).astype(int)
-            self.ensureCustomAnnotColumn(acdc_df, name)
-        if VISITED_COLUMN in previous:
-            marked = previous.index[parse_flags(previous[VISITED_COLUMN]).to_numpy()]
-            acdc_df[VISITED_COLUMN] = acdc_df.index.isin(marked)
-        owned = getattr(posData, 'phaseTranslatorColumns', None)
-        if owned is not None and not owned:
-            # Every phase was cleared in memory (evaluation without rules
-            # and overrides removes all outputs)
-            acdc_df = acdc_df.drop(columns=sorted(
-                phase_translator.existing_output_columns(acdc_df)
-            ))
-        owned = set(owned or ())
-        if 'phase' in owned and 'phase' in previous.columns:
-            stale = {
-                column for column in
-                phase_translator.existing_output_columns(acdc_df)
-                if column.startswith('phase_') and column not in owned
-            }
-            acdc_df = acdc_df.drop(columns=sorted(stale))
-            phases = previous['phase'].reindex(acdc_df.index)
-            acdc_df['phase'] = phases.where(phases.notna(), '').astype(object)
-            for column in sorted(owned.difference({'phase'})):
-                acdc_df[column] = acdc_df['phase'].eq(column[len('phase_'):])
-        posData.acdc_df = acdc_df
 
     def measurementProcessingTargetTable(self, posData):
         """Current table of the position processed in the background, or
@@ -2219,548 +1730,6 @@ class MeasurementsViewerUtils:
         steps.append({'order': max(orders, default=-1) + 1, **copy.deepcopy(step)})
         return ''
 
-    def evaluatePositionPhases(self, posData, IDs=None, rules=None):
-        """Evaluate the phases of the cells `IDs` (None: all) of `posData`
-        (any loaded position) with `rules` (default: the configured ones)
-        and the custom annotations overriding phases, and store the result
-        as the position's table (and working table, when displayed). The
-        display is not updated. Raises on failure, without changes.
-
-        Returns the `phase_translator.PhaseEvaluation`."""
-        if rules is None:
-            rules = self.phaseTranslatorRules
-        table = self.timepointsDf(posData)
-        if table is None or table.empty:
-            raise ValueError('No measurements loaded for this position.')
-        # Shallow copy: the ensure* methods only (re)assign whole columns,
-        # which never writes into the table, and evaluate copies its input.
-        # Avoids a full copy of the table on every time point edit.
-        source = table.copy(deep=False)
-        self.ensureTimepointColumns(source)
-        self.ensureCustomAnnotColumns(source)
-        evaluation = phase_translator.evaluate(
-            source, rules, IDs=IDs,
-            SizeT=getattr(posData, 'SizeT', None),
-            owned_columns=getattr(posData, 'phaseTranslatorColumns', ()),
-            last_frame=self.analysisLastFrame(posData),
-            annotation_overrides=self.phaseOverrideAnnotations()
-        )
-        posData.phaseTranslatorColumns = evaluation.columns
-        posData.acdc_df = evaluation.table
-        if self.data and posData is self.posData():
-            self.acdc_df = evaluation.table
-        return evaluation
-
-    def renamePhaseTranslatorInput(self, oldColumn, newColumn):
-        for rule in self.phaseTranslatorRules:
-            for key in ('timepoints', 'annotations'):
-                rule[key] = [
-                    newColumn if column == oldColumn else column
-                    for column in rule[key]
-                ]
-
-    def initLineageTree(self):
-        """Stand-in for the `normal_division_lineage_tree` of `gui.guiWin` 
-        (only `frames_for_dfs` is required by 
-        `AnnotationsGuiElements.drawAllLineageTreeLines`). Lineage tree lines 
-        are drawn from the saved `parent_ID_tree` column of the acdc_df."""
-        self.lineage_tree = None
-        if self.acdc_df is None:
-            return
-        
-        if 'parent_ID_tree' not in self.acdc_df.columns:
-            return
-        
-        frames = self.acdc_df.index.get_level_values(0).unique()
-        self.lineage_tree = SimpleNamespace(frames_for_dfs=set(frames))
-
-    def _getLineageTreeFrameDf(self, frame_i, rp, prev_IDs=None):
-        df = self.getFrameAcdcDf(frame_i)
-        if df is None:
-            return
-        
-        # Parents that cannot be drawn are unknown (-1) as in `gui.guiWin`
-        parent_IDs = df['parent_ID_tree'].fillna(-1).astype(int)
-        isDrawable = df.index.isin(rp.IDs)
-        if prev_IDs is not None:
-            isDrawable = isDrawable & parent_IDs.isin(prev_IDs).to_numpy()
-        df['parent_ID_tree'] = parent_IDs.where(isDrawable, -1)
-        return df
-
-    def initLineageTreeFrameData(self):
-        """Store the acdc_df of current and previous frame and the
-        regionprops of the previous frame (never visited frames have none)
-        required by `AnnotationsGuiElements.drawAllLineageTreeLines` in
-        `posData.allData_li`. Returns False if the tables were not stored
-        (`drawAllLineageTreeLines` then uses the tables stored by
-        `get_data`, if any)."""
-        if self.lineage_tree is None:
-            return False
-        
-        posData = self.posData()
-        frame_i = posData.frame_i
-        if frame_i == 0:
-            return True
-        
-        prevData = posData.allData_li[frame_i-1]
-        prev_rp = prevData['regionprops']
-        if prev_rp is None:
-            prev_lab = self.getLabels(frame_i-1)
-            prev_rp = self._acdcRegionProps(prev_lab, precache_centroids=False)
-            prevData['regionprops'] = prev_rp
-        
-        prev_df = self._getLineageTreeFrameDf(frame_i-1, prev_rp)
-        df = self._getLineageTreeFrameDf(
-            frame_i, posData.rp, prev_IDs=prev_rp.IDs
-        )
-        if prev_df is None or df is None:
-            return False
-        
-        prevData['acdc_df'] = prev_df
-        posData.allData_li[frame_i]['acdc_df'] = df
-        return True
-
-    def getAllIDs(self):
-        if self.acdc_df is not None:
-            IDs = self.acdc_df.index.get_level_values('Cell_ID').unique()
-            return sorted([int(ID) for ID in IDs if ID > 0])
-        
-        posData = self.posData()
-        IDs = set()
-        for frame_i in range(posData.SizeT):
-            IDs.update(np.unique(self.getLabels(frame_i)))
-        IDs.discard(0)
-        return sorted([int(ID) for ID in IDs])
-
-    def getLabels(self, frame_i=None):
-        """Get labels of `frame_i` (default current frame)."""
-        posData = self.posData()
-        if frame_i is None:
-            frame_i = self.frame_i
-        
-        key = (self.pos_i, frame_i)
-        if key == self._labKey:
-            return self._lab
-        
-        lab = posData.segm_data[frame_i]
-        
-        if frame_i == self.frame_i:
-            self._lab, self._labKey = lab, key
-        return lab
-
-    def getIDframes(self, ID):
-        """Get the sorted frame indices where `ID` is present."""
-        key = (self.pos_i, ID)
-        cached = self._IDframesCache.get(key)
-        if cached is not None:
-            return cached
-        
-        frames = None
-        if self.acdc_df is not None:
-            try:
-                df_ID = self.acdc_df.xs(ID, level='Cell_ID')
-                frames = df_ID.index.get_level_values(0).unique().to_numpy()
-            except KeyError:
-                frames = None
-        
-        if frames is None or len(frames) == 0:
-            segm_data = self.posData().segm_data
-            frames = np.array([
-                frame_i for frame_i in range(len(segm_data))
-                if np.any(segm_data[frame_i] == ID)
-            ], dtype=int)
-        
-        frames = np.sort(frames.astype(int))
-        self._IDframesCache[key] = frames
-        return frames
-
-    def timepointIdentifier(self, uid):
-        for identifier in self.timepointIdentifiers:
-            if identifier.uid == uid:
-                return identifier
-
-    def initPositionTimepointState(self, posData=None):
-        """Session state of the time points of a position. The time points 
-        themselves are stored in the acdc_df."""
-        if posData is None:
-            posData = self.posData()
-        if getattr(posData, 'timepointsEdited', None) is None:
-            # Cells with manual edits {uid: set of Cell_IDs}
-            posData.timepointsEdited = defaultdict(set)
-
-    def editedTimepointCells(self, posData=None):
-        self.initPositionTimepointState(posData)
-        if posData is None:
-            posData = self.posData()
-        return posData.timepointsEdited
-
-    def markTimepointEdited(self, uid, ID):
-        self.editedTimepointCells()[uid].add(ID)
-
-    def predictorTimepointUids(self, uids=None):
-        if uids is None:
-            uids = [identifier.uid for identifier in self.timepointIdentifiers]
-        return [
-            uid for uid in uids 
-            if self.timepointIdentifier(uid).predictor['type'] 
-            != timepoint_predictors.PREDICTOR_NONE
-        ]
-
-    def predictorDefinitions(self):
-        """Output column -> (kind, identifier/button, predictor, autoApply)."""
-        definitions = {
-            self.timepointColumn(identifier): (
-                'timepoint', identifier.uid, identifier.predictor,
-                identifier.autoApply
-            )
-            for identifier in self.timepointIdentifiers
-        }
-        for button, annot in self.customAnnotDict.items():
-            state = annot['state']
-            definitions[state['name']] = (
-                'annotation', button,
-                state.get('predictor') or {'type': timepoint_predictors.PREDICTOR_NONE},
-                state.get('autoApply', False)
-            )
-        return definitions
-
-    def columnDependents(
-            self, column, excludeOutput=None, includePhaseInputs=False
-        ):
-        """Descriptions of the predictors, phase rule formulas, conditional
-        formatting conditions and recorded combine/processing steps that
-        read `column` (references are not rewritten on rename, so renaming
-        is refused while any exist). The predictor of output
-        `excludeOutput` is ignored. With `includePhaseInputs` (removal
-        warnings), phase rules using `column` as a boundary or required
-        annotation are listed too (renaming rewrites those)."""
-        Dependencies = timepoint_predictors.PredictorDependencies
-        dependents = []
-        for output, definition in self.predictorDefinitions().items():
-            if output == excludeOutput:
-                continue
-            if column in Dependencies.inputs(definition[2]):
-                kind, key = definition[:2]
-                dependents.append(
-                    f'time point "{self.timepointIdentifier(key).name}"'
-                    if kind == 'timepoint' else f'custom annotation "{output}"'
-                )
-        for rule in self.phaseRulesUsingColumn(column, includePhaseInputs):
-            dependents.append(f'phase rule "{rule.get("name", "")}"')
-        for formatted, rules in self.conditionalFormatting.items():
-            if any(
-                column in Dependencies.inputs({
-                    'type': timepoint_predictors.PREDICTOR_EQUATION,
-                    'equation': rule.get('condition', '')
-                })
-                for rule in rules
-            ):
-                dependents.append(f'conditional formatting of "{formatted}"')
-        # Recorded steps are replayed on (re)load with the original column
-        # names, so they also depend on the column keeping its name.
-        for step in self.combinedMeasurementSteps:
-            for name, expression in step.get('equations', {}).items():
-                if column in Dependencies.inputs({
-                    'type': timepoint_predictors.PREDICTOR_EQUATION,
-                    'equation': expression
-                }):
-                    dependents.append(f'combined measurement "{name}"')
-        for step in self.measurementProcessingSteps:
-            if column in step.get('columns', []):
-                outputs = ', '.join(step.get('output_columns', []))
-                dependents.append(f'measurement processing step "{outputs}"')
-        return dependents
-
-    def phaseRulesUsingColumn(self, column, includePhaseInputs=False):
-        """Phase rules whose eligibility formula reads `column` and, with
-        `includePhaseInputs`, also those using it as a boundary or required
-        annotation."""
-        Dependencies = timepoint_predictors.PredictorDependencies
-        rules = []
-        for rule in self.phaseTranslatorRules:
-            usesColumn = column in Dependencies.inputs(
-                rule.get('predictor') or {}
-            )
-            if includePhaseInputs and not usesColumn:
-                usesColumn = (
-                    column in rule.get('timepoints', [])
-                    or column in rule.get('annotations', [])
-                )
-            if usesColumn:
-                rules.append(rule)
-        return rules
-
-    def validatePredictorDependencies(self, oldColumn, newColumn, predictor):
-        definitions = self.predictorDefinitions()
-        if newColumn != oldColumn and newColumn in definitions:
-            raise ValueError(f'The predictor output "{newColumn}" already exists.')
-        isRename = oldColumn in definitions and newColumn != oldColumn
-        if isRename and any(
-                newColumn in acdc_df.columns for acdc_df in self.allAcdcDfs()):
-            # Renaming would duplicate the column. New identifiers and
-            # annotations may reuse an existing (e.g., exported) column.
-            raise ValueError(
-                f'"{newColumn}" is already a column of the table. Choose a '
-                'different name.'
-            )
-        if isRename:
-            dependents = self.columnDependents(oldColumn, excludeOutput=oldColumn)
-            if dependents:
-                raise ValueError(
-                    f'Cannot rename "{oldColumn}" because it is used by '
-                    f'{", ".join(dependents)}. Edit them first (or keep the '
-                    'name).'
-                )
-        predictors = {
-            column: definition[2] for column, definition in definitions.items()
-            if column != oldColumn
-        }
-        predictors[newColumn] = predictor
-        timepoint_predictors.PredictorDependencies.order(predictors)
-
-    def customAnnotNames(self):
-        customAnnotDict = getattr(self, 'customAnnotDict', {})
-        return [annot['state']['name'] for annot in customAnnotDict.values()]
-
-    def phaseOverrideAnnotations(self):
-        """Names of the custom annotations with the "Overrides phases"
-        option (state key ``overridesPhases``), in toolbar (configuration)
-        order: the first one set in a cell gives its phase
-        (`phase_translator.evaluate` ``annotation_overrides``)."""
-        customAnnotDict = getattr(self, 'customAnnotDict', {})
-        return [
-            annot['state']['name'] for annot in customAnnotDict.values()
-            if annot['state'].get('overridesPhases', False)
-        ]
-
-    def hasPhaseTranslation(self):
-        """Whether phases can be evaluated: at least one phase rule or one
-        custom annotation overriding phases."""
-        return bool(
-            self.phaseTranslatorRules or self.phaseOverrideAnnotations()
-        )
-
-    def annotationAffectsPhases(self, name):
-        """Whether changing the custom annotation `name` of a cell can change
-        its phases: the annotation overrides phases, is a required
-        annotation of a phase rule or is read by a rule's eligibility
-        formula."""
-        return (
-            name in self.phaseOverrideAnnotations()
-            or bool(self.phaseRulesUsingColumn(name, includePhaseInputs=True))
-        )
-
-    def phaseOverrideCells(self, posData, names, phases=()):
-        """Cell_IDs of `posData` annotated with one of the annotations
-        `names` (in any row, `parse_flags`) or with one of `phases` as phase
-        in any row. Reads the tables without side effects
-        (`positionTables`, unlike `timepointsDf`)."""
-        IDs = set()
-        for table in self.positionTables(posData):
-            if table.empty:
-                continue
-            table = self._standardizeAcdcDf(table)
-            cellIDs = table.index.get_level_values('Cell_ID')
-            for name in names:
-                if name in table.columns:
-                    IDs.update(
-                        int(ID) for ID in
-                        cellIDs[parse_flags(table[name]).to_numpy()]
-                    )
-            if phases and 'phase' in table.columns:
-                inPhases = np.isin(
-                    self.phaseValues(table), list(phases)
-                )
-                IDs.update(int(ID) for ID in cellIDs[inPhases])
-        return IDs
-
-    @contextmanager
-    def bulkSettingCustomAnnotations(self):
-        """Annotations added or removed in bulk (configuration load,
-        `reinitCustomAnnot`) do not re-evaluate phases: the loaded tables
-        keep their saved phases."""
-        previous = getattr(self, '_isBulkSettingCustomAnnotations', False)
-        self._isBulkSettingCustomAnnotations = True
-        try:
-            yield
-        finally:
-            self._isBulkSettingCustomAnnotations = previous
-
-    def ensureCustomAnnotColumn(self, acdc_df, name):
-        """One 0/1 value per Cell_ID, broadcast to its entire history.
-
-        Legacy frame-specific assignments mark the cell if any frame is
-        annotated, preserving existing assignments.
-        """
-        if name not in acdc_df.columns:
-            acdc_df[name] = 0
-            return
-        values = parse_flags(acdc_df[name])
-        acdc_df[name] = (
-            values.groupby(level='Cell_ID').transform('any').astype(int)
-        )
-
-    def ensureCustomAnnotColumns(self, acdc_df):
-        for name in self.customAnnotNames():
-            self.ensureCustomAnnotColumn(acdc_df, name)
-
-    def customAnnotColumnConflict(self, name):
-        """Why a new or loaded custom annotation cannot be called `name`
-        ('' if it can): the column is written by a time point, another
-        annotation, the phase translation, a recorded measurement step or
-        the visited tracking, or it is a column of a loaded table that is
-        not a 0/1 flag column (`is_flag_column`, e.g., a measurement), whose
-        values `ensureCustomAnnotColumn` would turn into 0/1. Existing flag
-        columns (e.g., exported annotations) are reused."""
-        definitions = self.predictorDefinitions()
-        if name in definitions:
-            kind, key = definitions[name][:2]
-            owner = (
-                f'time point "{self.timepointIdentifier(key).name}"'
-                if kind == 'timepoint' else f'custom annotation "{name}"'
-            )
-            return f'it is the column of the {owner}.'
-        phaseColumns = set()
-        if self.hasPhaseTranslation():
-            phaseColumns = phase_translator.output_columns(
-                self.phaseTranslatorRules, self.phaseOverrideAnnotations()
-            )
-        for posData in self.data or []:
-            phaseColumns.update(
-                getattr(posData, 'phaseTranslatorColumns', ()) or ()
-            )
-        if name in phaseColumns:
-            return 'it is a column of the phases.'
-        if name == VISITED_COLUMN:
-            return 'it is the column of the visited cells.'
-        steps = [
-            *self.combinedMeasurementSteps, *self.measurementProcessingSteps
-        ]
-        if any(name in self.measurementStepOutputColumns(step) for step in steps):
-            return 'it is the output of a recorded measurement step.'
-        if flag_column_conflicts([name], self.allAcdcDfs()):
-            return (
-                'the table already has this column with values other '
-                'than 0/1 (e.g., a measurement), which the annotation '
-                'would replace.'
-            )
-        return ''
-
-    def saveCustomAnnotPositionParams(self, posData):
-        # Annotations are columns of the in-memory acdc_df (exported with 
-        # the table) and their definitions are saved in configurations
-        pass
-
-    def saveCustomAnnot(self, only_temp=False):
-        """Viewer definitions are saved by saveConfiguration, not globally."""
-        pass
-
-    def canDeleteSavedCustomAnnot(self):
-        # saveCustomAnnot does not write the global file
-        return False
-
-    def positionTables(self, posData):
-        """The tables of `posData` (its acdc_df and, for the displayed
-        position, the working table)."""
-        tables = [getattr(posData, 'acdc_df', None)]
-        if self.data and posData is self.posData():
-            tables.append(self.acdc_df)
-        unique = {id(table): table for table in tables if table is not None}
-        return list(unique.values())
-
-    def visitedCellIDs(self, posData):
-        """Cell_IDs of `posData` already viewed (`VISITED_COLUMN`)."""
-        IDs = set()
-        for table in self.positionTables(posData):
-            if VISITED_COLUMN not in table:
-                continue
-            IDs.update(int(ID) for ID in table.index.get_level_values(
-                'Cell_ID'
-            )[parse_flags(table[VISITED_COLUMN]).to_numpy()])
-        return IDs
-
-    def resetAutoPredictionTracking(self):
-        """Forget which cells were automatically predicted in this session
-        (called when data is (re)loaded: the loaded tables' visited column
-        is the only record of viewed cells, see the `seedVisited*`
-        methods)."""
-        self.timepointAutoPredictions.clear()
-        self.customAnnotAutoPredictions.clear()
-
-    def seedVisitedCustomAnnotPredictions(self, names, data=None):
-        """Mark the visited cells of `data` (default all positions) as
-        predicted for the annotations `names` so that automatic prediction
-        keeps their assignments (explicit re-evaluation still applies)."""
-        if data is None:
-            data = self.data or []
-        for posData in data:
-            IDs = self.visitedCellIDs(posData)
-            if not IDs:
-                continue
-            for name in names:
-                self.customAnnotAutoPredictions[
-                    self.customAnnotPredictionKey(posData, name)
-                ].update(IDs)
-
-    def seedVisitedTimepointPredictions(self, uids=None, data=None):
-        """Mark the visited cells of `data` (default all positions) as
-        predicted for the time point identifiers `uids` (default all) so
-        that automatic prediction keeps their (saved or manual) time points,
-        also when a dependent's other-cell inputs predict a prerequisite on
-        all cells (explicit re-evaluation still applies)."""
-        if uids is None:
-            uids = [identifier.uid for identifier in self.timepointIdentifiers]
-        if not uids:
-            return
-        if data is None:
-            data = self.data or []
-        for posData in data:
-            IDs = self.visitedCellIDs(posData)
-            if not IDs:
-                continue
-            path = os.path.normcase(os.path.abspath(posData.pos_path))
-            for uid in uids:
-                self.timepointAutoPredictions[(path, uid)].update(IDs)
-
-    def clearCustomAnnotPredictionsTracking(self, name):
-        for key in list(self.customAnnotAutoPredictions.keys()):
-            if key[1] == name:
-                self.customAnnotAutoPredictions.pop(key)
-
-    def customAnnotHasPredictor(self, button):
-        predictor = self.customAnnotDict[button]['state'].get('predictor')
-        return (
-            isinstance(predictor, dict) 
-            and predictor.get('type', timepoint_predictors.PREDICTOR_NONE)
-            != timepoint_predictors.PREDICTOR_NONE
-        )
-
-    def editedCustomAnnotCells(self, posData=None):
-        """Cells with manual annotation edits {name: set of Cell_IDs}."""
-        if posData is None:
-            posData = self.posData()
-        edited = getattr(posData, 'customAnnotEdited', None)
-        if edited is None:
-            edited = defaultdict(set)
-            posData.customAnnotEdited = edited
-        return edited
-
-    def customAnnotPredictionKey(self, posData, name):
-        return (os.path.normcase(os.path.abspath(posData.pos_path)), name)
-
-    def customAnnotFrameIDs(self, name, frame_i=None, posData=None):
-        """IDs annotated with `name` at `frame_i` (default current frame)."""
-        acdc_df = self.timepointsDf(posData)
-        if acdc_df is None or name not in acdc_df.columns:
-            return []
-        if frame_i is None:
-            frame_i = self.frame_i
-        try:
-            values = acdc_df[name].xs(frame_i, level='frame_i')
-        except KeyError:
-            return []
-        return [int(ID) for ID in values.index[parse_flags(values).to_numpy()]]
-
     def customAnnotConfiguration(self):
         return [
             custom_annot_state_to_save(annot['state'])
@@ -2807,62 +1776,6 @@ class MeasurementsViewerUtils:
         if len(set(names)) != len(names):
             raise ValueError('Duplicated custom annotation names.')
 
-    def clipFrame(self, frame_i):
-        return int(min(max(frame_i, 0), self.posData().SizeT-1))
-
-    def getMeasurementsDf(self):
-        """Get the subset of acdc_df for the selected ID (index is frame_i)"""
-        if self.acdc_df is None or self.selectedID is None:
-            return
-        
-        try:
-            df_ID = self.acdc_df.xs(self.selectedID, level='Cell_ID')
-        except KeyError:
-            return
-        
-        return df_ID.sort_index()
-
-    def hasPhaseColumn(self):
-        return self.acdc_df is not None and 'phase' in self.acdc_df.columns
-
-    @staticmethod
-    def phaseValues(df):
-        """Phase name per row of df ('' if unassigned or no phase column)."""
-        if 'phase' not in df.columns:
-            return np.full(len(df), '', dtype=object)
-        return df['phase'].map(
-            lambda value: value if isinstance(value, str) else ''
-        ).to_numpy(dtype=object)
-
-    def phaseColorMap(self):
-        """{phase name: QColor} of the rules' phases, then the names of the
-        custom annotations overriding phases, and of any other phase found
-        in the current table (e.g., from an exported CSV)."""
-        names = phase_translator.phase_names(
-            self.phaseTranslatorRules, self.phaseOverrideAnnotations()
-        )
-        if self.hasPhaseColumn():
-            extra = set(self.phaseValues(self.acdc_df)).difference(names, {''})
-            names += sorted(extra)
-        return {
-            name: QColor(color) for name, color in
-            phase_translator.phase_colors(names, self.phaseColors).items()
-        }
-
-    @staticmethod
-    def phaseRuns(frames, phases):
-        """Contiguous runs [(start frame, end frame, phase)] of the same
-        nonempty phase; a missing frame or a phase change ends a run."""
-        runs = []
-        for frame, phase in zip(frames, phases):
-            if not phase:
-                continue
-            if runs and runs[-1][2] == phase and runs[-1][1] == frame - 1:
-                runs[-1][1] = frame
-            else:
-                runs.append([frame, frame, phase])
-        return [tuple(run) for run in runs]
-
     def formattingTestCell(self):
         """Rows and ID of the selected cell (or the first cell) to test
         formatting conditions on, or (None, None) without data."""
@@ -2886,18 +1799,13 @@ class MeasurementsViewerUtils:
             last_frame=self.analysisLastFrame()
         )
 
-    @staticmethod
-    def _normalize(values):
-        finite = np.isfinite(values)
-        normalized = np.full(values.shape, np.nan, dtype=float)
-        if not finite.any():
-            return normalized
-        _min, _max = values[finite].min(), values[finite].max()
-        if _max == _min:
-            normalized[finite] = 0
-        else:
-            normalized[finite] = (values[finite] - _min) / (_max - _min)
-        return normalized
 
-    def update_rp(self, *args, **kwargs):
-        self.get_data()
+INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
+
+
+# cellacdc-refactor: intermediate compat block (removed in C12)
+# Names that moved out of this module stay reachable here with a
+# DeprecationWarning (cellacdc/_compat.py, see CODEMAP.md).
+from cellacdc import _compat as _acdc_compat  # noqa: E402
+
+__getattr__, __dir__ = _acdc_compat.moved_module(__name__)

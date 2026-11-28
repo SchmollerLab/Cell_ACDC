@@ -6,6 +6,7 @@ import traceback
 from qtpy.QtCore import Signal
 from cellacdc import measurement_processing
 from cellacdc.shared.workers import base as workers_base
+from qtpy.QtCore import QThread, QObject, QCoreApplication
 
 
 class MeasurementProcessingWorkerGUI(workers_base.CustomPreprocessWorkerGUI):
@@ -62,3 +63,35 @@ from cellacdc import _compat as _acdc_compat  # noqa: E402
 
 __getattr__, __dir__ = _acdc_compat.forward_module(
     __name__, 'cellacdc.workers')
+
+
+class _ThreadTaskWorker(QObject):
+    """Run `func(*args, **kwargs)` in a worker `QThread` (see
+    `MeasurementsViewerWin.runInThread`). The return value or the raised
+    exception is stored in `result` / `error`, to be read once the thread
+    finished. With `reportProgress`, `func` also gets the keyword argument
+    ``progress``, a callable that emits `sigProgress` with a text."""
+    sigProgress = Signal(str)
+
+    def __init__(self, func, args, kwargs, reportProgress=False):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = dict(kwargs)
+        if reportProgress:
+            self.kwargs['progress'] = self.sigProgress.emit
+        self.result = None
+        self.error = None
+
+    def run(self):
+        try:
+            self.result = self.func(*self.args, **self.kwargs)
+        except BaseException as err:
+            self.error = err
+        finally:
+            # Back to the GUI thread, so that `deleteLater` works after this
+            # thread stopped
+            app = QCoreApplication.instance()
+            if app is not None:
+                self.moveToThread(app.thread())
+            QThread.currentThread().quit()
