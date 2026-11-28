@@ -102,6 +102,28 @@ Note that if you want to modify the code of the Pull Request, you can simply
 commit and push to the same branch. GitHub will automatically add to the open 
 Pull Request.
 
+Where the code lives
+--------------------
+
+The file ``CODEMAP.md`` at the root of the repository
+(`on GitHub <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CODEMAP.md>`_)
+is the map of the ``cellacdc`` package: one line per module, where new code
+goes, which module to change for common tasks and where the names of the old
+single modules (``gui.py``, ``apps.py``, ``widgets.py``, ``myutils.py``, ...)
+went when Cell-ACDC was reorganized into packages. In short, each part of the
+program is a package with its own dialogs, widgets and workers
+(``launcher``, ``data_structure``, ``data_prep``, ``segmentation_module``,
+``gui``, ``measurements_viewer``, ``utils``), code used by several parts is
+in ``shared``, and the library modules without a window stay at the top level
+of ``cellacdc``. When you add or move a module, run
+``python tools/codemap.py`` and describe the new entry in ``CODEMAP.md``
+(``tests/test_codemap.py`` checks it).
+
+The old import paths (for example ``cellacdc.apps`` or
+``cellacdc.gui_navigation``) still work for code outside Cell-ACDC, with a
+``DeprecationWarning`` that names the new path. Cell-ACDC's own code and tests
+must use the new paths: the tests fail on the warning.
+
 Running the tests
 -----------------
 

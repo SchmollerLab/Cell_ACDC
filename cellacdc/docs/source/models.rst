@@ -61,12 +61,13 @@ steps (see :ref:`model-environments` for the full guide with all options):
         },
 
 3. Create ``__init__.py``. Do **not** install packages from it with
-   ``pip``. Use ``myutils.check_install_package('mymodel')``, which raises a
-   clear error inside the model environment if the configuration is
-   incomplete.
+   ``pip``. Use ``check_install_package('mymodel')`` of
+   ``cellacdc.myutils.installs``, which raises a clear error inside the model
+   environment if the configuration is incomplete.
 
-4. Create ``acdcSegment.py`` with a ``Model`` class. Do not import Qt or
-   ``cellacdc.widgets`` in it:
+4. Create ``acdcSegment.py`` with a ``Model`` class. Do not import Qt or the
+   GUI packages (``cellacdc.gui``, ``cellacdc.shared.widgets``,
+   ``cellacdc.shared.dialogs``) in it:
 
     .. code-block:: python
         :linenos:

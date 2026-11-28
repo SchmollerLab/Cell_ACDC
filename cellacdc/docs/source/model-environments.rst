@@ -62,14 +62,16 @@ The worker is started with the ``--server`` command-line flag::
     python -m cellacdc.service.worker --server --model cellpose_v3 --port 8520
 
 ``cellacdc/__init__.py`` reads this flag at import time and sets
-``cellacdc.RUNNING_AS_SERVER``. Use ``myutils.is_server_mode()`` to check it in
-code. In server mode:
+``cellacdc.RUNNING_AS_SERVER``. Use ``is_server_mode()`` of
+``cellacdc.myutils.installs`` to check it in code. In server mode:
 
-* Qt, ``cellacdc.widgets`` and ``cellacdc.apps`` are never imported. The model
-  environment does not even have Qt installed.
+* Qt and the GUI packages (``cellacdc.gui``, ``cellacdc.shared.widgets``,
+  ``cellacdc.shared.dialogs``) are never imported. The model environment
+  does not even have Qt installed.
 * User configuration files are not read (an empty config is used).
 * Nothing is installed and nobody is asked anything.
-  ``myutils.check_install_package`` and ``check_install_torch`` raise a
+  ``check_install_package`` (``cellacdc.myutils.installs``) and
+  ``check_install_torch`` (``cellacdc.myutils.torch_utils``) raise a
   ``ModuleNotFoundError`` that says which package is missing and points to
   ``cellacdc/models/_env_config.py``. The client must prepare the environment
   *before* the worker starts (see `Communicating from the server side to the
@@ -135,7 +137,7 @@ Code structure
    * - ``cellacdc/service/setup_models.py``
      - ``acdc-setup-models`` command that prepares model environments ahead
        of time.
-   * - ``cellacdc/myutils.py``
+   * - ``cellacdc/myutils/segm_models.py``
      - ``getModelArgSpecFromEnv`` provides standalone parameter inspection in
        a disposable process. GUI execution instead reads ``/spec`` from the
        persistent worker.
@@ -150,7 +152,10 @@ Code structure
        gives an instance back and ``stop`` stops all workers.
        ``run_in_background`` runs slow steps in a ``QThread`` without
        freezing the GUI.
-   * - ``cellacdc/segm.py``, ``cellacdc/gui.py``, ``cellacdc/workers.py``
+   * - ``cellacdc/segmentation_module/main_window.py``,
+       ``cellacdc/gui/main_window/segmentation.py``,
+       ``cellacdc/gui/main_window/cca_annotation.py``,
+       ``cellacdc/gui/workers/segmentation_tracking.py``
      - GUI callers of ``ModelExecution``: the segmentation module
        (``segmWin``), the main GUI (``repeatSegm``, also used by the magic
        labeller, ``repeatSegmVideo`` and the YeastMate budding prediction
@@ -424,7 +429,7 @@ environment and no extra packages.
         'torch': True,
 
         # Packages, as pip names or as dicts with the arguments of
-        # myutils.check_install_package
+        # check_install_package (cellacdc.myutils.installs)
         'packages': [
             'some-package',
             {'pkg_name': 'mymodel', 'pypi_name': 'mymodel-seg',
@@ -485,16 +490,28 @@ Notes:
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``__init__.py`` is imported in both execution paths. Use
-``myutils.check_install_package`` (it installs with confirmation in-process
-and raises a clear error in server mode) instead of calling ``pip`` yourself:
+``check_install_package`` of ``cellacdc.myutils.installs`` (it installs with
+confirmation in-process and raises a clear error in server mode) instead of
+calling ``pip`` yourself:
 
 .. code-block:: python
 
-    from cellacdc import myutils
+    from cellacdc.myutils import installs
 
-    myutils.check_install_package(
+    installs.check_install_package(
         'mymodel', pypi_name='mymodel-seg', import_pkg_name='mymodel'
     )
+
+.. note::
+
+    ``cellacdc.myutils`` was a single module before Cell-ACDC was
+    reorganized into packages (see ``CODEMAP.md`` in the repository). The
+    functions that models use (``check_install_package``,
+    ``is_server_mode``, ``get_model_path``, ``to_uint8``, ...) are still
+    available as ``myutils.<name>`` after ``from cellacdc import myutils``,
+    without a warning. A model kept outside this repository that must also
+    run with older Cell-ACDC versions can keep using that form. Models in
+    this repository import the submodule that defines the function.
 
 If ``__init__.py`` has custom installation code (dialogs, ``subprocess``),
 guard it so that it never runs in the worker:
@@ -504,13 +521,15 @@ guard it so that it never runs in the worker:
     try:
         import mymodel
     except ModuleNotFoundError:
-        from cellacdc import myutils
-        if myutils.is_server_mode():
-            myutils._raise_server_missing('mymodel (MyModel setup_steps)')
+        from cellacdc.myutils import installs
+        if installs.is_server_mode():
+            installs._raise_server_missing('mymodel (MyModel setup_steps)')
         ...  # in-process installation with Qt dialogs
 
-Do not import Qt or ``cellacdc.widgets`` at module level in ``__init__.py`` or
-``acdcSegment.py``. They are not installed in the model environment.
+Do not import Qt or the GUI packages (``cellacdc.gui``,
+``cellacdc.shared.widgets``, ``cellacdc.shared.dialogs``) at module level in
+``__init__.py`` or ``acdcSegment.py``. Qt is not installed in the model
+environment.
 
 4. Write ``acdcSegment.py``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -558,8 +577,9 @@ be types that can be transferred:
 To add a new custom widget type, create a Qt-free marker class in
 ``cellacdc/_types.py`` with ``isWidget = True`` that creates the widget lazily
 in ``__init__`` (see ``CsvFilePath``). Then register it in
-``_serialize_model_param_type`` and ``_deserialize_model_param_type`` in
-``myutils.py``. Unregistered widget types raise a ``TypeError``. The widget
+``_serialize_model_param_type`` (``cellacdc/myutils/model_modules.py``) and
+``_deserialize_model_param_type`` (``cellacdc/myutils/segm_models.py``).
+Unregistered widget types raise a ``TypeError``. The widget
 must implement ``value()``, ``setValue(value)`` and ``cast_dtype``.
 
 Other conventions:
@@ -615,7 +635,8 @@ always starts the worker with ``--defer-init`` and sends the init arguments
 with ``POST /init``; arguments are not passed as JSON on the command line.
 
 To send other data, load it on the client (see
-``myutils.resolve_segm_model_init_data``) and put the array or DataFrame into
+``resolve_segm_model_init_data`` in ``cellacdc/myutils/segm_models.py``) and
+put the array or DataFrame into
 the init arguments; ``payload`` transfers it automatically.
 
 6. Prepare and test the model
@@ -629,12 +650,12 @@ or, from Python:
 
 .. code-block:: python
 
-    from cellacdc import myutils
+    from cellacdc.myutils import segm_models
     from cellacdc.service.environment import get_or_create_model_env
     from cellacdc.service.prompts import CliHandler
 
     python = get_or_create_model_env('MyModel', prompt_func=CliHandler().ask)
-    init_params, segment_params, url = myutils.getModelArgSpecFromEnv(
+    init_params, segment_params, url = segm_models.getModelArgSpecFromEnv(
         'MyModel', python
     )
 
@@ -724,11 +745,14 @@ The same code then works everywhere:
    * - ``QtHandler(parent).ask``
      - The GUI. It can be called from worker threads: the dialog is shown in
        the GUI thread, and the calling thread waits for the answer. It uses
-       the standard Cell-ACDC dialogs: ``widgets.myMessageBox`` for
-       ``info``, ``confirm`` and ``choice`` with up to three options (one
-       button per option), ``apps.QDialogCombobox`` for longer choices,
-       ``apps.QLineEditDialog`` for ``text_input`` and
-       ``apps.InstallPyTorchDialog`` for ``dialog='pytorch'``.
+       the standard Cell-ACDC dialogs: ``myMessageBox``
+       (``cellacdc/shared/widgets/message_box.py``) for ``info``,
+       ``confirm`` and ``choice`` with up to three options (one button per
+       option), ``QDialogCombobox`` for longer choices and
+       ``QLineEditDialog`` for ``text_input``
+       (``cellacdc/shared/dialogs/generic.py``), and
+       ``InstallPyTorchDialog`` (``cellacdc/shared/dialogs/model_selection.py``)
+       for ``dialog='pytorch'``.
    * - ``CliHandler().ask``
      - The terminal, including ``acdc-setup-models``.
    * - ``AutoHandler().ask``
