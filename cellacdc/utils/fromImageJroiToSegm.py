@@ -2,6 +2,9 @@ from .. import myutils, workers, widgets, html_utils
 from .. import apps
 
 from .base import NewThreadMultipleExpBaseUtil
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QLabel, QLineEdit, QGridLayout, QGroupBox
+from cellacdc.shared.widgets import numeric_inputs as widgets_numeric_inputs
 
 class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -49,3 +52,54 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, 'Process completed', html_utils.paragraph(txt))
         self.close()
+
+
+class RescaleImageJroisGroupbox(QGroupBox):
+    def __init__(self, TZYX_out_shape, parent=None):
+        super().__init__(parent)
+        
+        self.setTitle('Rescale ROIs')
+        self.setCheckable(True)
+        
+        gridLayout = QGridLayout()
+        
+        dims = ('Z', 'Y', 'X')
+        self.widgets = {}
+        for row, SizeD in enumerate(TZYX_out_shape[1:]):
+            if SizeD == 1:
+                continue
+            
+            dim = dims[row]
+            inputSpinbox = widgets_numeric_inputs.SpinBox()
+            inputSpinbox.setMinimum(1)
+            inputSpinbox.setValue(SizeD)
+            
+            outZwidget = QLineEdit()
+            outZwidget.setReadOnly(True)
+            outZwidget.setAlignment(Qt.AlignCenter)
+            # outZwidget.setValue(SizeD)
+            outZwidget.setText(str(SizeD))
+
+            row0 = row*2
+            row1 = row0+1
+            gridLayout.addWidget(QLabel(f'{dim}-dimension: '), row1, 0)
+            
+            gridLayout.addWidget(QLabel('Input size'), row0, 1)
+            gridLayout.addWidget(inputSpinbox, row1, 1)
+            
+            gridLayout.addWidget(QLabel('Output size'), row0, 2)
+            gridLayout.addWidget(outZwidget, row1, 2)
+            
+            self.widgets[dim] = (inputSpinbox, SizeD)
+        
+        self.setLayout(gridLayout)
+    
+    def inputOutputSizes(self):
+        if not self.isChecked():
+            return
+        
+        sizes = {
+            dim: (spinbox.value(), int(SizeD))
+            for dim, (spinbox, SizeD) in self.widgets.items()
+        }
+        return sizes

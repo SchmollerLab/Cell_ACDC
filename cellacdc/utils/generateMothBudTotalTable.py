@@ -8,6 +8,8 @@ from .. import myutils, apps, widgets, html_utils, printl, workers
 from ..utils import base
 
 from qtpy.QtWidgets import QFileDialog
+from qtpy.QtGui import QFontMetrics
+from qtpy.QtWidgets import QListWidget
 
 class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
     def __init__(
@@ -89,3 +91,21 @@ class GenerateMothBudTotalUtil(base.MainThreadSinglePosUtilBase):
         win.filename = ''
         win.close()
         
+
+
+def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
+    """
+    Calculate the minimum width needed for the QListWidget
+    so that the horizontal scrollbar will not be required.
+    """
+    font_metrics = QFontMetrics(list_widget.font())
+    max_width = 0
+
+    for i in range(list_widget.count()):
+        item = list_widget.item(i)
+        text_width = font_metrics.horizontalAdvance(item.text())
+        max_width = max(max_width, text_width)
+
+    # Add padding for icon, scrollbar margin, and frame
+    padding = 30  # Adjust as needed (depends on style and icons)
+    return max_width + padding

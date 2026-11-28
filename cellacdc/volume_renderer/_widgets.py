@@ -17,6 +17,7 @@ from .. import html_utils
 from ..widgets import (
     ToolBar, DoubleSpinBox, playPushButton
 )
+from qtpy.QtWidgets import QMenu
 
 LABELS_TEXT_FONTSIZE = 10
 
@@ -378,3 +379,28 @@ class ParentCursorOverlay(QWidget):
         painter = QPainter(self)
         self.paint(painter)
         painter.end()
+
+
+class PointsLayerContextMenu(QMenu):
+    sigEditProperties = Signal()
+    sigRemove = Signal()
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        editPropertiesAction = QAction('Edit properties...', self)
+        self.addAction(editPropertiesAction)
+        
+        self.addSeparator()
+        
+        removeAction =  QAction('Remove points layer', self)
+        self.addAction(removeAction)
+        
+        editPropertiesAction.triggered.connect(self.emitSigEditProperties)
+        removeAction.triggered.connect(self.emitSigRemoveAction)
+    
+    def emitSigEditProperties(self):
+        self.sigEditProperties.emit()
+    
+    def emitSigRemoveAction(self):
+        self.sigRemove.emit()

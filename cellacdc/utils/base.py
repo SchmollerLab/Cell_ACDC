@@ -30,6 +30,11 @@ from .. import (
     widgets, apps, workers, html_utils, myutils,
     load, printl, exception_handler
 )
+from qtpy.QtWidgets import (
+    QWidget, QComboBox, QAbstractItemView, QListWidgetItem, QLayout
+)
+from cellacdc.shared.widgets import item_views as widgets_item_views
+from cellacdc.shared.widgets import line_edits as widgets_line_edits
 
 def log_init_util(logger, expPaths: dict, util_title, util_module):
     exp_paths_str = pprint.pformat(expPaths, indent=1)
@@ -657,3 +662,169 @@ class MainThreadSinglePosUtilBase(QDialog):
         if aborted and self.worker is not None:
             self.worker.abort = True
             self.close()
+
+
+class OrderableListWidget(QWidget):
+    sigEnterEvent = Signal(object)
+    
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._labels = []
+    
+    def setParentItem(self, item):
+        self._item = item
+    
+    def setLabelsColor(self, selected):
+        if selected:
+            stylesheet = 'color : black'
+        else:
+            stylesheet = ''
+            
+        for label in self._labels:
+            label.setStyleSheet(stylesheet)
+    
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.setLabelsColor(True)
+        self.sigEnterEvent.emit(self._item)
+    
+    # def leaveEvent(self, event):
+    #     super().leaveEvent(event)
+    #     self.setLabelsColor(self._item.isSelected())
+    #     printl('leave', self._item.isSelected())
+    
+    def addLabel(self, label):
+        self._labels.append(label)
+
+class OrderableList(widgets_item_views.listWidget):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setMouseTracking(True)
+        self.itemEntered.connect(self.onItemEntered)
+    
+    def onItemEntered(self, enteredItem):
+        enteredRow = self.row(enteredItem)
+        for i in range(self.count()):
+            item = self.item(i)
+            item._container.setLabelsColor(i == enteredRow or item.isSelected())
+    
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        for i in range(self.count()):
+            item = self.item(i)
+            item._container.setLabelsColor(item.isSelected())
+    
+    def addItems(self, items):
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        nr_items = len(items)
+        nn = [str(n) for n in range(1, nr_items+1)]
+        for i, item in enumerate(items):
+            itemW = QListWidgetItem()
+            itemContainer = OrderableListWidget()
+            itemContainer.setParentItem(itemW)
+            itemText = QLabel(item)
+            tableNrLabel = QLabel('| Table nr.')
+            itemContainer.addLabel(tableNrLabel)
+            itemContainer.addLabel(itemText)
+            itemLayout = QHBoxLayout()
+            itemNumberWidget = QComboBox()
+            itemNumberWidget.addItems(nn)
+            itemLayout.addWidget(itemText)
+            itemLayout.addWidget(tableNrLabel)
+            itemLayout.addWidget(itemNumberWidget)
+            itemContainer.setLayout(itemLayout)
+            itemLayout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+            itemW.setSizeHint(itemContainer.sizeHint())
+            self.addItem(itemW)
+            self.setItemWidget(itemW, itemContainer)
+            itemW._text = item
+            itemW._nrWidget = itemNumberWidget
+            itemW._container = itemContainer
+            itemNumberWidget.setDisabled(True)
+            itemNumberWidget.textActivated.connect(self.onTextActivated)
+            itemNumberWidget._currentNr = 1
+            itemNumberWidget.row = i
+            itemContainer.sigEnterEvent.connect(self.onItemEntered)
+        
+        self.itemSelectionChanged.connect(self.onItemSelectionChanged)
+        
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Escape:
+            self.clearSelection()
+            event.ignore()
+            return
+        super().keyPressEvent(event)
+    
+    def updateNr(self):
+        for i in range(self.count()):
+            item = self.item(i)
+            item._currentNr = int(item._nrWidget.currentText())
+    
+    def onItemSelectionChanged(self):
+        for i in range(self.count()):
+            item = self.item(i)
+            item._container.setLabelsColor(item.isSelected())
+            item._nrWidget.setDisabled(not item.isSelected())
+            if item._nrWidget.currentText() != '1':
+                item._nrWidget.setCurrentText('1')
+                item._currentNr = 1
+        
+        for i, item in enumerate(self.selectedItems()):
+            item._nrWidget.setCurrentText(f'{i+1}')
+            item._currentNr = i+1
+        
+    def onTextActivated(self, text):
+        changedNr = self.sender()._currentNr
+        for item in self.selectedItems():
+            row = self.row(item)
+            if self.sender().row == row:
+                changedNr = item._currentNr
+                continue
+        
+        for item in self.selectedItems():
+            row = self.row(item)
+            if self.sender().row == row:
+                continue
+            nr = int(item._nrWidget.currentText())
+            if nr == int(text):
+                item._nrWidget.setCurrentText(str(changedNr))
+                break
+        
+        self.updateNr()
+
+
+class PrefixFilenameLineEdit(QWidget):
+    def __init__(self, endNameLabel, *args):      
+        super().__init__(*args)
+
+        layout = QHBoxLayout()
+
+        self.le = widgets_line_edits.alphaNumericLineEdit()
+        self.endnameLabel = QLabel()
+        self.setEndname(endNameLabel)
+
+        layout.addWidget(self.le)
+        layout.addWidget(self.endnameLabel)
+
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
+
+        layout.setContentsMargins(5, 0, 5, 0)
+
+        self.setLayout(layout)
+    
+    def setAlignment(self, alignment):
+        self.le.setAlignment(alignment)
+
+    def setEndname(self, text: str):
+        self.endnameLabel.setText(text)
+    
+    def setText(self, text: str):
+        self.le.setText(text)
+    
+    def prefix(self):
+        return self.le.text()
+    
+    def fullFilename(self):
+        filename = f'{self.le.text()}{self.endnameLabel.text()}'
+        return filename

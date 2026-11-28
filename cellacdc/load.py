@@ -4438,7 +4438,9 @@ def get_all_svg_icons_aliases(sort=True):
     return aliases
 
 def get_all_buttons_names(sort=True):
-    widgets_filepath = os.path.join(cellacdc_path, 'widgets.py')
+    widgets_filepath = os.path.join(
+        cellacdc_path, 'shared', 'widgets', 'push_buttons.py'
+    )
     with open(widgets_filepath, 'r') as py_file:
         txt = py_file.read()
     
