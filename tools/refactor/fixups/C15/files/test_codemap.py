@@ -10,6 +10,7 @@ import tools/); keep PLUGIN_PARENTS and CONTENTS_NOT_LISTED in sync.
 """
 import os
 import re
+import subprocess
 
 import pytest
 
@@ -38,6 +39,28 @@ def _read(path):
 
 def _codemap_text():
     return _read(CODEMAP).replace('\r\n', '\n')
+
+
+def _git_ignored(rel_paths):
+    """The paths among `rel_paths` that git ignores.
+
+    Generated and local files (the setuptools-scm `_version.py` that every
+    install writes, local debug modules) are not part of the package's
+    modules. Without git, only `_version.py` is skipped.
+    """
+    fallback = {'cellacdc/_version.py'}
+    try:
+        result = subprocess.run(
+            ['git', 'check-ignore', '-z', '--stdin'], cwd=ROOT,
+            input='\0'.join(sorted(rel_paths)), capture_output=True,
+            text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return fallback
+    if result.returncode not in (0, 1):
+        return fallback
+    # -z: NUL-separated paths (text-mode pipes would turn \n into \r\n)
+    return set(filter(None, result.stdout.split('\0')))
 
 
 def _required_entries():
@@ -69,7 +92,7 @@ def _required_entries():
             required.add(rel)
 
     walk('cellacdc')
-    return required
+    return required - _git_ignored(required)
 
 
 def _tree_paths(text):

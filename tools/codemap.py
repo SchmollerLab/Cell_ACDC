@@ -49,6 +49,7 @@ import ast
 import json
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -160,7 +161,30 @@ def scan(root=ROOT):
                 entries.append(Entry(rel + '/', depth + 1, required=False))
 
     walk(PACKAGE, 0)
-    return entries
+    ignored = git_ignored([entry.path for entry in entries], root)
+    return [entry for entry in entries if entry.path not in ignored]
+
+
+def git_ignored(rel_paths, root=ROOT):
+    """The paths among `rel_paths` that git ignores.
+
+    Generated and local files (the setuptools-scm `_version.py` that every
+    install writes, local debug modules) are not listed. Without git,
+    only `_version.py` is skipped.
+    """
+    fallback = {'cellacdc/_version.py'}
+    try:
+        result = subprocess.run(
+            ['git', 'check-ignore', '-z', '--stdin'], cwd=root,
+            input='\0'.join(sorted(rel_paths)), capture_output=True,
+            text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return fallback
+    if result.returncode not in (0, 1):
+        return fallback
+    # -z: NUL-separated paths (text-mode pipes would turn \n into \r\n)
+    return set(filter(None, result.stdout.split('\0')))
 
 
 def first_sentence(docstring):
