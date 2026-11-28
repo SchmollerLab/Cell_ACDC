@@ -68,59 +68,61 @@ from warnings import simplefilter
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
 # Custom modules
-from . import _window_stacking
-from . import exception_handler, disableWindow
-from . import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val
-from . import graphLayoutBkgrColor, darkBkgrColor
-from . import cca_df_colnames
-from . import load, prompts, apps, workers, html_utils
-from . import core, myutils, dataPrep, widgets
-from . import _warnings, issues_url
-from . import measurements, printl
-from . import colors, annotate
-from . import user_manual_url
-from . import (settings_folderpath, settings_csv_path, 
+from cellacdc import _window_stacking
+from cellacdc import exception_handler, disableWindow
+from cellacdc import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val
+from cellacdc import graphLayoutBkgrColor, darkBkgrColor
+from cellacdc import cca_df_colnames
+from cellacdc import load, prompts, apps, workers, html_utils
+from cellacdc import core, myutils
+from cellacdc.data_prep import main_window as dataPrep
+from cellacdc import widgets
+from cellacdc import _warnings, issues_url
+from cellacdc import measurements, printl
+from cellacdc import colors, annotate
+from cellacdc import user_manual_url
+from cellacdc import (settings_folderpath, settings_csv_path, 
                seg_for_lost_IDs_settings_path)
-from . import favourite_func_metrics_csv_path
-from . import shortcut_filepath
-from . import qutils, autopilot, QtScoped
-from . import _palettes
-from . import transformation
-from . import measure
-from . import cca_functions
-from . import exporters
-from . import preprocess
-from . import io
-from . import whitelist
-from . import cli
-from . import is_mac
-from . import urls
-from . import path as acdc_path
-from .cca_functions import _calc_rot_vol
-from .myutils import setupLogger, ArgSpec
-from .help import welcome, about
-from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
+from cellacdc import favourite_func_metrics_csv_path
+from cellacdc import shortcut_filepath
+from cellacdc import qutils, autopilot, QtScoped
+from cellacdc import _palettes
+from cellacdc import transformation
+from cellacdc import measure
+from cellacdc import cca_functions
+from cellacdc import exporters
+from cellacdc import preprocess
+from cellacdc import io
+from cellacdc import whitelist
+from cellacdc import cli
+from cellacdc import is_mac
+from cellacdc import urls
+from cellacdc import path as acdc_path
+from cellacdc.cca_functions import _calc_rot_vol
+from cellacdc.myutils import setupLogger, ArgSpec
+from cellacdc.help import welcome, about
+from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, is_lineage_tree_annotated,
     init_lineage_tree_cols_of_added_IDs, has_lineage_tree_values,
     lineage_tree_columns, lineage_tree_annotated_frames,
     LINEAGE_TREE_SHARED_CCA_COLS
 )#, reorg_sister_cells_for_export)
-from . import debugutils
-from . import exec_time
-from .plot import imshow
-from . import gui_utils
-from . import gui_combine
-from . import gui_navigation
-from . import gui_annotations
-from . import gui_overlay
-from . import gui_viewer_tools
-from . import gui_core
-from . import gui_custom_annotations
-from .config import STANDARD_MOUSE_BUTTONS
-from . import rst_utils
-from . import core_split_IDs
-from .promptable_models import utils as prompt_utils
-from .promptable_models import saved_models
+from cellacdc import debugutils
+from cellacdc import exec_time
+from cellacdc.plot import imshow
+from cellacdc import gui_utils
+from cellacdc import gui_combine
+from ..mixins import navigation as gui_navigation
+from ..mixins import annotations as gui_annotations
+from ..mixins import overlay as gui_overlay
+from cellacdc import gui_viewer_tools
+from cellacdc import gui_core
+from ..mixins import custom_annotations as gui_custom_annotations
+from cellacdc.config import STANDARD_MOUSE_BUTTONS
+from cellacdc import rst_utils
+from cellacdc import core_split_IDs
+from cellacdc.promptable_models import utils as prompt_utils
+from cellacdc.promptable_models import saved_models
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -320,10 +322,10 @@ class guiWin(
 
         self._version = version
 
-        from .trackers.YeaZ import tracking as tracking_yeaz
+        from cellacdc.trackers.YeaZ import tracking as tracking_yeaz
         self.tracking_yeaz = tracking_yeaz
 
-        from .config import parser_args
+        from cellacdc.config import parser_args
         self.debug = parser_args['debug']
         self._debug = self.debug
 
@@ -400,7 +402,7 @@ class guiWin(
         self.log_filename = log_filename
         self.logs_path = logs_path
 
-        from . import regionprops as acdc_regionprops
+        from cellacdc import regionprops as acdc_regionprops
         
         self._acdcRegionProps = acdc_regionprops.acdcRegionprops
         self._acdc_regionprops = acdc_regionprops
@@ -728,7 +730,7 @@ class guiWin(
     def initProfileModels(self):
         self.logger.info('Initiliazing profilers...')
         
-        from ._profile.spline_to_obj import model
+        from cellacdc._profile.spline_to_obj import model
         
         self.splineToObjModel = model.Model()
 
@@ -15975,7 +15977,7 @@ When working with 3D segmentation masks:
 
         if ev.key() == Qt.Key_Q and self.debug:
             try:
-                from . import _q_debug
+                from cellacdc import _q_debug
                 _q_debug.q_debug(self, ev)
             except Exception as err:
                 printl(traceback.format_exc())
@@ -19233,7 +19235,7 @@ When working with 3D segmentation masks:
         """Run `func(*args, **kwargs)` (e.g., training or loading a model)
         in a background thread while showing a busy progress window, and
         return its result."""
-        from .service import model_execution
+        from cellacdc.service import model_execution
 
         self.titleLabel.setText(desc, color=self.titleColor)
         progressWin = apps.QDialogWorkerProgress(
@@ -20013,7 +20015,7 @@ When working with 3D segmentation masks:
         """
         execution = self.modelExecutions.get(model_name)
         if execution is None:
-            from .service import model_execution, prompts as service_prompts
+            from cellacdc.service import model_execution, prompts as service_prompts
             
             def run_in_background(func, *args, **kwargs):
                 return model_execution.run_in_background(
@@ -20035,7 +20037,7 @@ When working with 3D segmentation masks:
     def getPromptModelExecution(self, model_name):
         execution = self.promptModelExecutions.get(model_name)
         if execution is None:
-            from .service import model_execution, prompts as service_prompts
+            from cellacdc.service import model_execution, prompts as service_prompts
 
             def run_in_background(func, *args, **kwargs):
                 return model_execution.run_in_background(
@@ -21542,7 +21544,7 @@ When working with 3D segmentation masks:
             The reason, or None when the backup can be compared (or there
             is no backup).
         """
-        from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
+        from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
             has_lineage_tree_values
         )
         frame_i = self.original_df_lin_tree_i
@@ -31896,7 +31898,7 @@ When working with 3D segmentation masks:
             dont_return_tracked_lab=False, return_assignments=False,
             clearAssignedObjsSecondStep=False
         ):
-        from .trackers.CellACDC import CellACDC_tracker
+        from cellacdc.trackers.CellACDC import CellACDC_tracker
         
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
@@ -34117,7 +34119,7 @@ When working with 3D segmentation masks:
         self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
     
     def labelRoiViewCurrentModel(self):
-        from . import config
+        from cellacdc import config
         ini_path = os.path.join(
             settings_folderpath, 'last_params_segm_models.ini'
         )

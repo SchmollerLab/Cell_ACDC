@@ -704,41 +704,46 @@ from qtpy.QtWidgets import (
 
 import pyqtgraph as pg
 
-from . import widgets, core, load, myutils, colors, transformation, qutils
-from . import urls
-from . import cellacdc_path
-from . import (
+from cellacdc import widgets, core, load, myutils, colors, transformation, qutils
+from cellacdc import urls
+from cellacdc import cellacdc_path
+from cellacdc import (
     graphLayoutBkgrColor, darkBkgrColor, settings_csv_path, settings_folderpath
 )
-from . import cca_df_colnames, base_cca_dict
-from . import regionprops as acdc_regionprops
-from . import gui_navigation, gui_annotations, gui_viewer_tools, gui_overlay
-from .config import STANDARD_MOUSE_BUTTONS
-from . import gui_core
-from . import apps
-from . import html_utils
-from . import workers
-from . import timepoint_predictors
-from . import custom_annotation_predictors
-from . import apps_measurements_viewer
-from .apps_measurements_viewer import (
+from cellacdc import cca_df_colnames, base_cca_dict
+from cellacdc import regionprops as acdc_regionprops
+from cellacdc.gui.mixins import (
+    navigation as gui_navigation, annotations as gui_annotations
+)
+from cellacdc import gui_viewer_tools
+from cellacdc.gui.mixins import overlay as gui_overlay
+from cellacdc.config import STANDARD_MOUSE_BUTTONS
+from cellacdc import gui_core
+from cellacdc import apps
+from cellacdc import html_utils
+from cellacdc import workers
+from cellacdc import timepoint_predictors
+from .. import custom_annotation_predictors
+from cellacdc import apps_measurements_viewer
+from cellacdc.apps_measurements_viewer import (
     ChannelPlaceholderMappingDialog,
     ConditionalFormattingDialog,
     _FormattingConditionDialog,
     formatting_color,
     is_formatting_color,
 )
-from . import phase_translator, measurement_processing, background_values
-from . import gui_custom_annotations
-from .gui_custom_annotations import (
+from .. import phase_translator
+from cellacdc import measurement_processing, background_values
+from cellacdc.gui.mixins import custom_annotations as gui_custom_annotations
+from cellacdc.gui.mixins.custom_annotations import (
     custom_annot_state_to_save, custom_annot_symbol
 )
-from .custom_annotation_predictors import CustomAnnotationPredictor
-from .timepoint_predictors import (
+from ..custom_annotation_predictors import CustomAnnotationPredictor
+from cellacdc.timepoint_predictors import (
     TimepointIdentifier, TIMEPOINT_PREFIX, parse_flags
 )
-from . import disableWindow
-from .measurements_viewer_utils import (
+from cellacdc import disableWindow
+from cellacdc.measurements_viewer_utils import (
     MeasurementsViewerUtils, RESCALE_INTENS_HOW_TEXTS, VISITED_COLUMN,
     PREMADE_TEMPLATE_KEYS, SIGNAL_COLORS, LIGHT_BACKGROUND_SIGNAL_COLORS,
     EXTRA_SIGNAL_COLORS, _SIGNAL_FALLBACK_HUES, signal_color, LOGGER_NAME,
@@ -769,7 +774,7 @@ MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
     settings_folderpath, 'measurements_viewer_configurations'
 )
 PREMADE_CONFIGURATIONS_PATH = os.path.join(
-    cellacdc_path, 'measurements_viewer_premade_configurations'
+    cellacdc_path, 'measurements_viewer', 'premade_configurations'
 )
 PREMADE_TAG = '[Premade] '
 # Tool tip of the columns list in Time course mode
@@ -1623,7 +1628,7 @@ class MeasurementsViewerWin(
 
 
     def selectConfigurationFilepath(self):
-        from .apps import QTreeDialog
+        from cellacdc.apps import QTreeDialog
 
         paths = {}
         types = {}
@@ -1866,7 +1871,7 @@ class MeasurementsViewerWin(
         which is still shown. Only the Positions are asked (not the
         experiments). Returns the summary table (empty if no Position was
         processed) or None if cancelled."""
-        from .utils import computeBackgroundValues as utilsBackground
+        from cellacdc.utils import computeBackgroundValues as utilsBackground
         parent = parent or self
         expPaths = utilsBackground.select_positions(
             parent, experimentPositions
@@ -10561,7 +10566,7 @@ class MeasurementsViewerWin(
 def run(folderpath=None):
     """Launch the measurements viewer as a standalone application, optionally 
     loading `folderpath` (experiment, Position or Images folder)."""
-    from ._run import _setup_app
+    from cellacdc._run import _setup_app
     app, _ = _setup_app()
     win = MeasurementsViewerWin()
     if folderpath:

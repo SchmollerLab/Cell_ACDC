@@ -21,7 +21,7 @@ from qtpy.QtWidgets import (
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 
-from .. import gui, dataStruct, myutils, cite_url, html_utils, urls, widgets
+from .. import dataStruct, myutils, cite_url, html_utils, urls, widgets
 from .. import _palettes
 
 # NOTE: Enable icons
@@ -913,7 +913,8 @@ class welcomeWin(QWidget):
             guiWin = self.mainWin.guiWins[-1]
             QTimer.singleShot(200, guiWin.openFile)
         else:
-            self.guiWin = gui.guiWin(self.app)
+            from ..gui.main_window import window as gui_window
+            self.guiWin = gui_window.guiWin(self.app)
             self.guiWin.showAndSetSize()
             self.guiWin.openFile()
 
@@ -925,7 +926,8 @@ class welcomeWin(QWidget):
                 200, partial(guiWin.openFolder, exp_path=exp_path)
             )
         else:
-            self.guiWin = gui.guiWin(self.app)
+            from ..gui.main_window import window as gui_window
+            self.guiWin = gui_window.guiWin(self.app)
             self.guiWin.showAndSetSize()
             self.guiWin.openFolder(exp_path=exp_path)
 
