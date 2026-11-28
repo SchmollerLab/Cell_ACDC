@@ -543,3 +543,9 @@ def check_unused_methods(node_name='guiWin'):
     print(f"Potentially unused inside {node_name}: {len(unused_inside_guiwin)}")
     for m in sorted(unused_inside_guiwin):
         print(m)
+
+
+def qt_debug_trace():
+    from qtpy.QtCore import pyqtRemoveInputHook
+    pyqtRemoveInputHook()
+    import pdb; pdb.set_trace()
