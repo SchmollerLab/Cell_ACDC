@@ -1,3 +1,8 @@
+"""The data prep window dataPrepWin: selecting the z-slices and the frames
+to analyse, cropping (also into sub-crops), aligning frames and drawing
+background ROIs before segmentation. launchDataPrepSelectZPlane and
+launchDataPrepSelectROI open it from other modules.
+"""
 import gc
 import os
 import sys
@@ -3431,7 +3436,7 @@ class dataPrepWin(QMainWindow):
             event.ignore()
             self.hide()
 
-        self.logger.info('Closing dataPrep logger...')
+        self.logger.info('Closing data prep module logger...')
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
@@ -3480,7 +3485,7 @@ def launchDataPrepSelectZPlane(
 
     logger_func(
         'WARNING: The image data in is 3D but '
-        '_segmInfo.csv file not found. Launching dataPrep.py...'
+        '_segmInfo.csv file not found. Launching the data prep module...'
     )
 
     msg = widgets_message_box.myMessageBox()

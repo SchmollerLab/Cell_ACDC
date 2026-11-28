@@ -106,7 +106,7 @@ class tracker:
             potential candidate to match to a lost object. The unit is 
             either `pixels` or `micrometre` (see `search_range_unit` parameter).
             Default is 10
-        signals : cellacdc.workers.signals, optional
+        signals : cellacdc.shared.workers.base.signals, optional
             Class with `qtpy.Signal` attributes used to display progress on the 
             GUI (text and progressbars). Default is None
         export_to_extension : str, optional

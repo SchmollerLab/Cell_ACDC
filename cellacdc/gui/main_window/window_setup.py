@@ -323,7 +323,7 @@ class WindowGuiElements:
         self.magicPromptsBoxesData = {}
         # {(pos_i, frame_i): deque of copies of the frame boxes}
         self.magicPromptsBoxesUndo = {}
-        # `widgets.PromptBoxROI` items of the displayed boxes
+        # `gui_widgets_points_layer_widgets.PromptBoxROI` items of the displayed boxes
         self.removeMagicPromptsBoxItems()
         # ROI and start point of the box being drawn
         self.magicPromptsDrawingBox = None

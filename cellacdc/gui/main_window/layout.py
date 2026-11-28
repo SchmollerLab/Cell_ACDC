@@ -1419,7 +1419,8 @@ class LayoutGuiElements:
         newFont.setPixelSize(newFontSize)
         gui_main_constants._font = newFont
         # Read by mixin methods in other modules (e.g.
-        # gui_overlay.addAlphaScrollbar) that cannot see gui.py's _font
+        # gui_overlay.addAlphaScrollbar) that cannot read the _font of
+        # gui/main_window/constants.py
         self.bottomLayoutFont = newFont
         self.zProjComboBox.setFont(newFont)
         self.t_label.setFont(newFont)

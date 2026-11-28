@@ -472,7 +472,7 @@ class ViewerCustomAnnotationsGuiElements:
 
     def annotateClickedObject(self, xdata, ydata):
         """Annotate the object under the right-click with the active custom 
-        annotation (as in `gui.guiWin` right-click with an active button)."""
+        annotation (as in `guiWin` right-click with an active button)."""
         button = self.customAnnotButton
         posData = self.posData()
         lab2D = self.get_2Dlab(posData.lab)

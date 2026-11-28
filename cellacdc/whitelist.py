@@ -27,7 +27,7 @@ class Whitelist:
         total_frames : int | list | set
             total frames. range(total_frames) if int, else total_frames
         debug : bool, optional
-            debug with a lot of prints, also in gui.py, by default False
+            debug with a lot of prints, also in the main GUI, by default False
         """
         try:
             self.total_frames = range(total_frames)

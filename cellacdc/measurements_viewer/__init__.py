@@ -10,9 +10,9 @@ every point is a cell at one frame with its own symbol brush and hover
 data, while these options change the number of points or the x axis
 (pyqtgraph raised).
 The widget-free code (data loading and the window's data/logic methods,
-`measurements_viewer_utils.MeasurementsViewerUtils`, inherited by
-`MeasurementsViewerWin`) lives in `measurements_viewer_utils`; this
-docstring specifies both modules.
+`viewer_utils.MeasurementsViewerUtils` and its bases, inherited by
+`MeasurementsViewerWin`) lives in `viewer_utils`, `position_data` and
+`annotation_data`; this docstring specifies the window and these modules.
 In comparison mode, check two columns to select X and Y. X/Y markers replace
 the color swatches; comparison and time-course selections are independent.
 The comparison scatter does not depend on the selected cell: navigating to
@@ -82,7 +82,7 @@ processing.
 
 The window loads data on its own (menu `File --> Load Folder...`, 
 `Open Image File...` or `Open Recent`) and it shares only GUI elements with 
-the main GUI (`gui.guiWin`) through the mixins in:
+the main GUI (`guiWin`) through the mixins in:
 
 - `gui_navigation`: frames/z-slices navigation, zoom to object, recent paths
   and LUT. The arrow keys (Left/Right: frames or z-slices, Up/Down: Cell
@@ -97,9 +97,10 @@ the main GUI (`gui.guiWin`) through the mixins in:
   GUI's 'Viewer' mode, mother-daughter lines come from the cell cycle
   annotations, or from the `parent_ID_tree` column in frames without cell
   cycle annotations (`isLineageTreeLinesModeActive`).
-- `gui_viewer_tools`: the other 'Viewer' mode tools (zoom, ruler, scale bar, 
-  timestamp, colormaps, search ID, hover info, shortcuts, slideshow, 
-  3D viewer, objects properties, cell cycle table and objects count). The
+- `gui_viewer_tools`: the other 'Viewer' mode tools (zoom, ruler, scale bar,
+  timestamp, colormaps, slideshow, 3D viewer), `gui_object_info` (search
+  ID, hover info, objects properties, cell cycle table and objects count)
+  and `gui_window_core` (shortcuts and default settings). The
   3D viewer follows the frame, z-slice/projection, plane, pan/zoom and the
   mouse cursor of the image (`update3DViewer`, `update3DViewerViewRegion`,
   `update3DViewerCursor`). The slideshow shows the viewer's z-slice,
@@ -124,7 +125,7 @@ the main GUI (`gui.guiWin`) through the mixins in:
 
 Open it from the launcher (button "Launch measurements viewer..." in the
 "Measurements visualisation" box, or Utilities > Measurements > Measurements
-viewer..., both `_main.mainWin.launchMeasurementsViewer`) or run it with
+viewer..., both `launcher_window.mainWin.launchMeasurementsViewer`) or run it with
 `python -m cellacdc.measurements_viewer [folder_path]`.
 After data is loaded (on the first event loop pass after `setData`, i.e.
 after the rest of the load such as the overlay channels), the Cell ID
@@ -132,14 +133,14 @@ controls (label, spinbox and scrollbar at the bottom) blink and the status bar
 explains how to select the plotted cell. Ctrl+F focuses the search bar and
 blinks it, like the toolbar search
 button.
-As in the main GUI (`gui.guiWin.setStatusBarLabel`), the left label of the
+As in the main GUI (`guiWin.setStatusBarLabel`), the left label of the
 status bar shows what is displayed (`setStatusBarLabel`, text from
-`measurements_viewer_utils.loaded_data_status`): experiment folder, Position
+`viewer_utils.loaded_data_status`): experiment folder, Position
 folder (with its index when several are loaded), basename, displayed and
 overlay channels, segmentation file and configuration file name; its tool tip
 has the full Images folder and configuration file paths (paths too long for a
 tool tip line broken after separators on indented lines below their label,
-`measurements_viewer_utils.path_tooltip_lines`). It is updated when
+`viewer_utils.path_tooltip_lines`). It is updated when
 data, a position or a configuration is loaded, the overlay channels change
 and a configuration is saved (logged once per load and position change),
 and cleared without data. It is plain text and clipped (never widens the
@@ -171,7 +172,7 @@ configuration. On closing, if any
 position's table or the configuration changed since it was loaded/saved, a
 prompt offers to save the tables (overwriting each position's acdc_output
 file), the configuration (or save it as a new file), both, or neither
-(its buttons get the usual Cell-ACDC icons from `widgets.getPushButton`).
+(its buttons get the usual Cell-ACDC icons from `widgets_push_buttons.getPushButton`).
 Before a table is overwritten, the previous file is backed up in the
 Position's ``recovery`` folder (like in the main GUI). If the file was
 modified on disk since the viewer loaded, reloaded or saved it (e.g., saved
@@ -478,7 +479,7 @@ flag column of a loaded table (e.g., a measurement) or is written by a time
 point, another annotation, the phases, a recorded step or the visited
 tracking (``customAnnotColumnConflict``), so no column is turned into 0/1.
 The add/modify dialog checks it on OK and stays open with the entered values
-(``columnConflict`` of `apps.customAnnotationDialog`; renaming checks only
+(``columnConflict`` of `gui_mixin_dialogs.customAnnotationDialog`; renaming checks only
 the new name). For the same reason, loading a configuration or opening data (annotations
 persist across loading) is refused, before any data is replaced, when one
 of its annotations is named like a column of the new tables that is not a

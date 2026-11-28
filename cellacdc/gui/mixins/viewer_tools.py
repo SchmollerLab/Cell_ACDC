@@ -1,9 +1,10 @@
-"""Mixin classes with the 'Viewer' mode tools of `cellacdc.gui.guiWin` 
-shared with other windows (e.g.,
-`cellacdc.measurements_viewer.MeasurementsViewerWin`): zoom, ruler, scale bar and timestamp, color scheme, labels colormap, image 
-properties, cell cycle table, objects count, search ID, hover info, keyboard 
-shortcuts, default settings, slideshow, 3D viewer and region properties 
-dock widget.
+"""Mixin classes with the 'Viewer' mode tools of `guiWin` shared with
+other windows (e.g., `MeasurementsViewerWin`): zoom, ruler, scale bar
+and timestamp, color scheme, labels colormap, image properties,
+slideshow, 3D viewer and the bottom layout. The cell cycle table,
+objects count, search ID, hover info and region properties dock are in
+gui/mixins/object_info.py, the keyboard shortcuts and default settings
+in gui/mixins/window_core.py.
 """
 import os
 import re
@@ -909,8 +910,8 @@ class BottomLayoutGuiElements:
     double space bar press to toggle the annotations.
     
     The host window must create `self.bottomScrollArea` 
-    (`widgets.ScrollArea`), `self.img1BottomGroupbox` and 
-    `self.resizeBottomLayoutLine` (`widgets.VerticalResizeHline`).
+    (`widgets_basic_widgets.ScrollArea`), `self.img1BottomGroupbox` and 
+    `self.resizeBottomLayoutLine` (`widgets_basic_widgets.VerticalResizeHline`).
     """
     # Settings key of the bottom layout height (windows with different 
     # bottom layouts should use different keys)

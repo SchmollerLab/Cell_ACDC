@@ -27,7 +27,7 @@ class BaSiCpyTimelapse:
 
 class Vector:
     """Class used to define model parameter as a vector that will use the 
-    cellacdc.widgets.VectorLineEdit widget in the automatic GUI.
+    VectorLineEdit widget (shared/widgets/line_edits.py) in the automatic GUI.
     """
     @staticmethod
     def cast_dtype(value: Any) -> Union[Tuple[float], int, float]:

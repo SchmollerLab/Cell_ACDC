@@ -302,7 +302,7 @@ class BackgroundValuesParamsDialog(dialogs_base.QBaseDialog):
     """Parameters of the "Compute background intensity" utility.
 
     After `exec_`, `cancel` is False when the user pressed Ok and `params`
-    holds the keys documented in `workers.ComputeBackgroundValuesWorker`.
+    holds the keys documented in `ComputeBackgroundValuesWorker`.
 
     `findExistingFile(name)` returns the name of an existing file that the
     background table `<basename><name>.csv` would collide with, or None.

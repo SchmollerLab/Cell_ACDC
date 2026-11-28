@@ -1,3 +1,9 @@
+"""Image processing of the displayed channels in the main GUI:
+preprocessing recipes (preview, apply to the frame, the z-stack, all
+frames or all Positions, save) in PreprocessingGuiElements, and
+combining channels in CombineGuiElements with its worker callbacks
+CombineGUIWorker.
+"""
 from typing import List, Dict, Any, Tuple
 from cellacdc import core, html_utils, preprocess, printl
 from cellacdc.myutils import filesystem

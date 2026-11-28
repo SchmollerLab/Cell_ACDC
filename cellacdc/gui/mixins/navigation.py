@@ -1,6 +1,6 @@
 """Navigation GUI elements (frames, z-slices, objects, recent paths, LUT) 
-shared between the main GUI (`gui.guiWin`) and other windows (e.g., 
-`measurements_viewer.MeasurementsViewerWin`).
+shared between the main GUI (`guiWin`) and other windows (e.g., 
+`MeasurementsViewerWin`).
 
 The classes are mixins meant to be inherited together with `QMainWindow`. 
 They expect the host window to define:
@@ -459,8 +459,8 @@ class RecentPathsGuiElements:
 
 class LutGuiElements:
     """Rescale intensities (LUT) behaviour of the image `self.img1` 
-    (`widgets.ParentImageItem`) with LUT item `self.imgGrad` 
-    (`widgets.myHistogramLUTitem`).
+    (`widgets_plot_items.ParentImageItem`) with LUT item `self.imgGrad` 
+    (`widgets_lut_items.myHistogramLUTitem`).
     
     The host window must define `self.isDataLoaded`, `self.logger`,
     `self.df_settings`, `self.settings_csv_path`, `self.user_ch_name`,
@@ -527,7 +527,7 @@ class LutGuiElements:
     `colors.get_pg_gradient`): pyqtgraph would otherwise hide the ticks of
     a LUT item that is not shown. Colormaps picked from the LUT menu that
     are not preset gradients are saved with hidden ticks
-    (`widgets.baseHistogramLUTitem.colorMapMenuClicked`). Restore default
+    (`widgets_lut_items.baseHistogramLUTitem.colorMapMenuClicked`). Restore default
     settings removes them all, with the saved overlay alphas
     (`removeChannelLutSettings`; `drop_channel_lut_settings` removes the
     older 'img_cmap_*' rows of `settings.csv`), and keeps the overlay

@@ -102,7 +102,7 @@ class FunctionParamsDialog(dialogs_base.QBaseDialog):
     def cancel_cb(self):
         # Edits are emitted live (`sigValuesChanged`): the caller restores
         # `original_function_kwargs` on cancel (see
-        # `widgets.PreProcessingSelector.askSetParams`)
+        # `widgets_combo_boxes.PreProcessingSelector.askSetParams`)
         self.cancel = True
         self.function_kwargs = self.original_function_kwargs
         self.close()
@@ -1181,7 +1181,7 @@ class PreProcessRecipeDialog(dialogs_base.QBaseDialog):
         
         self.loadLastRecipeButton.hide()
         
-        # self.cancelButton = widgets.cancelPushButton('Cancel')
+        # self.cancelButton = widgets_push_buttons.cancelPushButton('Cancel')
         # buttonsLayout.insertWidget(2, self.cancelButton)
         # buttonsLayout.insertSpacing(3, 20)
         

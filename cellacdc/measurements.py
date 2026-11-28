@@ -2683,7 +2683,7 @@ def unselected_measurement_columns(
     """Return the measurement columns of `colnames` that are not selected.
 
     A column is a measurement if it is one of the measurements that can be
-    selected in the "Set measurements" dialog (`apps.SetMeasurementsDialog`)
+    selected in the "Set measurements" dialog (`dialogs_set_measurements.SetMeasurementsDialog`)
     or one of their expansions:
 
     * standard, background and custom (`acdc_metrics_path`) metrics of

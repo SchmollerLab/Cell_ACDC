@@ -1,6 +1,6 @@
 """Overlay channels and overlay labels mixins shared by the main GUI
-(`gui.guiWin`) and the measurements viewer
-(`measurements_viewer.MeasurementsViewerWin`).
+(`guiWin`) and the measurements viewer
+(`MeasurementsViewerWin`).
 
 The methods were moved verbatim from `guiWin`. The host window is responsible
 for creating the widgets and attributes the methods use. The host may define
@@ -22,7 +22,7 @@ the channel display settings have none). Restore default settings keeps it.
 The LUT of each overlay channel is restored from (and saved to) the channel
 display settings by channel name when its LUT item is created
 (`getOverlayItems`); without a saved LUT it is made from the overlay color.
-The check states of the overlay modes of `widgets.OverlayToolbar` (true
+The check states of the overlay modes of `widgets_toolbars.OverlayToolbar` (true
 transparency, alpha-encoded intensity) are saved when the user clicks them
 (`saveOverlayModes`, settings
 `OVERLAY_TRANSPARENCY_SETTING` / `OVERLAY_ALPHA_ENCODED_SETTING`) and
@@ -47,7 +47,7 @@ channel is added to or removed from it (`overlayChannelToggled`; in Single
 channel mode the selected channel stays selected while it is overlaid, else
 the base layer, see `setOverlayChannelsToolbuttonsChecked`). The saved
 alphas are removed by Restore default settings
-(`gui_viewer_tools.DefaultSettingsGuiElements.restoreDefaultSettings`).
+(`gui_window_core.DefaultSettingsGuiElements.restoreDefaultSettings`).
 """
 import os
 import math
@@ -272,7 +272,7 @@ class OverlayChannelsGuiElements:
                 'Aligned data for fluorescence channel not found!\n\n'
                 f'You loaded aligned data for the cells channel, therefore '
                 'loading NON-aligned fluorescence data is not allowed.\n\n'
-                'Run the script "dataPrep.py" to create the following file:\n\n'
+                'Run the data prep module to create the following file:\n\n'
                 f'{path}'
             )
             return None

@@ -345,7 +345,7 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
         raise ValueError(
             f'Init kwargs {sorted(unresolved)} reference client files. The '
             'client must send the data instead (see '
-            'myutils.resolve_segm_model_init_data).'
+            'resolve_segm_model_init_data in myutils/segm_models.py).'
         )
     segm_data = init_kwargs.pop('segm_data', None)
     args = inspect.getfullargspec(acdcSegment.Model.__init__).args

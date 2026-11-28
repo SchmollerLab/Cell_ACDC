@@ -163,7 +163,7 @@ class DeleteRoisGuiElements:
             self.ax1.removeDelRoiItem(roi)
 
         # Only deletion ROIs (they have a `key`): e.g., the box prompts of
-        # promptable models (`widgets.PromptBoxROI`) are other ROIs. Iterate
+        # promptable models (`gui_widgets_points_layer_widgets.PromptBoxROI`) are other ROIs. Iterate
         # over copies because the items are removed from the lists
         for item in list(self.ax2.items):
             if isinstance(item, pg.ROI) and hasattr(item, 'key'):

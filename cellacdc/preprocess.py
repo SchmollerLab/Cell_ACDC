@@ -2,7 +2,8 @@
 This module contains the functions that can be used as pre-processing steps 
 before segmentation. 
 
-These functions are automatically added to `apps.QDialogModelParams` and they 
+These functions are automatically added to the model parameters dialog
+(`dialogs_model_params.QDialogModelParams`) and they 
 can be selected in the pre-processing recipe. 
 
 Every function must have a single argument for the image, while all 

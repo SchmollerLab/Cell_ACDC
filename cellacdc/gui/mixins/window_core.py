@@ -1,3 +1,10 @@
+"""Core window services of the main GUI and the measurements viewer: values
+of the settings CSV, window geometry and 2D region properties
+(GUICoreElements), worker progress (WorkersGuiElements), keyboard
+shortcuts with the host hook showDeleteObjectShortcut
+(ShortcutsGuiElements) and the default settings
+(DefaultSettingsGuiElements).
+"""
 import logging
 
 from qtpy.QtCore import QSettings

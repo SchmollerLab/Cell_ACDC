@@ -1,3 +1,8 @@
+"""Re-structuring of loose TIFF files into the Cell-ACDC Position
+structure: reads Positions, channels, frames and z-slices from the file
+names or the file dimensions as set in the setup dialog and writes the
+Images folders (run, started from the launcher).
+"""
 import os
 import re
 import csv

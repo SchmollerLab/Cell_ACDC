@@ -64,7 +64,7 @@ class ApplyTrackingInfoFromTrackMateUtil(base.MainThreadSinglePosUtilBase):
         deleteUntrackedIDs, proceed = self.askDeleteUntrackedIDs()
         if not proceed:
             return False
-        # win = apps.ApplyTrackTableSelectColumnsDialog(df, parent=self)
+        # win = utils_applyTrackFromTable.ApplyTrackTableSelectColumnsDialog(df, parent=self)
         # win.exec_()
         # if win.cancel:
         #     return False

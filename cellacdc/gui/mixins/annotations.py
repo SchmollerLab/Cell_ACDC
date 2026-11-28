@@ -2,8 +2,8 @@
 segmentation masks (contours, segm. masks overlay, IDs, cell cycle and lineage 
 info, mother-daughter lines and object tracks) on the image axes.
 
-It is shared by the main GUI (`gui.guiWin`) and the measurements viewer
-(`measurements_viewer.MeasurementsViewerWin`).
+It is shared by the main GUI (`guiWin`) and the measurements viewer
+(`MeasurementsViewerWin`).
 
 Requirements on the inheriting class
 ------------------------------------
@@ -11,8 +11,8 @@ Requirements on the inheriting class
   `lab`, `rp`, `IDs`, `cca_df`, `lost_IDs`, `new_IDs`, `trackedLostIDs`, 
   `tracked_lost_centroids` and `whitelist`.
 - `self.df_settings` and `self.settings_csv_path`.
-- `self.imgGrad` (`widgets.myHistogramLUTitem`) and `self.labelsGrad` 
-  (`widgets.labelsGradientWidget`).
+- `self.imgGrad` (`widgets_lut_items.myHistogramLUTitem`) and `self.labelsGrad` 
+  (`widgets_lut_items.labelsGradientWidget`).
 - The z-slice navigation widgets (see `gui_navigation`).
 - `self.modeComboBox` (only `currentText()` is read, e.g., by
   `isLineageTreeLinesModeActive`; the measurements viewer has a hidden one
@@ -1118,7 +1118,7 @@ class AnnotationsGuiElements:
 
         Parameters
         ----------
-        ax : cellacdc.widgets.MainPlotItem
+        ax : cellacdc.shared.widgets.plot_items.MainPlotItem
             The Cell-ACDC GUI axes object to draw on.
         obj : Object
             The object for which to draw the moth-bud lines.

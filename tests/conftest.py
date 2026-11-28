@@ -57,7 +57,7 @@
   ``recentPaths_path``, the saved and custom promptable models
   ``saved_promptable_models_path`` and ``promptable_models_list_file_path``,
   the colormaps saved by users ``custom_cmaps_filepath`` and the log folder
-  ``logs_path`` (written and pruned by ``myutils.setupLogger``, e.g. when a
+  ``logs_path`` (written and pruned by ``app_info.setupLogger``, e.g. when a
   utility window is created) (``USER_SETTINGS_PATHS``) of ``cellacdc`` and
   its submodules point into a fresh temporary settings folder
   (``settings.csv`` holds only the current ``colorScheme``), and
@@ -504,12 +504,13 @@ USER_SETTINGS_PATHS = {
     'additional_metadata_path': 'additional_metadata.json',
     'last_selected_measurements_ini_path': 'last_selected_measurements.ini',
     'recentPaths_path': 'recentPaths.csv',
-    # myutils.setupLogger writes there and deletes logs older than 7 days
+    # app_info.setupLogger writes there and deletes logs older than 7 days
     'logs_path': 'logs',
     # Trained promptable models saved from the GUI (`cellacdc.
     # promptable_models.saved_models` imports the name)
     'saved_promptable_models_path': 'saved_promptable_models',
-    # Custom promptable models (read by myutils.get_list_of_promptable_models)
+    # Custom promptable models (read by
+    # segm_models.get_list_of_promptable_models)
     'promptable_models_list_file_path': 'custom_promptable_models_paths.ini',
     # Colormaps saved by users from the LUT menus (read when the widgets
     # create their gradients, written when a colormap is saved or removed)

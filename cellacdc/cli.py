@@ -1138,7 +1138,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
         """Set the measurements to compute from the selection of
-        `apps.SetMeasurementsDialog` (its `selectedMetrics` helpers:
+        `dialogs_set_measurements.SetMeasurementsDialog` (its `selectedMetrics` helpers:
         checkboxes left checked in an unchecked group are not selected).
         """
         self.chNamesToSkip = []
@@ -1601,7 +1601,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
     def _drop_unselected_existing_measurements(self, acdc_df, posData):
         """Drop the measurement columns of an existing table that are not
         selected and that the user chose to delete (Delete/Keep question of
-        `apps.SetMeasurementsDialog.ok_cb`, only the listed columns, see
+        `dialogs_set_measurements.SetMeasurementsDialog.ok_cb`, only the listed columns, see
         `record_existing_measurements_answer`)."""
         to_delete = getattr(self, 'existing_measurements_to_delete', None)
         if to_delete is None:

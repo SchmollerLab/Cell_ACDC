@@ -175,7 +175,7 @@ class ViewerTimepointsGuiElements:
     #         'Do you want to <b>re-evaluate the time point predictors</b> on '
     #         'all cells now?'
     #     )
-    #     msg = widgets.myMessageBox(wrapText=False)
+    #     msg = widgets_message_box.myMessageBox(wrapText=False)
     #     _, yesButton = msg.question(
     #         self, 'Re-evaluate predictors?', txt, 
     #         buttonsTexts=('No', 'Yes, re-evaluate')

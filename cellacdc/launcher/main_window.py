@@ -1,3 +1,8 @@
+"""The launcher window mainWin: the module buttons (data structure, data
+prep, segmentation and tracking, GUI, measurements viewer, spotMAX), the
+Utilities and Help menus that start the batch utilities and guides, the
+settings and user profile actions, and the self-update helpers.
+"""
 import os
 import sys
 import traceback
@@ -355,7 +360,7 @@ class mainWin(QMainWindow):
         print('Loading configuration files...')
         paths_to_check = [
             favourite_func_metrics_csv_path, 
-            # gui.custom_annot_path, 
+            # gui_custom_annotations.custom_annot_path, 
             shortcut_filepath, 
             os.path.join(settings_folderpath, 'recentPaths.csv'), 
             load.last_entries_metadata_path, 
@@ -2147,7 +2152,7 @@ class mainWin(QMainWindow):
     
     def launchSpotmaxGui(self, checked=False):
         from spotmax import icon_path, logo_path
-        # logoDialog = apps.LogoDialog(logo_path, icon_path, parent=self)
+        # logoDialog = launcher_dialogs.LogoDialog(logo_path, icon_path, parent=self)
         
         splashScreen = QSplashScreen()
         splashScreen.setPixmap(QPixmap(logo_path))

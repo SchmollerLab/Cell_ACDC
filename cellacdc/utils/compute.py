@@ -789,7 +789,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
 #         self.close()
 
 #     def showHelp(self):
-#         msg = widgets.myMessageBox(wrapText=False)
+#         msg = widgets_message_box.myMessageBox(wrapText=False)
 #         msg.information(self, 'Constant formulas', html_utils.paragraph(
 #             'Candidate inputs have their measurement names. Enquiring-cell '
 #             'inputs have the prefix <code>this_</code>, for example '

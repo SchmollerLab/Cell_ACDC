@@ -740,7 +740,7 @@ class ViewerDataIOGuiElements:
         )
 
     def resizeBottomLayout(self):
-        # As in `gui.guiWin.resizeGui`: fit the bottom layout to its 
+        # As in `guiWin.resizeGui`: fit the bottom layout to its 
         # content and then restore the height saved by the user
         self.bottomScrollArea._resizeVertical()
         self.setBottomLayoutHeight()

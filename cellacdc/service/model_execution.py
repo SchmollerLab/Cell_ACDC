@@ -2,9 +2,9 @@
 
 Shared by every GUI caller that segments with a model:
 
-* the segmentation module (`segm.segmWin`),
-* the main GUI (`gui.guiWin.repeatSegm`, `repeatSegmVideo`, segmentation
-  for lost IDs via `workers.SegForLostIDsWorker`, and YeastMate budding
+* the segmentation module (`segm_window.segmWin`),
+* the main GUI (`guiWin.repeatSegm`, `repeatSegmVideo`, segmentation
+  for lost IDs via `gui_workers_segmentation_tracking.SegForLostIDsWorker`, and YeastMate budding
   prediction in `autoAssignBud_YeastMate`).
 
 Execution modes (`ModelExecution.backend_type`):
@@ -18,7 +18,7 @@ Errors in the isolated mode are raised; there is no silent fallback to the
 in-process mode.
 
 GPU checks in the client must pass ``execution.env_python`` to
-``myutils.check_gpu_available`` after ``prepare()``. This inspects the selected
+``model_installs.check_gpu_available`` after ``prepare()``. This inspects the selected
 model environment and targets GPU installation instructions to it. In-process
 executions leave ``env_python`` as None.
 """

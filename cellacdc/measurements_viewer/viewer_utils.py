@@ -4,7 +4,7 @@ Module-level functions load and normalize the positions' data (images
 paths, `acdc_output` tables, last analyzed frame and frame masking),
 evaluate masked per-cell equations, give signal colors and set up the
 viewer's logger. `MeasurementsViewerUtils` collects the data and logic
-methods of `measurements_viewer.MeasurementsViewerWin` that do not touch
+methods of `MeasurementsViewerWin` that do not touch
 widgets (tables, positions, configurations, predictors, time points, custom
 annotations, phases and measurement steps). The window inherits it as a
 mixin (right after ``QMainWindow``), so ``self`` is the viewer window and
@@ -12,8 +12,9 @@ the methods read its data attributes (``self.data``, ``self.acdc_df``,
 ``self.phaseTranslatorRules``, ...).
 
 Keep this module free of widget code: methods that show dialogs, update
-plots or widgets belong to `measurements_viewer`. The behavior of these
-functions is specified in the `measurements_viewer` module docstring.
+plots or widgets belong to the window mixins in
+measurements_viewer/main_window/. The behavior of these functions is
+specified in the docstring of measurements_viewer/__init__.py.
 """
 import copy
 import json
@@ -128,7 +129,7 @@ class _StdoutLogHandler(logging.StreamHandler):
 
     The stream is looked up at every record (assigning ``stream`` is
     ignored), so redirections done after the handler was created (pytest
-    capture, the launcher's ``myutils.Logger``, which also writes the log
+    capture, the launcher's ``app_info.Logger``, which also writes the log
     file) keep receiving the messages.
     """
     @property
@@ -417,7 +418,7 @@ def blank_unanalyzed_outputs(df, columns, last_frame):
 
 def evaluate_masked_cell_equation(df, expression, SizeT=None, last_frame=None):
     """Evaluate a combined measurement `expression` per cell
-    (`apps.CombineMetricsEquationDialog.evaluateCellEquation`) on the rows
+    (`dialogs_combine_measurements.CombineMetricsEquationDialog.evaluateCellEquation`) on the rows
     of `df` up to `last_frame` with ``SizeT = last_frame + 1``. The result
     is indexed like those rows (assigning it to a column of the full table
     leaves NaN on the later rows). Without `last_frame`, it is exactly
@@ -467,7 +468,7 @@ def loaded_data_status(
         configuration_filepath=None
     ):
     """Describe the displayed data for the viewer's status bar label (as the
-    main GUI's `gui.guiWin.setStatusBarLabel`).
+    main GUI's `guiWin.setStatusBarLabel`).
 
     Parameters
     ----------

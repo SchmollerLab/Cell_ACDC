@@ -66,7 +66,7 @@ class customAnnotationDialog(QDialog):
             State of the annotation to modify.
         predictorOptions : dict, optional
             If not None, add the predictor settings (measurements viewer).
-            See `apps_measurements_viewer._CustomAnnotationPredictorGroupbox`.
+            See `viewer_dialogs_predictor_editors._CustomAnnotationPredictorGroupbox`.
             The viewer also gets the "Overrides phases" option (state key
             'overridesPhases', always written as a bool).
         reservedShortcuts : dict or callable, optional
@@ -265,8 +265,8 @@ class customAnnotationDialog(QDialog):
             predictorOptions = {
                 'nameGetter': self.nameWidget.widget.text, **predictorOptions
             }
-            # Measurements viewer only; local import avoids a circular
-            # import (apps_measurements_viewer imports apps)
+            # Measurements viewer only; imported here: gui/mixins/ imports
+            # the viewer only lazily (see gui/mixins/__init__.py)
             from cellacdc.measurements_viewer.dialogs.predictor_editors import _CustomAnnotationPredictorGroupbox
             self.predictorGroupbox = _CustomAnnotationPredictorGroupbox(
                 predictorOptions, 

@@ -1,3 +1,15 @@
+"""Class guiWin, the main GUI window for annotating and correcting
+segmentation, tracking and cell cycle data.
+
+The class body holds the base classes (QMainWindow, then the window-only
+<Topic>GuiElements mixins of gui/main_window/, then the mixins shared
+with the measurements viewer from gui/mixins/), the Signals, the
+overriding class attributes (KEY_EVENT_KEYS), __init__, the Qt-named
+overrides and the methods that call super(). Every other method lives in
+the mixin of its topic. The module also runs the import-time setup of
+the main GUI: the pyqtgraph row-major image axis order, the pandas
+PerformanceWarning filter, np.seterr and the Windows AppUserModelID.
+"""
 import gc
 import sys
 import os

@@ -19,7 +19,7 @@ Entry fields (all optional):
         not the Python running Cell-ACDC (e.g. use python="3.10" for torch<2).
     packages: list of packages to install. Each item is either a string
         (pip name, also used as import name) or a dict with the keys
-        accepted by ``myutils.check_install_package``
+        accepted by ``installs.check_install_package``
         (``pkg_name``, ``import_pkg_name``, ``pypi_name``,
         ``min_version``, ``max_version``, ...). ``distribution_name`` is
         also accepted; it is only used to detect an existing installation.
@@ -187,7 +187,7 @@ MODEL_ENVS = {
     # dependencies (setup step) and its model is imported without running
     # `__init__.py` (see promptable_models/ConvPaint/acdcPromptSegment.py).
     # `packages` are the dependencies of the model (keep in sync with
-    # `myutils._CONVPAINT_PACKAGES`).
+    # `model_installs._CONVPAINT_PACKAGES`).
     'ConvPaint': {
         'python': '3.12',
         'torch': True,

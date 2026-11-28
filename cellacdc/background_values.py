@@ -2,7 +2,7 @@
 
 Used by the utility "Compute background intensity outside of segmented
 objects..." (`utils/computeBackgroundValues.py`, worker
-`workers.ComputeBackgroundValuesWorker`).
+`utils_computeBackgroundValues.ComputeBackgroundValuesWorker`).
 
 Method
 ------
@@ -37,7 +37,7 @@ Method
    experiment folder as ``<name>_summary.csv`` (one row per channel, columns
    `SUMMARY_COLUMNS`). `read_summary_table` reads it back, e.g. to fill the
    inputs of a premade measurements viewer configuration
-   (`apps_measurements_viewer.ChannelPlaceholderMappingDialog`).
+   (`viewer_dialogs_premade_setup.ChannelPlaceholderMappingDialog`).
 """
 import numpy as np
 import pandas as pd
@@ -264,7 +264,8 @@ def included_cells_mask(acdc_df):
 
 # Disabled for now (per-frame correction of acdc_output, not used).
 # Re-enable together with `corrected_colname`,
-# `workers.ComputeBackgroundValuesWorker._correctAcdcOutput` and the
+# `utils_computeBackgroundValues.ComputeBackgroundValuesWorker`'s
+# `_correctAcdcOutput` and the
 # `per_frame_*` values of `normalization_constants`.
 # def add_background_corrected_columns(
 #         acdc_df, bkgr_df, channels, statistic, is_segm_3D=False

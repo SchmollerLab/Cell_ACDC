@@ -30,7 +30,7 @@ class ViewerImagePanelGuiElements:
         return (0,)
 
     def setDoNotAnnotate(self, checked):
-        # Same as `gui.guiWin.setDoNotAnnotate` but only for the left image
+        # Same as `guiWin.setDoNotAnnotate` but only for the left image
         self.annotDoNotAnntoateCheckbox(0).setChecked(checked)
 
     def launch3dViewerActionToggled(self, checked):
@@ -124,7 +124,7 @@ class ViewerImagePanelGuiElements:
 
     def initViewerTools(self):
         """Initialize the overlay of other channels and segmentation files 
-        as in `gui.guiWin` after loading data"""
+        as in `guiWin` after loading data"""
         self.resetViewerToolsWidgets()
         
         posData = self.posData()
@@ -288,7 +288,7 @@ class ViewerImagePanelGuiElements:
         self.df_settings.to_csv(self.settings_csv_path)
 
     def initLut(self):
-        """Initialize LUT levels as in `gui.guiWin` after loading data. The
+        """Initialize LUT levels as in `guiWin` after loading data. The
         LUT (gradient) saved for the channel is restored at the end of the
         load (`initViewerToolsAfterLoading`)."""
         self.isDataLoaded = True
@@ -311,7 +311,7 @@ class ViewerImagePanelGuiElements:
 
     def setStatusBarLabel(self, log=True):
         """Show what is displayed in the status bar label, as the main GUI's
-        `gui.guiWin.setStatusBarLabel`: experiment and Position folder,
+        `guiWin.setStatusBarLabel`: experiment and Position folder,
         basename, displayed and overlay channels, segmentation file and
         configuration file name, with the full Images folder and
         configuration paths in its tool tip (`loaded_data_status`; long
@@ -460,7 +460,7 @@ class ViewerImagePanelGuiElements:
             field.setText('')
 
     def updateImages(self):
-        """Update image and annotations as `gui.guiWin.updateAllImages` in
+        """Update image and annotations as `guiWin.updateAllImages` in
         'Viewer' mode"""
         if not self.data:
             return
@@ -485,7 +485,7 @@ class ViewerImagePanelGuiElements:
         self.setAllTextAnnotations()
         self.setAllContoursImages(compute=False)
         self.drawAllMothBudLines()
-        # As in `gui.guiWin.updateAllImages`: lineage tree lines only in
+        # As in `guiWin.updateAllImages`: lineage tree lines only in
         # frames without cca annotations (they would clear the cca lines)
         if self.isLineageTreeLinesModeActive():
             # Previous frame data required by `drawAllLineageTreeLines`
@@ -518,7 +518,7 @@ class ViewerImagePanelGuiElements:
         self.clearObjTracks()
 
     def highlightSelectedID(self):
-        """Highlight the selected ID as the searched ID in `gui.guiWin`"""
+        """Highlight the selected ID as the searched ID in `guiWin`"""
         ID = self.highlightedID
         if not ID:
             return
@@ -644,7 +644,7 @@ class ViewerImagePanelGuiElements:
         self.countKeyPress = 0
 
     def isHoveringRoiHandle(self, roi):
-        # Same as `gui.guiWin.gui_isHoveringRoiHandle`
+        # Same as `guiWin.gui_isHoveringRoiHandle`
         if roi is None:
             return False
         try:
@@ -778,7 +778,7 @@ class ViewerImagePanelGuiElements:
         event.ignore()
 
     def imgGradShowContextMenu(self, x, y):
-        # Same as `gui.guiWin.gui_imgGradShowContextMenu`
+        # Same as `guiWin.gui_imgGradShowContextMenu`
         highlightedItem = self.isScaleBarOrTimestampHighlighted()
         if highlightedItem is not None:
             highlightedItem.showContextMenu(x, y)

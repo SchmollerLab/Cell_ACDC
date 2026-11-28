@@ -205,7 +205,7 @@ class PositionDataUtils:
     def initPosAnnotData(self, posData):
         """Initialize the per-frame stored data (`allData_li`) and the 
         attributes of `posData` required by the annotations as in 
-        `gui.guiWin` and return the set of all IDs.
+        `guiWin` and return the set of all IDs.
 
         Uses the regionprops computed in the loading worker thread
         (`precompute_position_regionprops`), if any. The rest runs on the
@@ -255,7 +255,7 @@ class PositionDataUtils:
 
     def getFrameAcdcDf(self, frame_i):
         """Get the acdc_df of `frame_i` (index is Cell_ID) as stored in 
-        `posData.allData_li` by `gui.guiWin`"""
+        `posData.allData_li` by `guiWin`"""
         if self.acdc_df is None:
             return
         
@@ -279,7 +279,7 @@ class PositionDataUtils:
         return df
 
     def getBaseCca_df(self, with_tree_cols=False):
-        """Read-only stand-in for `gui.guiWin.getBaseCca_df`: an empty cell
+        """Read-only stand-in for `guiWin.getBaseCca_df`: an empty cell
         cycle table (no default annotations are invented for frames that
         were not annotated)."""
         return pd.DataFrame(columns=self.cca_df_colnames).rename_axis(
@@ -288,7 +288,7 @@ class PositionDataUtils:
 
     def get_data(self):
         """Load data of the current frame into `posData` as in
-        `gui.guiWin.get_data` (read-only)"""
+        `guiWin.get_data` (read-only)"""
         posData = self.posData()
         frame_i = posData.frame_i
         storedData = posData.allData_li[frame_i]
@@ -381,7 +381,7 @@ class PositionDataUtils:
         return acdc_df is not None and (frame_i, ID) in acdc_df.index
 
     def initLineageTree(self):
-        """Stand-in for the `normal_division_lineage_tree` of `gui.guiWin` 
+        """Stand-in for the `normal_division_lineage_tree` of `guiWin` 
         (only `frames_for_dfs` is required by 
         `AnnotationsGuiElements.drawAllLineageTreeLines`). Lineage tree lines 
         are drawn from the saved `parent_ID_tree` column of the acdc_df."""
@@ -400,7 +400,7 @@ class PositionDataUtils:
         if df is None:
             return
         
-        # Parents that cannot be drawn are unknown (-1) as in `gui.guiWin`
+        # Parents that cannot be drawn are unknown (-1) as in `guiWin`
         parent_IDs = df['parent_ID_tree'].fillna(-1).astype(int)
         isDrawable = df.index.isin(rp.IDs)
         if prev_IDs is not None:

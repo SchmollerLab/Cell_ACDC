@@ -36,7 +36,7 @@ Expected annotations (normal division, one node per ``Cell_ID``):
 - Unknown history (``parent_ID_tree == -1``): ``generation_num_tree == 1``,
   ``root_ID_tree == Cell_ID``, no sisters. ``root_ID_tree == -1`` also means
   "the cell is its own root" (default of ``base_cca_tree_dict``, kept for
-  root cells by ``myutils.df_ctc_to_acdc_df``, e.g. Trackastra output).
+  root cells by ``table_utils.df_ctc_to_acdc_df``, e.g. Trackastra output).
 - Known parent: the parent is another cell that exists before the daughter
   appears (and normally disappears when it divides);
   ``generation_num_tree`` is the parent's + 1 and ``root_ID_tree`` the
@@ -93,7 +93,7 @@ OTHER_INT_COLS = (
 )
 BUDDING_CCA_COLS = ('cell_cycle_stage', 'relationship', 'relative_ID')
 
-# Output of the Concatenate utility (`workers.ConcatAcdcDfsWorker`), lower case
+# Output of the Concatenate utility (`utils_concat.ConcatAcdcDfsWorker`), lower case
 CONCATENATED_TABLES_FOLDER = 'allpos_acdc_output'
 CONCATENATED_TABLES_PREFIXES = ('allpos_', 'multiexp_')
 

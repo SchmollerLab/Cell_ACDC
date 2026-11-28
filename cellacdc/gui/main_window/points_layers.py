@@ -1142,7 +1142,7 @@ class PointsLayersGuiElements:
     def getCentroidsPointsData(self, action):
         # Centroids (either weighted or not)
         # NOTE: if user requested to draw from table we load that in 
-        # apps.AddPointsLayerDialog.ok_cb()
+        # gui_dialogs_points_layers.AddPointsLayerDialog.ok_cb()
         
         # this does not have the updated centroid logic to avoid weird behaviours
         posData = self.data[self.pos_i]

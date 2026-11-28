@@ -1,3 +1,7 @@
+"""The segmentation and tracking window segmWin, which segments and tracks
+the selected Positions with the chosen model and tracker in a worker
+thread (SegmWorker), outside the GUI.
+"""
 import sys
 import inspect
 import os
@@ -671,9 +675,9 @@ class segmWin(QMainWindow):
             # User did not requested ROI --> discard existing ones
             self.ROIdeactivatedByUser = True
 
-        # Check if we should launch dataPrep:
+        # Check if we should launch the data prep module:
         #   1. 2D segmentation on z-stack data that was never visualized
-        #      with dataPrep
+        #      with the data prep module
         #   2. Select a ROI to segment
         isSegmInfoPresent = True
         for img_path in user_ch_file_paths:

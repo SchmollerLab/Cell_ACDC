@@ -373,7 +373,7 @@ def setupLogger(
     _log_system_info(logger, log_path, also_spotmax=caller!='Cell-ACDC')
     
     # if module == 'gui' and GUI_INSTALLED:
-    #     qt_handler = widgets.QtHandler()
+    #     qt_handler = gui_widgets_main_window_items.QtHandler()
     #     qt_handler.setFormatter(logging.Formatter("%(message)s"))
     #     logger.addHandler(qt_handler)
 

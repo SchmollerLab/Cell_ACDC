@@ -687,7 +687,7 @@ def parse_model_params(model_argspecs, model_params):
 #     init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
 #     url = url_help()
     
-#     paramsWin = apps.QDialogModelParams(
+#     paramsWin = dialogs_model_params.QDialogModelParams(
 #         init_argspecs, run_argspecs, 'Cellpose 3.0', 
 #         url=url, is_tracker=True, action_type='denoising'
 #     )

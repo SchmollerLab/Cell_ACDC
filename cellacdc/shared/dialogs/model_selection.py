@@ -1234,7 +1234,7 @@ class InstallPyTorchDialog(dialogs_base.QBaseDialog):
         Parameters
         ----------
         possible_links : tuple, optional
-            Precomputed result of `_torch_utils.get_torch_options`, i.e.
+            Precomputed result of `torch_utils.get_torch_options`, i.e.
             (options, preferred_index). If None, it is fetched here
             (needs network access).
         torch_version : str, optional

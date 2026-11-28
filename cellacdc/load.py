@@ -1259,7 +1259,7 @@ def bool_cols_as_plain_bool(df):
 
     Combined measurement equations ("Add combined measurement" of the main
     GUI and the compute utility) are evaluated on this both by the dialog's
-    test (`apps._CombineMetricsDialog.getTestData`) and at save
+    test (`dialogs_combine_measurements._CombineMetricsDialog.getTestData`) and at save
     (`cli.ComputeMeasurementsKernel._df_eval_equation`, where the frames were
     cast to Int64 0/1 by `pd_bool_and_float_to_int_to_str`), so both give
     the same values: ``~is_cell_excluded`` is a logical not (on Int64 it is

@@ -487,7 +487,7 @@ class ViewerSetupGuiElements:
         self.gui_createViewerToolsActions()
 
     def gui_createViewerToolsActions(self):
-        """Create the actions of the 'Viewer' mode tools as in `gui.guiWin`"""
+        """Create the actions of the 'Viewer' mode tools as in `guiWin`"""
         if 'colorScheme' in self.df_settings.index:
             self._colorScheme = self.df_settings.at['colorScheme', 'value']
         else:
@@ -1274,7 +1274,7 @@ class ViewerSetupGuiElements:
             action.setVisible(False)
 
     def gui_createAnnotationsItems(self):
-        """Create the annotations items as in `gui.guiWin` (left image)"""
+        """Create the annotations items as in `guiWin` (left image)"""
         # Text annotations color
         self.textIDsColorButton = pg.ColorButton(self)
         self.textIDsColorButton.hide()
@@ -1450,7 +1450,8 @@ class ViewerSetupGuiElements:
 
         # One left-aligned grid column each for the labels, spin boxes,
         # size labels and sliders (`NAV_*_COL`), so that they line up across
-        # rows. The main GUI builds its own navigation layout (gui.py).
+        # rows. The main GUI builds its own navigation layout
+        # (gui/main_window/layout.py).
         navLayout = QGridLayout()
         labelCol, spinCol = self.NAV_LABEL_COL, self.NAV_SPINBOX_COL
         sizeCol, sliderCol = self.NAV_SIZE_COL, self.NAV_SLIDER_COL
@@ -1543,7 +1544,7 @@ class ViewerSetupGuiElements:
 
     def gui_createAnnotationsWidgets(self):
         """Create the annotation options checkboxes and the quick settings 
-        of `gui.guiWin` relevant for the display of the annotations."""
+        of `guiWin` relevant for the display of the annotations."""
         self.gui_setupAnnotationOptionsLayout(0)
         
         self.annotLostObjsToggle = widgets_push_buttons.Toggle()

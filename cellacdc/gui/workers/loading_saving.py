@@ -407,7 +407,7 @@ class loadDataWorker(QObject):
 
             if i > 0:
                 # First pos was already loaded in the main thread
-                # see loadSelectedData function in gui.py
+                # see loadSelectedData in gui/main_window/loading.py
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
                 if not self.firstPosData.onlyEditMetadata:

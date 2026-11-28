@@ -300,7 +300,7 @@ class PhaseTranslatorDialog(QDialog):
         )
         applyButtons = QHBoxLayout()
         # Same icons as the "Apply" / "Apply to all Positions..." buttons
-        # of the post-processing dialog in apps.py
+        # of the post-processing dialog (gui/dialogs/segmentation.py)
         self.applyCellButton = widgets_push_buttons.okPushButton(
             'Apply phase evaluation on displayed cell', isDefault=False
         )

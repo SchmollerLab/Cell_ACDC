@@ -1,3 +1,9 @@
+"""Qt-free introspection of segmentation and promptable model modules:
+importing a model's acdcSegment module, reading the parameters of its
+Model class and segment method from signatures and NumPy docstrings
+(ArgSpec here differs from the ArgSpec of segm_models.py), and the base
+cell cycle table. Used without the GUI by core.py and the model service.
+"""
 
 
 from collections import namedtuple

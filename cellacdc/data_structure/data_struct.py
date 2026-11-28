@@ -1,3 +1,9 @@
+"""The data structure window createDataStructWin, which converts raw
+microscopy files into the Cell-ACDC Position structure with Bio-Formats
+(bioFormatsWorker, with its own worker_exception_handler that emits
+critical), the symlinked-Positions window CreateSymLinkToPosWin and the
+Fiji macro conversion setup InitFijiMacro.
+"""
 import sys
 import os
 import logging

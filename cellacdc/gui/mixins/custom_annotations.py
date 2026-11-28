@@ -1,10 +1,10 @@
 """Mixin with the GUI elements and the logic of the custom annotations 
 (user-defined per-object labels saved as a column of the acdc_output table).
 
-It is shared by the main GUI (`gui.guiWin`) and the measurements viewer 
-(`measurements_viewer.MeasurementsViewerWin`).
+It is shared by the main GUI (`guiWin`) and the measurements viewer 
+(`MeasurementsViewerWin`).
 
-Each annotation has a checkable toolbar button (`widgets.CustomAnnotToolButton`) 
+Each annotation has a checkable toolbar button (`gui_mixin_widgets.CustomAnnotToolButton`) 
 and a scatter plot item that draws a symbol on the annotated objects. 
 `self.customAnnotDict` maps each button to 
 `{'action', 'state', 'annotatedIDs', 'scatterPlotItem'}`.
@@ -15,7 +15,7 @@ Requirements on the inheriting class
   `self.isSnapshot`, `self.modeComboBox` and `self.switchPlaneCombobox`.
 - `self.customAnnotDict = {}` and `self.customAnnotButton = None` set in
   `__init__`. `self.checkableQButtonsGroup` is optional.
-- The user settings of `gui_core.GUICoreElements` (`_get_setting_value`,
+- The user settings of `gui_window_core.GUICoreElements` (`_get_setting_value`,
   `_set_setting_value`): the "Hide annotations" option of each button is
   a per-user setting ``<name>_annotation_hidden``
   (`customAnnotHiddenSettingName`) that takes precedence over the
@@ -27,7 +27,7 @@ Hooks that the inheriting class can override
 --------------------------------------------
 - `customAnnotIsVisibleMode`: whether annotations are displayed.
 - `customAnnotationDialogKwargs`: additional kwargs of 
-  `apps.customAnnotationDialog` (e.g., predictor options).
+  `gui_mixin_dialogs.customAnnotationDialog` (e.g., predictor options).
 - `customAnnotToolTip`: tool tip of the annotation button.
 - `setCustomAnnotShortcut`: assign the keyboard shortcut.
 - `initCustomAnnotColumn`, `renameCustomAnnotColumn`,
@@ -539,7 +539,7 @@ class CustomAnnotationsGuiElements:
         self.selectAnnotWin.listBox.addItems(items)
 
     def execCustomAnnotationDialog(self, state=None):
-        """Show `apps.customAnnotationDialog` (`self.addAnnotWin` while it
+        """Show `gui_mixin_dialogs.customAnnotationDialog` (`self.addAnnotWin` while it
         is open; `state` of the annotation to modify) and return it once
         closed. The dialog is then scheduled for deletion: its result
         (`cancel`, `state`, `symbol`) stays readable, but parented to this

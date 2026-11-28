@@ -301,7 +301,7 @@ class MenusActionsGuiElements:
         self.wcLabel = widgets_basic_widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
 
-        # self.toggleTerminalButton = widgets.ToggleTerminalButton()
+        # self.toggleTerminalButton = widgets_push_buttons.ToggleTerminalButton()
         # self.statusbar.addWidget(self.toggleTerminalButton)
         # self.toggleTerminalButton.sigClicked.connect(
         #     self.gui_terminalButtonClicked

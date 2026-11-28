@@ -235,7 +235,7 @@ class ViewerNavigationGuiElements:
         self.updateImages()
         self.zoomToSelectedID()
         self.updateCurrentFrameLine()
-        # As in `gui.guiWin.next_frame`: frame of the open 3D viewer
+        # As in `guiWin.next_frame`: frame of the open 3D viewer
         self.update3DViewer()
 
     def refreshUnlinkedSlideshow(self):
@@ -298,7 +298,7 @@ class ViewerNavigationGuiElements:
         self.update3DViewerViewRegion()
 
     def setOverlayEnabledForPlane(self, depthAxes):
-        """As `gui.guiWin.switchViewedPlane`: overlay channels are drawn
+        """As `guiWin.switchViewedPlane`: overlay channels are drawn
         only on the xy plane (`getOlImg` would index the z-stack with the
         y/x index of the scrollbar). On zy/zx turn the overlay off and
         disable its button, back on xy restore the previous state."""
