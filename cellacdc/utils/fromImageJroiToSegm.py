@@ -7,6 +7,11 @@ from qtpy.QtWidgets import QLabel, QLineEdit, QGridLayout, QGroupBox
 from cellacdc.shared.widgets import numeric_inputs as widgets_numeric_inputs
 from qtpy.QtWidgets import QVBoxLayout, QAbstractItemView, QHeaderView
 from cellacdc.shared.dialogs import base as dialogs_base
+import os
+from qtpy.QtCore import Signal
+from cellacdc import load, io
+from . import base as utils_base
+from cellacdc.shared.workers import base as workers_base
 
 class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -247,3 +252,112 @@ class ImageJRoisToSegmManager(dialogs_base.QBaseDialog):
         
         self.cancel = False
         self.close()
+
+
+class FromImajeJroiToSegmNpzWorker(utils_base.BaseWorkerUtil):
+    sigSelectRoisProps = Signal(str, object, bool)
+    
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitSelectRoisProps(self, roi_filepath, TZYX_shape, is_multi_pos):
+        self.mutex.lock()
+        self.sigSelectRoisProps.emit(roi_filepath, TZYX_shape, is_multi_pos)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    @workers_base.worker_exception_handler
+    def run(self):
+        import roifile
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            cancel = self.emitSelectFilesWithText(
+                exp_path, pos_foldernames, 'imagej_rois', ext=('.zip', '.roi')
+            )
+            if cancel:
+                self.signals.finished.emit(self)
+                return
+            
+            self.askRoiPreferences = True
+            self.repeatRoisZslicesRange = None
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameRoi = self.mainWin.endFilenameWithText
+                ls = myutils.listdir(images_path)
+                rois_filepaths = [
+                    os.path.join(images_path, f) for f in ls 
+                    if (
+                        f.endswith(f'{endFilenameRoi}.zip')
+                        or f.endswith(f'{endFilenameRoi}.roi')
+                    )
+                ]
+                
+                if not rois_filepaths:
+                    self.logger.log(
+                        '[WARNING]: The following Position folder does not '
+                        f'contain any file ending with {endFilenameRoi}. '
+                        f'Skipping it. "{os.path.join(exp_path, pos)}")'
+                    )
+                    continue
+                    
+                rois_filepath = rois_filepaths[0]
+                
+                if self.askRoiPreferences:
+                    is_multi_pos = len(pos_foldernames) > 1
+                    self.logger.log('Loading image data to get image shape...')
+                    TZYX_shape = load.get_tzyx_shape(images_path)
+                    cancel = self.emitSelectRoisProps(
+                        rois_filepath, TZYX_shape, is_multi_pos
+                    )
+                    if cancel:
+                        self.signals.finished.emit(self)
+                        return
+                    
+                    self.askRoiPreferences = not self.useSamePropsForNextPos
+                elif self.areAllRoisSelected:
+                    rois = roifile.roiread(rois_filepath)
+                    if not isinstance(rois, list):
+                        rois = [rois]
+                    self.IDsToRoisMapper = {
+                        i+1: roi for i, roi in enumerate(rois)
+                    }
+                else:
+                    # Use same ID of previous position
+                    rois = roifile.roiread(rois_filepath)
+                    if not isinstance(rois, list):
+                        rois = [rois]
+                    self.IDsToRoisMapper = {
+                        ID: rois[i]
+                        for i, ID in enumerate(self.IDsToRoisMapper.keys())
+                    }
+
+                self.logger.log('Generating segm mask from ROIs...')
+                segm_data = myutils.from_imagej_rois_to_segm_data(
+                    TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
+                    self.repeatRoisZslicesRange
+                ) 
+                
+                segm_filepath = (rois_filepath
+                    .replace('imagej_rois', 'segm')
+                    .replace('.zip', '.npz')
+                    .replace('.roi', '.npz')
+                )
+                self.logger.log(f'Saving segm mask to "{segm_filepath}"...')
+                io.savez_compressed(segm_filepath, segm_data)
+        
+        self.signals.finished.emit(self)

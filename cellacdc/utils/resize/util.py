@@ -5,6 +5,11 @@ from ..base import NewThreadMultipleExpBaseUtil
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QGridLayout, QRadioButton
 from cellacdc.shared.dialogs import base as dialogs_base
+import os
+from qtpy.QtCore import Signal
+from .. import resize
+from .. import base as utils_base
+from cellacdc.shared.workers import base as workers_base
 
 class ResizePositionsUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -183,3 +188,62 @@ class ResizeUtilProps(dialogs_base.QBaseDialog):
         
         self.cancel = False
         self.close()
+
+
+class ResizeUtilWorker(utils_base.BaseWorkerUtil):
+    sigSetResizeProps = Signal(str)
+    
+    def emitSetResizeProps(self, input_path):
+        self.mutex.lock()
+        self.sigSetResizeProps.emit(input_path)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def validateOutputPath(self, path):
+        if path is None:
+            return
+        
+        images_path = myutils.validate_images_path(path, create_dirs_tree=True)
+        return images_path
+    
+    @workers_base.worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            abort = self.emitSetResizeProps(exp_path)
+            if abort:
+                self.signals.finished.emit(self)
+                return
+            
+            tot_pos = len(pos_foldernames)
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+                images_path = os.path.join(exp_path, pos, 'Images')
+                
+                
+                rf = self.resizeFactor
+                text_to_append = self.textToAppend
+                images_path_out = self.validateOutputPath(self.expFolderpathOut)
+                if images_path_out is None:
+                    images_path_out = images_path
+                resize.run(
+                    images_path, rf, 
+                    text_to_append=text_to_append, 
+                    images_path_out=images_path_out
+                )                
+                
+        self.signals.finished.emit(self)

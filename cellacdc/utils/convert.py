@@ -33,6 +33,10 @@ from .. import prompts, load, myutils, apps, load, widgets, html_utils
 from .. import workers
 from .. import cellacdc_path, settings_folderpath
 from .. import io
+import skimage.io
+import skimage.measure
+import skimage.exposure
+from cellacdc.shared.workers import base as workers_base
 
 if os.name == 'nt':
     try:
@@ -597,3 +601,76 @@ class ImagesToPositions(QDialog):
                 html_utils.paragraph('Conversion process completed!')
             )
 
+
+
+class ImagesToPositionsWorker(QObject):
+    finished = Signal()
+    debug = Signal(object)
+    critical = Signal(object)
+    progress = Signal(str)
+    initPbar = Signal(int)
+    updatePbar = Signal()
+
+    def __init__(self, folderPath, targetFolderPath, appendText):
+        super().__init__()
+        self.abort = False
+        self.folderPath = folderPath
+        self.targetFolderPath = targetFolderPath
+        self.appendText = appendText
+    
+    @workers_base.worker_exception_handler
+    def run(self):
+        self.progress.emit(f'Selected folder: "{self.folderPath}"')
+        self.progress.emit(f'Target folder: "{self.targetFolderPath}"')
+        self.progress.emit(' ')
+        ls = myutils.listdir(self.folderPath)
+        numFiles = len(ls)
+        self.initPbar.emit(numFiles)
+        numPosDigits = len(str(numFiles))
+        if numPosDigits == 1:
+            numPosDigits = 2
+        pos = 1
+        for file in ls:
+            if self.abort:
+                break
+            
+            filePath = os.path.join(self.folderPath, file)
+            if os.path.isdir(filePath):
+                # Skip directories
+                self.updatePbar.emit()
+                continue
+            
+            self.progress.emit(f'Loading file: {file}')
+            filename, ext = os.path.splitext(file)
+            s0p = str(pos).zfill(numPosDigits)
+            try:
+                data = load.imread(filePath)
+                if data.ndim == 3 and (data.shape[-1] == 3 or data.shape[-1] == 4):
+                    self.progress.emit('Converting RGB image to grayscale...')
+                    data = skimage.color.rgb2gray(data)
+                    data = skimage.img_as_ubyte(data)
+                
+                posName = f'Position_{pos}'
+                posPath = os.path.join(self.targetFolderPath, posName)
+                imagesPath = os.path.join(posPath, 'Images')
+                if not os.path.exists(imagesPath):
+                    os.makedirs(imagesPath, exist_ok=True)
+                newFilename = f's{s0p}_{filename}_{self.appendText}.tif'
+                relPath = os.path.join(posName, 'Images', newFilename)
+                tifFilePath = os.path.join(imagesPath, newFilename)
+                self.progress.emit(f'Saving to file: ...{os.sep}{relPath}')
+                myutils.to_tiff(
+                    tifFilePath, data
+                )
+                pos += 1
+            except Exception as e:
+                self.progress.emit(
+                    f'WARNING: {file} is not a valid image file. Skipping it.'
+                )
+            
+            self.progress.emit(' ')
+            self.updatePbar.emit()
+
+            if self.abort:
+                break
+        self.finished.emit()

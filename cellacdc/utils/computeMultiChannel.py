@@ -16,6 +16,9 @@ from cellacdc import _palettes
 from cellacdc import fonts
 from cellacdc.shared.dialogs import base as dialogs_base
 from cellacdc.shared.dialogs import combine_measurements as dialogs_combine_measurements
+import traceback
+from . import base as utils_base
+from cellacdc.shared.workers import base as workers_base
 
 class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -542,3 +545,156 @@ class CombineMetricsMultiDfsSummaryDialog(dialogs_base.QBaseDialog):
     
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*2), self.height())
+
+
+class ComputeMetricsMultiChannelWorker(utils_base.BaseWorkerUtil):
+    sigAskAppendName = Signal(str, list, list)
+    sigCriticalNotEnoughSegmFiles = Signal(str)
+    sigAborted = Signal()
+    sigHowCombineMetrics = Signal(str, list, list, list)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitHowCombineMetrics(
+            self, imagesPath, selectedAcdcOutputEndnames, 
+            existingAcdcOutputEndnames, allChNames
+        ):
+        self.mutex.lock()
+        self.sigHowCombineMetrics.emit(
+            imagesPath, selectedAcdcOutputEndnames, 
+            existingAcdcOutputEndnames, allChNames
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def loadAcdcDfs(self, imagesPath, selectedAcdcOutputEndnames):
+        for end in selectedAcdcOutputEndnames:
+            filePath, _ = load.get_path_from_endname(end, imagesPath)
+            acdc_df = pd.read_csv(filePath)
+            yield acdc_df
+    
+    def run_iter_exp(self, exp_path, pos_foldernames, i, tot_exp):
+        tot_pos = len(pos_foldernames)
+        
+        cancel = self.emitSelectAcdcOutputFiles(
+            exp_path, pos_foldernames, infoText=' to combine',
+            allowSingleSelection=False
+        )
+        if cancel:
+            self.sigAborted.emit()
+            return
+        
+        # Ask appendend name
+        self.mutex.lock()
+        self.sigAskAppendName.emit(
+            f'{self.mainWin.basename_pos1}acdc_output', 
+            self.mainWin.existingAcdcOutputEndnames,
+            self.mainWin.selectedAcdcOutputEndnames
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            self.sigAborted.emit()
+            return
+
+        selectedAcdcOutputEndnames = self.mainWin.selectedAcdcOutputEndnames
+        existingAcdcOutputEndnames = self.mainWin.existingAcdcOutputEndnames
+        appendedName = self.appendedName
+
+        self.signals.initProgressBar.emit(len(pos_foldernames))
+        for p, pos in enumerate(pos_foldernames):
+            if self.abort:
+                self.sigAborted.emit()
+                return
+
+            self.logger.log(
+                f'Processing experiment n. {i+1}/{tot_exp}, '
+                f'{pos} ({p+1}/{tot_pos})'
+            )
+
+            imagesPath = os.path.join(exp_path, pos, 'Images')
+            basename, chNames = myutils.getBasenameAndChNames(
+                imagesPath, useExt=('.tif', '.h5')
+            )
+
+            if p == 0:
+                abort = self.emitHowCombineMetrics(
+                    imagesPath, selectedAcdcOutputEndnames, 
+                    existingAcdcOutputEndnames, chNames
+                )
+                if abort:
+                    self.sigAborted.emit()
+                    return
+                acdcDfs = self.acdcDfs.values()
+                # Update selected acdc_dfs since the user could have 
+                # loaded additional ones inside the emitHowCombineMetrics
+                # dialog
+                selectedAcdcOutputEndnames = self.acdcDfs.keys()
+            else:
+                acdcDfs = self.loadAcdcDfs(
+                    imagesPath, selectedAcdcOutputEndnames
+                )
+
+            dfs = []
+            for i, acdc_df in enumerate(acdcDfs):
+                dfs.append(acdc_df.add_suffix(f'_table{i+1}'))
+            combined_df = pd.concat(dfs, axis=1)
+
+            newAcdcDf = pd.DataFrame(index=combined_df.index)
+            for newColname, equation in self.equations.items():
+                newAcdcDf[newColname] = combined_df.eval(equation)
+            
+            newAcdcDfPath = os.path.join(
+                imagesPath, f'{basename}acdc_output_{appendedName}.csv'
+            )
+            newAcdcDf.to_csv(newAcdcDfPath)
+
+            equationsIniPath = os.path.join(
+                imagesPath, f'{basename}equations_{appendedName}.ini'
+            )
+            equationsConfig = config.ConfigParser()
+            if os.path.exists(equationsIniPath):
+                equationsConfig.read(equationsIniPath)
+            equationsConfig = self.addEquationsToConfigPars(
+                equationsConfig, selectedAcdcOutputEndnames, self.equations
+            )
+            with open(equationsIniPath, 'w') as configfile:
+                equationsConfig.write(configfile)
+
+            self.signals.progressBar.emit(1)
+        
+        return True
+    
+    def addEquationsToConfigPars(self, cp, selectedAcdcOutputEndnames, equations):
+        section = [
+            f'df{i+1}:{end}' for i, end in enumerate(selectedAcdcOutputEndnames)
+        ]
+        section = ';'.join(section)
+        if section not in cp:
+            cp[section] = {}
+        
+        for metricName, expression in equations.items():
+            cp[section][metricName] = expression
+        
+        return cp
+         
+    @workers_base.worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        self.errors = {}
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            try:
+                result = self.run_iter_exp(exp_path, pos_foldernames, i, tot_exp)
+                if result is None:
+                    return
+            except Exception as e:
+                traceback_str = traceback.format_exc()
+                self.errors[e] = traceback_str
+                self.logger.log(traceback_str)
+
+        self.signals.finished.emit(self)

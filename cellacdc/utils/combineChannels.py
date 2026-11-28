@@ -9,6 +9,11 @@ from .base import NewThreadMultipleExpBaseUtil
 from qtpy.QtWidgets import QLabel, QSpinBox
 from cellacdc import qutils
 from cellacdc.shared.dialogs import preprocessing as dialogs_preprocessing
+from typing import Dict, Any
+from qtpy.QtCore import Signal
+from cellacdc import core
+from . import base as utils_base
+from cellacdc.shared.workers import base as workers_base
 
 class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -171,3 +176,106 @@ class CombineChannelsSetupDialogUtil(dialogs_preprocessing.CombineChannelsSetupD
         self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
         self.mainLayout.addWidget(QLabel("Number of threads:"))
         self.mainLayout.addWidget(self.nThreadsSpinBox)
+
+
+class CombineChannelsWorkerUtil(utils_base.BaseWorkerUtil):
+    sigAskAppendName = Signal(str)
+    sigAskSetup = Signal(object)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin, mutex=None, waitCond=None):
+        super().__init__(mainWin)
+    
+    def emitAskSetup(self, expPaths):
+        self.mutex.lock()
+        self.sigAskSetup.emit(expPaths)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def applyPipeline(
+            self, 
+            image_paths: os.PathLike,
+            steps:  Dict[str, Dict[str, Any]],
+            appended_text_filename: str,
+            keep_input_data_type: bool,
+            n_threads: int = None,
+            formula: str = None,
+        ):
+        save_filepaths = []
+        images_path_to_process = []
+        if self.saveAsSegm:
+            out_ext = '.npz'
+            basename_ext = 'segm_'
+        else:
+            out_ext = '.tif'
+            basename_ext = ''
+        
+        for images_path in image_paths:
+            basename, channels = myutils.getBasenameAndChNames(images_path)
+            
+            savename = (
+                f'{basename}{basename_ext}{appended_text_filename}{out_ext}'
+            )
+
+            images_path_to_process.append(images_path)
+            save_filepaths.append(os.path.join(images_path, savename))
+        
+        core.combine_channels_multithread(
+            inputs_info=steps,
+            images_paths=images_path_to_process,
+            keep_input_data_type=keep_input_data_type,
+            save_filepaths=save_filepaths,
+            signals=self.signals,
+            logger_func=self.logger.log,
+            n_threads=n_threads,
+            output_as_segm=self.saveAsSegm,
+            formula=formula,
+        )
+    
+    @workers_base.worker_exception_handler
+    def run(self):
+
+        self.signals.initProgressBar.emit(0)
+
+        expPaths = self.mainWin.expPaths
+        abort = self.emitAskSetup(expPaths)
+        if abort:
+            self.sigAborted.emit()
+            return
+    
+        # Ask append name
+        self.mutex.lock()
+        basename = f'{self.basename}'
+        self.sigAskAppendName.emit(basename)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            self.sigAborted.emit()
+            return
+
+        appendedName = self.appendedName
+
+        selectedSteps = self.selectedSteps
+
+        self.logger.log('Applying pipeline...')
+        self.logger.log('Selected steps:')
+        for step in selectedSteps.values():
+            self.logger.log(step)
+            
+        image_paths = []
+        for exp_path, pos_foldernames in expPaths.items():
+            image_paths += [os.path.join(exp_path, pos, 'Images') for pos in pos_foldernames]
+
+        self.signals.initProgressBar.emit(len(pos_foldernames))
+        formula = self.formula
+        self.applyPipeline(
+            image_paths,
+            selectedSteps,
+            appendedName,
+            self.keepInputDataType,
+            n_threads=self.nThreads,
+            formula=formula,
+        )
+
+        self.signals.finished.emit(self)

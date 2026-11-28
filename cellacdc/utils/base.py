@@ -36,6 +36,8 @@ from qtpy.QtWidgets import (
 from cellacdc.shared.widgets import item_views as widgets_item_views
 from cellacdc.shared.widgets import line_edits as widgets_line_edits
 from cellacdc.shared.dialogs import base as dialogs_base
+from qtpy.QtCore import QObject, QMutex, QWaitCondition
+from cellacdc.shared.workers import base as workers_base
 
 def log_init_util(logger, expPaths: dict, util_title, util_module):
     exp_paths_str = pprint.pformat(expPaths, indent=1)
@@ -1114,3 +1116,77 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
         
         self.cancel = False
         self.close()
+
+
+class BaseWorkerUtil(QObject):
+    progressBar = Signal(int, int, float)
+
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.signals = workers_base.signals()
+        self.abort = False
+        self.skipExp = False
+        self.logger = workers_base.workerLogger(self.signals.progress)
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.mainWin = mainWin
+
+    def emitSelectSegmFiles(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def emitSelectVideoFile(self, exp_path, pos_foldernames, multiSelection):
+        self.mutex.lock()
+        self.signals.sigSelectVideoFile.emit(
+            exp_path, pos_foldernames, multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def emitSelectFilesWithText(
+            self, exp_path, pos_foldernames, with_text, ext=None
+        ):
+        self.mutex.lock()
+        self.signals.sigSelectFilesWithText.emit(
+            exp_path, pos_foldernames, with_text, ext
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def emitSelectFile(self, start_dir, caption='', filters='All files (*.)'):
+        self.mutex.lock()
+        self.signals.sigSelectFile.emit(start_dir, caption, filters)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+        
+    def emitSelectAcdcOutputFiles(
+            self, exp_path, pos_foldernames, infoText='', 
+            allowSingleSelection=False, multiSelection=True
+        ):
+        self.mutex.lock()
+        self.signals.sigSelectAcdcOutputFiles.emit(
+            exp_path, pos_foldernames, infoText, allowSingleSelection,
+            multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def emitSelectSpotmaxRun(
+            self, exp_path, pos_foldernames, all_runs, infoText='', 
+            allowSingleSelection=True, multiSelection=True
+        ):
+        self.mutex.lock()
+        self.signals.sigSelectSpotmaxRun.emit(
+            exp_path, pos_foldernames, all_runs, infoText, allowSingleSelection,
+            multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort

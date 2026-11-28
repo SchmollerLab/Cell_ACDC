@@ -28,6 +28,13 @@ from cellacdc import prompts
 from cellacdc import fonts
 from cellacdc.shared.dialogs import base as dialogs_base
 from cellacdc.shared.dialogs import image_tools as dialogs_image_tools
+import numpy as np
+import skimage.io
+import skimage.measure
+import skimage.exposure
+from qtpy.QtCore import QObject, QMutex, QWaitCondition
+from cellacdc import cli
+from cellacdc.shared.workers import base as workers_base
 
 favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
@@ -897,3 +904,213 @@ class stopFrameDialog(dialogs_base.QBaseDialog):
             stopFrameNum = posData.stopFrameSpinbox.value()
             posData.stopFrameNum = stopFrameNum
         self.close()
+
+
+class ComputeMetricsWorker(QObject):
+    progressBar = Signal(int, int, float)
+
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.signals = workers_base.signals()
+        self.abort = False
+        self.setup_done = False
+        self.logger = workers_base.workerLogger(self.signals.progress)
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.mainWin = mainWin
+        self.runNowAlreadyAsked = False
+        self.doInitKernel = True
+
+    def emitSelectSegmFiles(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            return True
+        else:
+            return False
+
+    @workers_base.worker_exception_handler
+    def run(self):
+        np.seterr(invalid='ignore')
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.standardMetricsErrors = {}
+            self.customMetricsErrors = {}
+            self.regionPropsErrors = {}
+            tot_pos = len(pos_foldernames)
+            self.allPosDataInputs = []
+            posDatas = []
+            self.logger.log('-'*30)
+            expFoldername = os.path.basename(exp_path)
+
+            if i == 0:
+                abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+                if abort:
+                    self.signals.finished.emit(self)
+                    return
+
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                pos_path = os.path.join(exp_path, pos)
+                images_path = os.path.join(pos_path, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(
+                    images_path, useExt=('.tif', '.h5')
+                )
+
+                self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
+
+                # Use first found channel, it doesn't matter for metrics
+                chName = chNames[0]
+                file_path = myutils.getChannelFilePath(images_path, chName)
+
+                # Load data
+                posData = load.loadData(file_path, chName)
+                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+                posData.buildPaths()
+
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_acdc_df=True,
+                    load_metadata=True,
+                    loadSegmInfo=True,
+                    load_customCombineMetrics=True
+                )
+
+                posDatas.append(posData)
+
+                self.allPosDataInputs.append({
+                    'file_path': file_path,
+                    'chName': chName,
+                    'chNames': list(posData.chNames),
+                    'combineMetricsConfig': posData.combineMetricsConfig,
+                    'combineMetricsPath': posData.custom_combine_metrics_path,
+                    # Table the kernel will update (the one linked to the
+                    # selected segmentation file)
+                    'acdcDfColumns': load.get_linked_acdc_df_columns(
+                        posData.images_path, posData.basename,
+                        self.mainWin.endFilenameSegm
+                    ),
+                })
+
+            if any([posData.SizeT > 1 for posData in posDatas]):
+                self.mutex.lock()
+                self.signals.sigAskStopFrame.emit(posDatas)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+                for p, posData in enumerate(posDatas):
+                    self.allPosDataInputs[p]['stopFrameNum'] = (
+                        posData.stopFrameNum
+                    )
+            else:
+                for p, posData in enumerate(posDatas):
+                    self.allPosDataInputs[p]['stopFrameNum'] = 1
+
+            if self.doInitKernel:
+                self.kernel = cli.ComputeMeasurementsKernel(
+                    self.logger, 
+                    self.mainWin.log_path, 
+                    False,
+                )
+            
+            # Iterate pos and calculate metrics
+            numPos = len(self.allPosDataInputs)
+            for p, posDataInputs in enumerate(self.allPosDataInputs):
+                self.logger.log('='*40)
+                file_path = posDataInputs['file_path']
+                chName = posDataInputs['chName']
+                stopFrameNum = posDataInputs['stopFrameNum']
+                
+                self.kernel.run(
+                    img_path=file_path, 
+                    stop_frame_n=stopFrameNum, 
+                    end_filename_segm=self.mainWin.endFilenameSegm,
+                    computeMetricsWorker=self,
+                    do_init_metrics=p == 0,
+                )
+
+                if self.kernel.setup_done:
+                    return
+                
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+            self.logger.log('*'*30)
+
+            self.mutex.lock()
+            self.signals.sigErrorsReport.emit(
+                self.standardMetricsErrors, 
+                self.customMetricsErrors,
+                self.regionPropsErrors
+            )
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+
+        self.signals.finished.emit(self)
+    
+    def emitSigComputeVolume(self, posData, stop_frame_n):
+        # Recreate allData_li attribute of the gui
+        posData.allData_li = []
+        for frame_i, lab in enumerate(posData.segm_data[:stop_frame_n]):
+            data_dict = {
+                'labels': lab,
+                'regionprops': skimage.measure.regionprops(lab)
+            }
+            posData.allData_li.append(data_dict)
+        self.mutex.lock()
+        self.signals.sigComputeVolume.emit(
+            stop_frame_n, posData
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    def emitSigPermissionErrorAndSave(
+            self, posData, traceback_str, all_frames_acdc_df, 
+            custom_annot_columns
+        ):
+        self.mutex.lock()
+        self.signals.sigPermissionError.emit(
+            traceback_str, posData.acdc_output_csv_path
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        load.save_acdc_df_file(
+            all_frames_acdc_df, posData.acdc_output_csv_path, 
+            custom_annot_columns=custom_annot_columns
+        )
+    
+    def emitSigInitMetricsDialog(self, posData):
+        self.mainWin.gui.data = [posData]
+        self.mainWin.gui.pos_i = 0
+        self.mainWin.gui.isSegm3D = posData.getIsSegm3D()
+        self.mutex.lock()
+        self.signals.sigInitAddMetrics.emit(
+            posData, self.allPosDataInputs
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def emitSigAskRunNow(self):
+        if self.runNowAlreadyAsked:
+            return
+
+        self.mutex.lock()
+        self.signals.sigAskRunNow.emit(self)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()

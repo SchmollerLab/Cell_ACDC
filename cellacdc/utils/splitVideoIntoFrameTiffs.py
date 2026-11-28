@@ -3,6 +3,13 @@ import os
 from .. import apps, myutils, workers, widgets, html_utils, printl
 
 from .base import NewThreadMultipleExpBaseUtil
+import skimage.io
+import skimage.measure
+import skimage.exposure
+from qtpy.QtCore import Signal
+from cellacdc import load, io
+from . import base as utils_base
+from cellacdc.shared.workers import base as workers_base
 
 class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -97,3 +104,144 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
         super().workerFinished(worker)
         self.close()
+
+
+class SplitVideoIntoFrameTiffs(utils_base.BaseWorkerUtil):
+    sigAskSetup = Signal(object)
+    sigCancelled = Signal()
+    sigAskDstFolderExist = Signal(str)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    def emitAskSetup(self, exp_path, pos_foldernames, video_endname):
+        self.mutex.lock()
+        self.sigAskSetup.emit((exp_path, pos_foldernames, video_endname))
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def emitAskDstFolderExist(self, videoDstFolderPath):
+        self.mutex.lock()
+        self.sigAskDstFolderExist.emit(videoDstFolderPath)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    @workers_base.worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        tot_num_pos = 0
+        for exp_path, pos_foldernames in expPaths.items():
+            tot_num_pos += len(pos_foldernames)
+        tot_digits = max(2, len(str(tot_num_pos)))
+        k = 0
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            if i == 0:
+                self.mainWin.infoText = 'Select <b>video file to split</b>'
+                cancel = self.emitSelectVideoFile(
+                    exp_path, pos_foldernames, False
+                )
+                if cancel:
+                    self.sigCancelled.emit()
+                    return
+                
+                selectedVideoEndname = self.selectedVideoEndname
+
+                # Emit ask setup parameters
+                self.mainWin.infoText = 'Setup video splitting process'
+                self.emitAskSetup(
+                    exp_path, pos_foldernames, selectedVideoEndname
+                )
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+            
+            dtype = self.dtypeOut
+            prefix = self.prefixText
+            onlyUntilTracked = self.onlyUntilTracked
+            onlyUntilAnnotated = self.onlyUntilAnnotated
+            acdcOutputEndname = self.acdcOutputEndname
+            dstFolderPath = self.dstFolderPath
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                pos_num_str = f'{k+1}'.zfill(tot_digits)
+                videoDstFolderPath = os.path.join(
+                    dstFolderPath, pos_num_str
+                )
+
+                if os.path.exists(videoDstFolderPath):
+                    self.emitAskDstFolderExist(videoDstFolderPath)
+                    if self.abort:
+                        self.sigCancelled.emit()
+                        return
+                    
+                    io.delete_folder_content(videoDstFolderPath)
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                ls = myutils.listdir(images_path)
+                imageFilepath = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f == f'{basename}{selectedVideoEndname}'
+                ][0]
+                image_data = load.load_image_file(imageFilepath)
+
+                numFrames = len(image_data)
+                if onlyUntilTracked or onlyUntilAnnotated:
+                    acdc_df = load.load_acdc_df_file(
+                        images_path, 
+                        end_name_acdc_df_file=acdcOutputEndname
+                    )
+
+                if self.numFramesToSplit is not None:
+                    numFrames = self.numFramesToSplit
+                elif onlyUntilTracked:
+                    numFrames = acdc_df['frame_i'].max() + 1
+                elif onlyUntilAnnotated:
+                    try:
+                        ccs = acdc_df[['cell_cycle_stage']]
+                    except KeyError:
+                        ccs = acdc_df[['generation_num_tree']]
+                    last_index_cca_df = ccs.last_valid_index()
+                    numFrames = (
+                        acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
+                    )
+
+                self.logger.log(
+                    f'Splitting video into single-frame TIFF files '
+                    f'until frame n. {numFrames}...'
+                )
+                
+                self.signals.sigInitInnerPbar.emit(numFrames)
+                for frame_i in range(numFrames):
+                    img = myutils.convert_to_dtype(image_data[frame_i], dtype)
+                    t_str = str(frame_i).zfill(3)
+                    frame_filename = f'{prefix}{t_str}.tif'
+                    frame_filepath = os.path.join(
+                        videoDstFolderPath, frame_filename
+                    )
+                    skimage.io.imsave(frame_filepath, img)
+                    self.signals.sigUpdateInnerPbar.emit(1)
+                
+                self.signals.progressBar.emit(1)
+
+                k += 1
+
+        self.signals.finished.emit(self)
