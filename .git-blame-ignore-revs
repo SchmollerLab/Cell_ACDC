@@ -1,0 +1,14 @@
+# >>> package-layout refactor (tools/refactor/run.py, C16)
+# Commits that only rewrote import paths, references, docstrings and
+# comments for the package layout of CODEMAP.md. `git blame` skips
+# them with `git config blame.ignoreRevsFile .git-blame-ignore-revs`
+# (GitHub reads this file by itself). The commits that moved code are
+# not listed: `git blame -C -C <file>` follows lines to their old
+# module.
+
+# C12: refactor: use the new import paths in cellacdc and the tests
+4d3d27113125b16a802111a820a2f1d0d3e72662
+
+# C14: docs: update docstrings and comments for the new layout
+b8b1522a0995512ea4572d892390fd1a4594d817
+# <<< package-layout refactor
